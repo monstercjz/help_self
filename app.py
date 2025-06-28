@@ -16,7 +16,7 @@ from src.services.alert_receiver import AlertReceiverThread
 # --- 全局应用程序常量 ---
 # 这些常量定义了应用的基本属性和资源文件路径
 APP_NAME = "Desktop Control & Monitoring Center"
-APP_VERSION = "1.2.0-integrated"
+APP_VERSION = "1.5.0-hybrid-settings" # 版本号更新
 CONFIG_FILE = 'config.ini'
 ICON_FILE = 'icon.png'
 LOG_FILE = 'app.log'
@@ -85,8 +85,8 @@ class ApplicationOrchestrator:
     def _add_pages_to_main_window(self):
         """将所有功能页面添加到主窗口的堆栈窗口中。"""
         logging.info("正在创建并添加功能页面...")
-        # 创建页面实例，注意SettingsPage需要注入ConfigService依赖
-        self.alerts_page = AlertsPageWidget()
+        # 【修改】创建AlertsPageWidget实例时，注入ConfigService依赖
+        self.alerts_page = AlertsPageWidget(self.config_service)
         self.settings_page = SettingsPageWidget(self.config_service)
         
         # 按希望的顺序将页面添加到主窗口
@@ -109,7 +109,6 @@ class ApplicationOrchestrator:
         )
         
         # 【核心步骤】将后台线程的信号连接到UI页面的槽函数。
-        # 这是实现线程安全UI更新的关键，保证了后台逻辑和UI逻辑的解耦。
         receiver_thread.new_alert_received.connect(self.alerts_page.add_alert)
         logging.info("后台服务信号已连接到UI槽函数。")
         
@@ -121,15 +120,11 @@ class ApplicationOrchestrator:
         """启动应用程序的事件循环和所有后台服务。"""
         logging.info("显示主窗口并启动Qt事件循环...")
         try:
-            # 启动系统托盘图标（它将在后台线程中运行）
             self.tray_manager.run()
             
-            # 根据配置决定是否在启动时显示主窗口，或直接最小化到托盘
             if self.config_service.get_value("General", "start_minimized", "false").lower() != 'true':
                 self.window.show()
                 
-            # 启动Qt的事件循环。程序将在此处阻塞，直到被self.app.quit()终止。
-            # sys.exit()确保退出码能被正确传递给操作系统。
             sys.exit(self.app.exec())
         except Exception as e:
             logging.critical(f"应用程序顶层发生未捕获的异常: {e}", exc_info=True)
@@ -137,10 +132,6 @@ class ApplicationOrchestrator:
 
 if __name__ == '__main__':
     # 应用程序的唯一入口
-    
-    # 1. 优先设置日志系统，以便后续所有操作都能被记录
     setup_logging()
-    
-    # 2. 创建应用协调器实例并运行
     main_app = ApplicationOrchestrator()
     main_app.run()
