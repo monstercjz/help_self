@@ -1,99 +1,16 @@
-# desktop_center/src/ui/alerts_page.py
 import logging
+from functools import partial
 from PySide6.QtWidgets import (QWidget, QTableWidget, QTableWidgetItem,
                                QHeaderView, QVBoxLayout, QLabel, QPushButton,
-                               QMessageBox, QHBoxLayout, QToolButton, QFormLayout,
-                               QComboBox)
-from PySide6.QtCore import Slot, Qt, QEvent, QPoint
-from PySide6.QtGui import QColor, QIcon
+                               QMessageBox, QHBoxLayout, QMenu, QSizePolicy)
+from PySide6.QtCore import Slot, Qt, QEvent
+from PySide6.QtGui import QColor, QIcon, QAction # QIcon 仍然需要，因为 "操作" 按钮还在用
+
 from datetime import datetime
 from src.services.config_service import ConfigService
 from src.services.database_service import DatabaseService
-
-# 【核心修改】弹出窗口的布局逻辑将在这里重构
-class _QuickSettingsPopup(QWidget):
-    """一个自定义的弹出式窗口，用于显示快捷设置。"""
-    def __init__(self, config_service: ConfigService, parent=None):
-        super().__init__(parent)
-        self.config_service = config_service
-        
-        self.setWindowFlags(Qt.WindowType.Popup | Qt.WindowType.FramelessWindowHint)
-        self.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
-        
-        main_layout = QVBoxLayout(self)
-        main_layout.setContentsMargins(1, 1, 1, 1) # 几乎无边距，让内部容器控制
-        
-        container = QWidget()
-        container.setStyleSheet("""
-            QWidget#container { /* 使用对象名选择器确保样式只应用到这个容器 */
-                background-color: #f7f7f7; 
-                border-radius: 6px;
-                border: 1px solid #ccc;
-            }
-        """)
-        container.setObjectName("container")
-        main_layout.addWidget(container)
-        
-        # 【核心修改】使用QVBoxLayout作为内容的主布局
-        content_layout = QVBoxLayout(container)
-        content_layout.setContentsMargins(15, 15, 15, 15)
-        content_layout.setSpacing(15) # 增大垂直间距
-
-        # --- 上部分：常规设置组 ---
-        settings_form_layout = QFormLayout()
-        settings_form_layout.setSpacing(10)
-        
-        self.quick_enable_popup = QComboBox()
-        self.quick_enable_popup.addItems(["禁用", "启用"])
-        self.quick_notification_level = QComboBox()
-        self.quick_notification_level.addItems(["INFO", "WARNING", "CRITICAL"])
-        
-        settings_form_layout.addRow("桌面弹窗通知:", self.quick_enable_popup)
-        settings_form_layout.addRow("通知级别阈值:", self.quick_notification_level)
-        content_layout.addLayout(settings_form_layout)
-
-        # --- 下部分：危险操作组 ---
-        self.clear_db_button = QPushButton("清空历史记录")
-        self.clear_db_button.setToolTip("警告：此操作将永久删除所有告警历史！")
-        self.clear_db_button.setStyleSheet("""
-            QPushButton {
-                color: white;
-                background-color: #d32f2f;
-                border: none;
-                border-radius: 4px;
-                padding: 6px 12px;
-                font-weight: bold;
-            }
-            QPushButton:hover { background-color: #c62828; }
-            QPushButton:pressed { background-color: #b71c1c; }
-        """)
-        self.clear_db_button.clicked.connect(self.close)
-        # 将按钮添加到主垂直布局中，并设置对齐
-        content_layout.addWidget(self.clear_db_button, 0, Qt.AlignmentFlag.AlignRight)
-
-        # 连接信号，实现即时保存
-        self.quick_enable_popup.currentTextChanged.connect(self.save_quick_settings)
-        self.quick_notification_level.currentTextChanged.connect(self.save_quick_settings)
-
-        self.load_settings()
-
-    def load_settings(self):
-        """加载配置到控件。"""
-        enable_popup_value = self.config_service.get_value("InfoService", "enable_desktop_popup", "true").lower()
-        self.quick_enable_popup.setCurrentText("启用" if enable_popup_value == 'true' else "禁用")
-        level = self.config_service.get_value("InfoService", "notification_level", "WARNING")
-        self.quick_notification_level.setCurrentText(level)
-
-    def save_quick_settings(self):
-        """立即保存设置。"""
-        enable_popup_text = self.quick_enable_popup.currentText()
-        self.config_service.set_option("InfoService", "enable_desktop_popup", "true" if enable_popup_text == "启用" else "false")
-        self.config_service.set_option("InfoService", "notification_level", self.quick_notification_level.currentText())
-        if self.config_service.save_config():
-            logging.info("快捷设置已更新并保存。")
-        else:
-            logging.warning("保存快捷设置时失败。")
-
+from .history_dialog import HistoryDialog
+from .statistics_dialog import StatisticsDialog
 
 SEVERITY_COLORS = {
     "CRITICAL": QColor("#FFDDDD"),
@@ -101,36 +18,78 @@ SEVERITY_COLORS = {
     "INFO": QColor("#FFFFFF")
 }
 
+# 1. 普通扁平按钮 (用于“启用/禁用”弹窗按钮)
+class FlatButton(QPushButton):
+    """一个自定义的扁平化按钮，不带菜单。"""
+    def __init__(self, text="", parent=None):
+        super().__init__(text, parent)
+        self.setStyleSheet("""
+            QPushButton {
+                border: none;
+                background-color: transparent;
+                text-align: left; /* 图标和文本左对齐 */
+                padding: 4px 8px; /* 调整内边距 */
+                color: #333;
+                font-size: 16px;
+            }
+            QPushButton:hover {
+                background-color: #e8e8e8;
+                border-radius: 4px;
+            }
+            QPushButton::menu-indicator {
+                image: none; /* 确保不显示任何菜单指示器 */
+            }
+        """)
+        self.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.setFlat(True)
+
+# 2. 带有下拉菜单的扁平按钮 (用于“通知级别”和“操作”按钮)
+class FlatMenuButton(QPushButton):
+    """一个自定义的扁平化按钮，点击后弹出菜单，箭头包含在文本中。"""
+    def __init__(self, text="", parent=None):
+        super().__init__(text, parent)
+        self.setStyleSheet("""
+            QPushButton {
+                border: none;
+                background-color: transparent;
+                text-align: left; /* 图标和文本左对齐 */
+                padding: 4px 8px;
+                color: #333;
+                font-size: 16px;
+            }
+            QPushButton:hover {
+                background-color: #e8e8e8;
+                border-radius: 4px;
+            }
+            QPushButton::menu-indicator {
+                image: none; /* 必须隐藏 QPushButton 的默认菜单指示器 */
+            }
+        """)
+        self.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.setFlat(True)
+
+        # 核心：手动连接 clicked 信号来弹出菜单
+        self.clicked.connect(self._show_menu_on_click)
+
+    def _show_menu_on_click(self):
+        if self.menu():
+            # 将菜单弹出在按钮的左下角位置，使其位于按钮下方
+            self.menu().popup(self.mapToGlobal(self.rect().bottomLeft()))
+
+
 class AlertsPageWidget(QWidget):
     """“信息接收中心”功能页面。"""
     def __init__(self, config_service: ConfigService, db_service: DatabaseService, parent=None):
         super().__init__(parent)
         self.config_service = config_service
         self.db_service = db_service
-        self.quick_settings_popup = None
         
         main_layout = QVBoxLayout(self)
         main_layout.setContentsMargins(15, 15, 15, 15)
         main_layout.setSpacing(10)
 
-        title_layout = QHBoxLayout()
-        title_label = QLabel("实时信息接收中心")
-        title_label.setStyleSheet("font-size: 20px; font-weight: bold;")
-        title_layout.addWidget(title_label)
-        title_layout.addStretch()
-
-        self.settings_button = QToolButton()
-        icon = QIcon.fromTheme("preferences-system")
-        if icon.isNull():
-            self.settings_button.setText("⚙️")
-            self.settings_button.setFixedSize(32, 32)
-            self.settings_button.setStyleSheet("font-size: 18px;")
-        else:
-            self.settings_button.setIcon(icon)
-        self.settings_button.setToolTip("快捷设置")
-        self.settings_button.clicked.connect(self.show_quick_settings_popup)
-        title_layout.addWidget(self.settings_button)
-        main_layout.addLayout(title_layout)
+        toolbar_layout = self._create_toolbar()
+        main_layout.addLayout(toolbar_layout)
 
         self.table = QTableWidget()
         self.table.setColumnCount(5)
@@ -139,8 +98,8 @@ class AlertsPageWidget(QWidget):
         header.setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
         header.setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
         header.setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(2, QHeaderView.ResizeToContents)
-        header.setSectionResizeMode(3, QHeaderView.ResizeToContents)
+        header.setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
+        header.setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)
         self.table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         self.table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         main_layout.addWidget(self.table)
@@ -152,22 +111,122 @@ class AlertsPageWidget(QWidget):
         button_layout.addWidget(self.clear_button)
         main_layout.addLayout(button_layout)
         
+        self.installEventFilter(self)
         self._load_history_on_startup()
+        self._update_toolbar_labels() # 初次加载时更新按钮文本
 
-    def show_quick_settings_popup(self):
-        """创建并显示快捷设置弹窗。"""
-        self.quick_settings_popup = _QuickSettingsPopup(self.config_service)
-        self.quick_settings_popup.clear_db_button.clicked.connect(self.clear_database)
+    def _create_toolbar(self):
+        """创建最终的、带图标和优化字体的、右对齐的工具栏。"""
+        toolbar_layout = QHBoxLayout()
+        toolbar_layout.setContentsMargins(0, 0, 0, 5)
 
-        btn_pos = self.settings_button.mapToGlobal(QPoint(0, 0))
-        # 调整定位逻辑，以适应可能变窄的弹窗
-        # 让弹窗的右上角对齐到按钮的右下角
-        popup_width = self.quick_settings_popup.sizeHint().width()
-        popup_pos = QPoint(btn_pos.x() - popup_width + self.settings_button.width(), 
-                           btn_pos.y() + self.settings_button.height() + 2)
+        title_label = QLabel("实时信息接收中心")
+        title_label.setStyleSheet("font-size: 20px; font-weight: bold;")
+        toolbar_layout.addWidget(title_label)
         
-        self.quick_settings_popup.move(popup_pos)
-        self.quick_settings_popup.show()
+        toolbar_layout.addStretch() # 将后面的按钮推到右侧
+
+        # 通知级别阈值按钮 (对应新图的“语言”样式，但功能是设置级别)
+        self.level_status_button = FlatMenuButton() # 文本将在 _update_toolbar_labels 中设置
+        self.level_status_button.setToolTip("点击选择通知级别阈值")
+        # 【修改点1】移除 setIcon，因为我们将使用 Emoji 字符作为“图标”
+        # self.level_status_button.setIcon(QIcon.fromTheme("emblem-important")) 
+        
+        level_menu = QMenu(self)
+        levels = ["INFO", "WARNING", "CRITICAL"]
+        for level in levels:
+            action = QAction(level, self)
+            action.triggered.connect(partial(self.set_notification_level, level))
+            level_menu.addAction(action)
+        self.level_status_button.setMenu(level_menu)
+        self.level_status_button.setFixedWidth(120) # 考虑到 "CRITICAL" 文本较长，设置一个能容纳的固定宽度
+        toolbar_layout.addWidget(self.level_status_button)
+
+        # 启用/禁用桌面弹窗按钮 (对应新图的“帮助”样式，但功能是切换弹窗)
+        self.popup_status_button = FlatButton("") # 文本将在 _update_toolbar_labels 中设置
+        self.popup_status_button.setToolTip("点击切换启用/禁用桌面弹窗")
+        self.popup_status_button.clicked.connect(self.toggle_popup_status)
+        # 【修改点2】移除 setIcon，因为我们将使用 Emoji 字符作为“图标”
+        # self.popup_status_button.setIcon(QIcon.fromTheme("dialog-information"))
+        self.popup_status_button.setFixedWidth(90) # 固定宽度
+        toolbar_layout.addWidget(self.popup_status_button)
+        
+        # 操作菜单按钮 (对应新图的“操作”样式，功能不变)
+        self.ops_button = FlatMenuButton(" 操作 ▾") # 文本直接包含 '▾'
+        self.ops_button.setToolTip("更多操作")
+        ops_icon = QIcon.fromTheme("preferences-system") # 齿轮图标，这里继续使用 QIcon
+        if not ops_icon.isNull():
+            self.ops_button.setIcon(ops_icon)
+        else:
+            self.ops_button.setText("⚙️ 操作 ▾") # 如果主题图标不存在，使用 Emoji 作为后备
+        
+        ops_menu = QMenu(self)
+        history_action = ops_menu.addAction(QIcon.fromTheme("document-open-recent"), "查看历史记录...")
+        stats_action = ops_menu.addAction(QIcon.fromTheme("utilities-system-monitor"), "打开统计分析...")
+        ops_menu.addSeparator()
+        clear_db_action = ops_menu.addAction(QIcon.fromTheme("edit-delete"), "清空历史记录...")
+        
+        # 设置清空历史记录为粗体
+        font = clear_db_action.font()
+        font.setBold(True)
+        clear_db_action.setFont(font)
+        
+        history_action.triggered.connect(self.show_history_dialog)
+        stats_action.triggered.connect(self.show_statistics_dialog)
+        clear_db_action.triggered.connect(self.clear_database)
+        
+        self.ops_button.setMenu(ops_menu)
+        self.ops_button.setFixedWidth(100) # 固定宽度
+        toolbar_layout.addWidget(self.ops_button)
+        
+        return toolbar_layout
+
+    def _update_toolbar_labels(self):
+        """根据当前配置更新工具栏上按钮的文本，并包含 Emoji 图标。"""
+        # 更新通知级别按钮的文本，确保包含 '🔔' 和 '▾'
+        level = self.config_service.get_value("InfoService", "notification_level", "WARNING")
+        # 【修改点3】在文本前添加 '🔔 ' 作为图标
+        self.level_status_button.setText(f"🔔 {level} ▾")
+
+        # 更新启用/禁用按钮的文本，确保包含 'ℹ️'
+        is_enabled = self.config_service.get_value("InfoService", "enable_desktop_popup", "true").lower() == 'true'
+        # 【修改点4】在文本前添加 'ℹ️ ' 作为图标
+        self.popup_status_button.setText(f"ℹ️ {'启用' if is_enabled else '禁用'}")
+
+        # 操作按钮的文本是固定的，所以不需要在这里更新
+        pass
+
+    def toggle_popup_status(self):
+        """切换桌面弹窗的启用/禁用状态。"""
+        is_enabled = self.config_service.get_value("InfoService", "enable_desktop_popup", "true").lower() == 'true'
+        new_status = not is_enabled
+        self.config_service.set_option("InfoService", "enable_desktop_popup", str(new_status).lower())
+        self.config_service.save_config()
+        self._update_toolbar_labels() # 更新按钮文本以反映新状态
+        logging.info(f"桌面弹窗状态已切换为: {'启用' if new_status else '禁用'}")
+
+    def set_notification_level(self, level: str):
+        """设置新的通知级别。"""
+        self.config_service.set_option("InfoService", "notification_level", level)
+        self.config_service.save_config()
+        self._update_toolbar_labels() # 更新按钮文本以反映新级别
+        logging.info(f"通知级别已设置为: {level}")
+
+    def show_history_dialog(self):
+        """创建并显示历史记录对话框。"""
+        dialog = HistoryDialog(self.db_service, self.window())
+        dialog.exec()
+
+    def show_statistics_dialog(self):
+        """创建并显示统计分析对话框。"""
+        dialog = StatisticsDialog(self.db_service, self.window())
+        dialog.exec()
+
+    def eventFilter(self, obj, event: QEvent) -> bool:
+        if obj is self and event.type() == QEvent.Type.Show:
+            logging.info("信息接收中心页面变为可见，正在同步工具栏状态...")
+            self._update_toolbar_labels() # 页面显示时也更新一下
+        return super().eventFilter(obj, event)
 
     def _load_history_on_startup(self):
         try:
@@ -183,7 +242,6 @@ class AlertsPageWidget(QWidget):
 
     @Slot(dict)
     def add_alert(self, alert_data: dict, is_history: bool = False):
-        """公开的槽函数，用于向表格添加新行。"""
         timestamp = alert_data.get('timestamp')
         if not timestamp or not is_history:
             timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
@@ -192,7 +250,6 @@ class AlertsPageWidget(QWidget):
         
         severity = alert_data.get('severity', 'INFO')
         
-        # 【核心修改】从alert_data中获取值的键名改为 'source_ip'
         items = [
             QTableWidgetItem(timestamp),
             QTableWidgetItem(severity),
@@ -213,9 +270,7 @@ class AlertsPageWidget(QWidget):
 
     def clear_database(self):
         reply = QMessageBox.warning(
-            self,
-            "危险操作确认",
-            "您确定要永久删除所有历史告警记录吗？\n此操作无法撤销！",
+            self, "危险操作确认", "您确定要永久删除所有历史告警记录吗？\n此操作无法撤销！",
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
             QMessageBox.StandardButton.No
         )
