@@ -5,12 +5,11 @@ from PySide6.QtCore import QThread, Signal
 from flask import Flask, request, jsonify
 from plyer import notification
 from src.services.config_service import ConfigService
+from src.services.database_service import DatabaseService
 
-# 将Flask的日志级别调高，避免在控制台输出过多的HTTP请求信息
 log = logging.getLogger('werkzeug')
 log.setLevel(logging.ERROR)
 
-# 【新增】定义严重等级及其排序，便于比较
 SEVERITY_LEVELS = {
     "INFO": 1,
     "WARNING": 2,
@@ -18,21 +17,20 @@ SEVERITY_LEVELS = {
 }
 
 class AlertReceiverThread(QThread):
-    """
-    将Flask Web服务封装在Qt线程中，用于接收外部告警。
-    通过Qt信号与主UI线程通信，并可选地触发桌面弹窗通知。
-    """
+    """将Flask Web服务封装在Qt线程中。"""
     new_alert_received = Signal(dict)
 
-    def __init__(self, config_service: ConfigService, host='0.0.0.0', port=5000, parent=None):
+    def __init__(self, config_service: ConfigService, db_service: DatabaseService, host='0.0.0.0', port=5000, parent=None):
         super().__init__(parent)
         self.config_service = config_service
+        self.db_service = db_service
         self.host = host
         self.port = port
         self.flask_app = Flask(__name__)
         self.flask_app.route('/alert', methods=['POST'])(self.receive_alert)
 
     def receive_alert(self):
+        """处理告警请求的核心逻辑。"""
         try:
             client_ip = request.remote_addr
             data = request.get_json()
@@ -40,23 +38,26 @@ class AlertReceiverThread(QThread):
                 logging.warning(f"Received invalid or empty JSON from {client_ip}")
                 return jsonify({"status": "error", "message": "Invalid JSON"}), 400
 
-            # 【修改】引入严重等级解析逻辑
-            # 1. 从JSON中获取severity，并转为大写以便比较
             raw_severity = data.get('severity', 'INFO').upper()
-            # 2. 如果获取到的值不在我们定义的等级中，则默认为INFO
             severity = raw_severity if raw_severity in SEVERITY_LEVELS else 'INFO'
             
             alert_data = {
                 'ip': client_ip,
                 'type': data.get('type', 'Generic Alert'),
                 'message': data.get('message', 'No message provided.'),
-                'severity': severity  # 将解析后的等级添加到数据包中
+                'severity': severity
             }
 
-            log_message = f"ALERT from {client_ip} | Severity: {alert_data['severity']} | Type: {alert_data['type']} | Message: {alert_data['message']}"
+            log_message = f"ALERT from {client_ip} | Severity: {alert_data['severity']} | Type: {alert_data['type']}"
             logging.info(log_message)
+
+            # 将告警写入数据库
+            self.db_service.add_alert(alert_data)
+            logging.info(f"告警已存入数据库。")
             
+            # 发射信号通知UI
             self.new_alert_received.emit(alert_data)
+            # 触发桌面通知
             self.trigger_desktop_notification(alert_data)
 
             return jsonify({"status": "success", "message": "Alert received"}), 200
@@ -66,28 +67,23 @@ class AlertReceiverThread(QThread):
             return jsonify({"status": "error", "message": "Internal server error"}), 500
 
     def trigger_desktop_notification(self, alert_data: dict):
-        is_enabled = self.config_service.get_value("Notification", "enable_desktop_popup", "false").lower() == 'true'
-        
+        """根据配置决定是否发送桌面通知。"""
+        is_enabled = self.config_service.get_value("InfoService", "enable_desktop_popup", "false").lower() == 'true'
         if not is_enabled:
             return
             
-        # 【修改】实现智能通知，检查等级是否满足阈值
         try:
-            # 从配置中获取通知阈值等级，默认为WARNING
-            threshold_str = self.config_service.get_value("Notification", "notification_level", "WARNING").upper()
+            threshold_str = self.config_service.get_value("InfoService", "notification_level", "WARNING").upper()
             threshold_level = SEVERITY_LEVELS.get(threshold_str, SEVERITY_LEVELS["WARNING"])
-            
-            # 获取当前信息的等级
             current_level = SEVERITY_LEVELS.get(alert_data['severity'], SEVERITY_LEVELS["INFO"])
             
-            # 只有当前等级大于或等于阈值时才发送通知
             if current_level < threshold_level:
                 logging.info(f"信息等级 '{alert_data['severity']}'低于阈值 '{threshold_str}'，已跳过弹窗通知。")
                 return
 
             notification_title = f"[{alert_data['severity']}] 监控告警: {alert_data['ip']}"
             notification_message = f"类型: {alert_data['type']}\n详情: {alert_data['message']}"
-            timeout = int(self.config_service.get_value("Notification", "popup_timeout", 10))
+            timeout = int(self.config_service.get_value("InfoService", "popup_timeout", 10))
             
             notification.notify(
                 title=notification_title,
@@ -100,6 +96,7 @@ class AlertReceiverThread(QThread):
             logging.error(f"发送桌面弹窗通知 (plyer) 失败: {e}")
 
     def run(self):
+        """线程启动时执行的函数。"""
         try:
             thread_id = threading.get_ident()
             logging.info(f"Flask Web服务正在线程 {thread_id} 中启动，监听 {self.host}:{self.port}...")

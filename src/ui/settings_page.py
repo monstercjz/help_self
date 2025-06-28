@@ -7,19 +7,19 @@ from PySide6.QtCore import Qt, QEvent
 
 from src.services.config_service import ConfigService
 
+# 【核心修改】元数据结构现在与最终的config.ini完全匹配
 SETTING_METADATA = {
     "General": {
         "app_name": {"widget": "lineedit", "label": "应用程序名称"},
-        "start_minimized": {"widget": "combobox", "label": "启动时最小化到系统托盘", "items": ["禁用", "启用"], "map": {"启用": "true", "禁用": "false"}}
+        "start_minimized": {"widget": "combobox", "label": "启动时最小化", "items": ["禁用", "启用"], "map": {"启用": "true", "禁用": "false"}}
     },
-    "WebServer": {
-        "host": {"widget": "lineedit", "label": "监听地址 (0.0.0.0代表所有)"},
-        "port": {"widget": "spinbox", "label": "监听端口", "min": 1024, "max": 65535}
-    },
-    "Notification": {
-        "enable_desktop_popup": {"widget": "combobox", "label": "桌面弹窗通知", "items": ["禁用", "启用"], "map": {"启用": "true", "禁用": "false"}},
-        "popup_timeout": {"widget": "spinbox", "label": "弹窗显示时长 (秒)", "min": 1, "max": 300},
-        "notification_level": {"widget": "combobox", "label": "通知级别阈值", "items": ["INFO", "WARNING", "CRITICAL"]}
+    "InfoService": { # 新的统一区段
+        "host": {"widget": "lineedit", "label": "监听地址", "col": 0},
+        "port": {"widget": "spinbox", "label": "监听端口", "min": 1024, "max": 65535, "col": 0},
+        "enable_desktop_popup": {"widget": "combobox", "label": "桌面弹窗通知", "items": ["禁用", "启用"], "map": {"启用": "true", "禁用": "false"}, "col": 0},
+        "popup_timeout": {"widget": "spinbox", "label": "弹窗显示时长 (秒)", "min": 1, "max": 300, "col": 1},
+        "notification_level": {"widget": "combobox", "label": "通知级别阈值", "items": ["INFO", "WARNING", "CRITICAL"], "col": 1},
+        "load_history_on_startup": {"widget": "combobox", "label": "启动时加载历史", "items": ["不加载", "加载最近50条", "加载最近100条", "加载最近500条"], "map": {"不加载": "0", "加载最近50条": "50", "加载最近100条": "100", "加载最近500条": "500"}, "col": 1}
     }
 }
 
@@ -58,132 +58,86 @@ class SettingsPageWidget(QWidget):
         self.save_button = QPushButton("保存所有设置")
         self.save_button.setMinimumHeight(35)
         self.save_button.setStyleSheet("""
-            QPushButton {
-                font-size: 14px;
-                font-weight: bold;
-                background-color: #0078d4;
-                color: white;
-                border: none;
-                border-radius: 5px;
-                padding: 0 20px;
-            }
-            QPushButton:hover {
-                background-color: #005a9e;
-            }
-            QPushButton:pressed {
-                background-color: #004578;
-            }
+            QPushButton { font-size: 14px; font-weight: bold; background-color: #0078d4; color: white; border: none; border-radius: 5px; padding: 0 20px; }
+            QPushButton:hover { background-color: #005a9e; }
+            QPushButton:pressed { background-color: #004578; }
         """)
         self.save_button.clicked.connect(self.save_settings)
         main_layout.addWidget(self.save_button, 0, Qt.AlignmentFlag.AlignRight)
 
         self.installEventFilter(self)
 
-    # 【核心修改】重写此方法以实现最终的嵌套布局
+    # 【核心修改】UI创建逻辑大幅简化
     def _create_setting_cards(self):
-        """根据元数据动态创建所有设置卡片，并使用嵌套布局。"""
-        
-        # --- 1. 创建 "General" 卡片 (保持独立) ---
-        if "General" in SETTING_METADATA:
-            general_card = self._build_card_group("General", SETTING_METADATA["General"])
-            self.settings_layout.addWidget(general_card)
-        
-        # --- 2. 创建一个大的父容器 "信息服务设置" ---
-        info_service_group = QGroupBox("信息服务设置")
-        info_service_group.setStyleSheet("""
-            QGroupBox {
-                font-size: 16px;
-                font-weight: bold;
-                color: #333;
-                background-color: #fcfcfc;
-                border: 1px solid #e0e0e0;
-                border-radius: 8px;
-                margin-top: 10px;
-            }
-            QGroupBox::title {
-                subcontrol-origin: margin;
-                subcontrol-position: top left;
-                padding: 0 10px;
-                left: 10px;
-                background-color: #fcfcfc;
-            }
-        """)
-        
-        # 在父容器内部使用水平布局
-        sub_layout = QHBoxLayout(info_service_group)
-        sub_layout.setSpacing(40) # 增大两列之间的间距
-        sub_layout.setContentsMargins(20, 30, 20, 20)
+        """根据元数据动态创建所有设置卡片。"""
+        for section, options_meta in SETTING_METADATA.items():
+            card = QGroupBox(section)
+            card.setStyleSheet("""
+                QGroupBox { font-size: 16px; font-weight: bold; color: #333; background-color: #fcfcfc; border: 1px solid #e0e0e0; border-radius: 8px; margin-top: 10px; }
+                QGroupBox::title { subcontrol-origin: margin; subcontrol-position: top left; padding: 0 10px; left: 10px; background-color: #fcfcfc; }
+            """)
+            
+            # 【核心修改】根据section名，选择不同的布局策略
+            if section == "InfoService":
+                self._populate_multi_column_layout(card, section, options_meta)
+            else:
+                form_layout = QFormLayout(card)
+                form_layout.setSpacing(12)
+                form_layout.setContentsMargins(20, 30, 20, 20)
+                self._populate_form_layout(form_layout, section, options_meta)
+            
+            self.settings_layout.addWidget(card)
 
-        # --- 3. 创建 WebServer 和 Notification 的内部控件组 (使用QFormLayout) ---
-        if "WebServer" in SETTING_METADATA:
-            webserver_layout = QFormLayout()
-            webserver_layout.setSpacing(12)
-            self._populate_form_layout(webserver_layout, "WebServer", SETTING_METADATA["WebServer"])
-            sub_layout.addLayout(webserver_layout)
+    def _populate_multi_column_layout(self, parent_group: QGroupBox, section_name: str, options_meta: dict):
+        """为InfoService卡片创建多列布局。"""
+        # 主水平布局
+        main_hbox = QHBoxLayout(parent_group)
+        main_hbox.setSpacing(40)
+        main_hbox.setContentsMargins(20, 30, 20, 20)
 
-        if "Notification" in SETTING_METADATA:
-            notification_layout = QFormLayout()
-            notification_layout.setSpacing(12)
-            self._populate_form_layout(notification_layout, "Notification", SETTING_METADATA["Notification"])
-            sub_layout.addLayout(notification_layout)
+        # 创建两个垂直的表单布局作为列
+        column1_layout = QFormLayout()
+        column1_layout.setSpacing(12)
+        column2_layout = QFormLayout()
+        column2_layout.setSpacing(12)
+
+        # 根据元数据中的 'col' 键，将控件分配到不同的列
+        for key, meta in options_meta.items():
+            target_layout = column1_layout if meta.get("col", 0) == 0 else column2_layout
+            self._add_widget_to_form(target_layout, section_name, key, meta)
         
-        # 将整个大的父容器添加到主布局中
-        self.settings_layout.addWidget(info_service_group)
+        main_hbox.addLayout(column1_layout)
+        main_hbox.addLayout(column2_layout)
 
-    # 【新增】辅助方法，用于填充一个QFormLayout
     def _populate_form_layout(self, form_layout: QFormLayout, section_name: str, options_meta: dict):
-        """根据元数据，将控件填充到给定的QFormLayout中。"""
+        """将控件填充到给定的单列QFormLayout中。"""
+        for key, meta in options_meta.items():
+            self._add_widget_to_form(form_layout, section_name, key, meta)
+
+    def _add_widget_to_form(self, form_layout: QFormLayout, section_name: str, key: str, meta: dict):
+        """辅助方法：创建一个控件并将其添加到表单布局中。"""
         if section_name not in self.editors:
             self.editors[section_name] = {}
-        
-        for key, meta in options_meta.items():
-            widget_type = meta["widget"]
-            label_text = meta["label"]
-            editor_widget = None
+            
+        widget_type = meta["widget"]
+        label_text = meta["label"]
+        editor_widget = None
 
-            if widget_type == "lineedit":
-                editor_widget = QLineEdit()
-            elif widget_type == "spinbox":
-                editor_widget = QSpinBox()
-                editor_widget.setRange(meta.get("min", 0), meta.get("max", 99999))
-            elif widget_type == "combobox":
-                editor_widget = QComboBox()
-                editor_widget.addItems(meta["items"])
-                editor_widget.setMaximumWidth(250)
+        if widget_type == "lineedit":
+            editor_widget = QLineEdit()
+        elif widget_type == "spinbox":
+            editor_widget = QSpinBox()
+            editor_widget.setRange(meta.get("min", 0), meta.get("max", 99999))
+        elif widget_type == "combobox":
+            editor_widget = QComboBox()
+            editor_widget.addItems(meta["items"])
+            editor_widget.setMaximumWidth(200) # 稍微减小最大宽度
 
-            if editor_widget:
-                form_layout.addRow(QLabel(f"{label_text}:"), editor_widget)
-                self.editors[section_name][key] = editor_widget
+        if editor_widget:
+            form_layout.addRow(QLabel(f"{label_text}:"), editor_widget)
+            self.editors[section_name][key] = editor_widget
 
-    # 【重命名】将_build_card重命名并简化，因为它现在只负责 "General"
-    def _build_card_group(self, section_name: str, options_meta: dict) -> QGroupBox:
-        """为独立的区段构建一个完整的QGroupBox卡片。"""
-        card = QGroupBox(section_name)
-        card.setStyleSheet("""
-            QGroupBox {
-                font-size: 16px;
-                font-weight: bold;
-                color: #333;
-                background-color: #fcfcfc;
-                border: 1px solid #e0e0e0;
-                border-radius: 8px;
-                margin-top: 10px;
-            }
-            QGroupBox::title {
-                subcontrol-origin: margin;
-                subcontrol-position: top left;
-                padding: 0 10px;
-                left: 10px;
-                background-color: #fcfcfc;
-            }
-        """)
-        
-        form_layout = QFormLayout(card)
-        form_layout.setSpacing(12)
-        form_layout.setContentsMargins(20, 30, 20, 20)
-        
-        self._populate_form_layout(form_layout, section_name, options_meta)
-        return card
+    # ... (其他方法保持不变, 逻辑上不再需要做任何特殊处理)
 
     def _load_settings_to_ui(self):
         logging.info("正在同步全局设置页面UI...")
@@ -198,7 +152,7 @@ class SettingsPageWidget(QWidget):
                     widget.setValue(int(current_value) if current_value and current_value.isdigit() else meta.get("min", 0))
                 elif isinstance(widget, QComboBox):
                     if "map" in meta:
-                        display_text = "启用" if current_value == "true" else "禁用"
+                        display_text = next((text for text, val in meta["map"].items() if val == current_value), meta["items"][0])
                         widget.setCurrentText(display_text)
                     else:
                         if current_value in meta["items"]:
@@ -222,7 +176,7 @@ class SettingsPageWidget(QWidget):
                         value = str(widget.value())
                     elif isinstance(widget, QComboBox):
                         if "map" in meta:
-                            value = meta["map"][widget.currentText()]
+                            value = meta["map"].get(widget.currentText())
                         else:
                             value = widget.currentText()
                     

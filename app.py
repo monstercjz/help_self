@@ -7,19 +7,22 @@ from PySide6.QtWidgets import QApplication
 from src.ui.main_window import MainWindow
 from src.services.config_service import ConfigService
 from src.utils.tray_manager import TrayManager
+from src.services.database_service import DatabaseService
 
-# --- 导入新增的功能模块 ---
+# --- 导入功能模块 ---
 from src.ui.alerts_page import AlertsPageWidget
 from src.ui.settings_page import SettingsPageWidget
 from src.services.alert_receiver import AlertReceiverThread
+from src.ui.history_page import HistoryPageWidget
 
 # --- 全局应用程序常量 ---
 # 这些常量定义了应用的基本属性和资源文件路径
 APP_NAME = "Desktop Control & Monitoring Center"
-APP_VERSION = "1.5.0-hybrid-settings" # 版本号更新
+APP_VERSION = "2.0.0-db-integration"
 CONFIG_FILE = 'config.ini'
 ICON_FILE = 'icon.png'
 LOG_FILE = 'app.log'
+DB_FILE = 'history.db'
 
 def setup_logging():
     """
@@ -46,92 +49,79 @@ class ApplicationOrchestrator:
     并管理应用的整个生命周期。
     """
     def __init__(self):
-        """
-        初始化应用所需的所有核心对象。
-        此构造函数遵循一个清晰的初始化顺序：
-        核心服务 -> UI框架 -> 功能页面 -> 后台服务 -> 生命周期管理器。
-        """
         logging.info(f"正在启动 {APP_NAME} v{APP_VERSION}...")
         
-        # 1. 初始化Qt应用程序实例，这是所有UI的基础
         self.app = QApplication(sys.argv)
-        # 设置当最后一个窗口关闭时，应用程序不退出，以便在托盘中继续运行
         self.app.setQuitOnLastWindowClosed(False)
 
-        # 2. 初始化核心服务
-        # ConfigService是基础，很多其他组件可能依赖它
+        # 1. 初始化核心服务
         self.config_service = ConfigService(CONFIG_FILE)
+        try:
+            self.db_service = DatabaseService(DB_FILE)
+            self.db_service.init_db()
+        except Exception as e:
+            logging.critical(f"数据库服务初始化失败，程序无法启动: {e}", exc_info=True)
+            sys.exit(1)
 
-        # 3. 初始化主UI框架
+        # 2. 初始化UI和后台服务
         self.window = MainWindow()
-        # 从配置中读取应用名称并设置窗口标题，提供动态性
         self.window.setWindowTitle(self.config_service.get_value("General", "app_name", APP_NAME))
-
-        # 4. 初始化并集成所有功能页面
         self._add_pages_to_main_window()
-        
-        # 5. 初始化并启动后台服务线程
         self.alert_receiver_thread = self._setup_background_services()
-
-        # 6. 初始化系统托盘管理器，它负责控制应用的显示/隐藏和退出
         try:
             self.tray_manager = TrayManager(self.app, self.window, ICON_FILE)
         except FileNotFoundError:
-            logging.error(f"关键资源文件 '{ICON_FILE}' 未找到。托盘图标无法加载，程序即将退出。")
-            sys.exit(1) # 这是一个致命错误，无法继续运行
+            logging.error(f"关键资源文件 '{ICON_FILE}' 未找到。程序即将退出。")
+            sys.exit(1)
             
-        logging.info("所有组件初始化和集成完毕，应用准备就绪。")
+        # 确保在应用退出时关闭数据库连接
+        self.app.aboutToQuit.connect(self.db_service.close)
+        logging.info("所有组件初始化和集成完毕。")
 
     def _add_pages_to_main_window(self):
-        """将所有功能页面添加到主窗口的堆栈窗口中。"""
+        """将所有功能页面添加到主窗口。"""
         logging.info("正在创建并添加功能页面...")
-        # 【修改】创建AlertsPageWidget实例时，注入ConfigService依赖
-        self.alerts_page = AlertsPageWidget(self.config_service)
+        self.alerts_page = AlertsPageWidget(self.config_service, self.db_service)
+        self.history_page = HistoryPageWidget(self.db_service)
         self.settings_page = SettingsPageWidget(self.config_service)
         
-        # 按希望的顺序将页面添加到主窗口
         self.window.add_page("信息接收中心", self.alerts_page)
+        self.window.add_page("历史记录", self.history_page)
         self.window.add_page("设置", self.settings_page)
         logging.info("功能页面添加完成。")
         
     def _setup_background_services(self) -> AlertReceiverThread:
-        """配置并启动所有后台服务线程，并建立与UI的通信。"""
+        """配置并启动后台服务线程。"""
         logging.info("正在配置和启动后台服务...")
-        # 从配置中读取Web服务的参数，如果配置不存在则使用默认值
-        host = self.config_service.get_value("WebServer", "host", "0.0.0.0")
-        port = int(self.config_service.get_value("WebServer", "port", 5000))
+        host = self.config_service.get_value("InfoService", "host", "0.0.0.0")
+        port = int(self.config_service.get_value("InfoService", "port", 5000))
         
-        # 创建后台线程实例，并将config_service注入，以便线程内部可以读取配置
         receiver_thread = AlertReceiverThread(
             config_service=self.config_service, 
+            db_service=self.db_service,
             host=host, 
             port=port
         )
         
-        # 【核心步骤】将后台线程的信号连接到UI页面的槽函数。
         receiver_thread.new_alert_received.connect(self.alerts_page.add_alert)
         logging.info("后台服务信号已连接到UI槽函数。")
         
-        # 启动线程，使其开始在后台运行Flask服务
         receiver_thread.start()
         return receiver_thread
 
     def run(self):
-        """启动应用程序的事件循环和所有后台服务。"""
+        """启动应用程序的事件循环。"""
         logging.info("显示主窗口并启动Qt事件循环...")
         try:
             self.tray_manager.run()
-            
             if self.config_service.get_value("General", "start_minimized", "false").lower() != 'true':
                 self.window.show()
-                
             sys.exit(self.app.exec())
         except Exception as e:
             logging.critical(f"应用程序顶层发生未捕获的异常: {e}", exc_info=True)
             sys.exit(1)
 
 if __name__ == '__main__':
-    # 应用程序的唯一入口
     setup_logging()
     main_app = ApplicationOrchestrator()
     main_app.run()
