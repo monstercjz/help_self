@@ -81,7 +81,6 @@ class _QuickSettingsPopup(QWidget):
         """加载配置到控件。"""
         enable_popup_value = self.config_service.get_value("InfoService", "enable_desktop_popup", "true").lower()
         self.quick_enable_popup.setCurrentText("启用" if enable_popup_value == 'true' else "禁用")
-        
         level = self.config_service.get_value("InfoService", "notification_level", "WARNING")
         self.quick_notification_level.setCurrentText(level)
 
@@ -184,6 +183,7 @@ class AlertsPageWidget(QWidget):
 
     @Slot(dict)
     def add_alert(self, alert_data: dict, is_history: bool = False):
+        """公开的槽函数，用于向表格添加新行。"""
         timestamp = alert_data.get('timestamp')
         if not timestamp or not is_history:
             timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
@@ -192,11 +192,12 @@ class AlertsPageWidget(QWidget):
         
         severity = alert_data.get('severity', 'INFO')
         
+        # 【核心修改】从alert_data中获取值的键名改为 'source_ip'
         items = [
             QTableWidgetItem(timestamp),
             QTableWidgetItem(severity),
             QTableWidgetItem(alert_data.get('type', '未知')),
-            QTableWidgetItem(alert_data.get('ip', 'N/A')),
+            QTableWidgetItem(alert_data.get('source_ip', 'N/A')),
             QTableWidgetItem(alert_data.get('message', '无内容'))
         ]
         

@@ -61,10 +61,11 @@ class DatabaseService:
                   VALUES(datetime('now', 'localtime'),?,?,?,?) '''
         try:
             cursor = self.conn.cursor()
+            # 【核心修改】确保从alert_data中获取值的键名是 'source_ip'
             cursor.execute(sql, (
                 alert_data.get('severity', 'INFO'),
                 alert_data.get('type', 'Unknown'),
-                alert_data.get('ip', 'N/A'),
+                alert_data.get('source_ip', 'N/A'),
                 alert_data.get('message', 'N/A')
             ))
             self.conn.commit()

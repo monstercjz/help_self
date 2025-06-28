@@ -41,14 +41,15 @@ class AlertReceiverThread(QThread):
             raw_severity = data.get('severity', 'INFO').upper()
             severity = raw_severity if raw_severity in SEVERITY_LEVELS else 'INFO'
             
+            # 【核心修改】统一使用 'source_ip'作为键名
             alert_data = {
-                'ip': client_ip,
+                'source_ip': client_ip,
                 'type': data.get('type', 'Generic Alert'),
                 'message': data.get('message', 'No message provided.'),
                 'severity': severity
             }
 
-            log_message = f"ALERT from {client_ip} | Severity: {alert_data['severity']} | Type: {alert_data['type']}"
+            log_message = f"ALERT from {alert_data['source_ip']} | Severity: {alert_data['severity']} | Type: {alert_data['type']}"
             logging.info(log_message)
 
             # 将告警写入数据库
@@ -81,7 +82,8 @@ class AlertReceiverThread(QThread):
                 logging.info(f"信息等级 '{alert_data['severity']}'低于阈值 '{threshold_str}'，已跳过弹窗通知。")
                 return
 
-            notification_title = f"[{alert_data['severity']}] 监控告警: {alert_data['ip']}"
+            #【修改】使用正确的键名
+            notification_title = f"[{alert_data['severity']}] 监控告警: {alert_data['source_ip']}"
             notification_message = f"类型: {alert_data['type']}\n详情: {alert_data['message']}"
             timeout = int(self.config_service.get_value("InfoService", "popup_timeout", 10))
             
