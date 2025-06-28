@@ -1,4 +1,5 @@
 # desktop_center/src/ui/main_window.py
+import logging  # 【修正】添加对logging模块的导入
 from PySide6.QtWidgets import (QMainWindow, QWidget, QListWidget, QListWidgetItem, 
                                QHBoxLayout, QStackedWidget)
 from PySide6.QtCore import QEvent, QSize
