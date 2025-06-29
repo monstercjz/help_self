@@ -41,26 +41,31 @@
 
 ```
 desktop_center/
-├── app.py                # 【应用入口】负责组装和启动所有模块
-├── config.ini              # 【配置文件】存储应用的可配置参数
-├── requirements.txt           # 【依赖列表】项目所需的Python库
-├── icon.png               # 【资源文件】应用程序和托盘图标
+├── app.py                     # 【主入口】程序启动脚本 (已修改)
+├── config.ini                 # 【配置文件】存储应用程序设置 (已修改)
+├── icon.png                   # 图标文件
+├── requirements.txt           # 【依赖列表】项目所需Python库 (已修改)
 │
-└── src/                 # 【核心源码包】
-    ├── __init__.py
+└── src/                       # 【核心源码包】
+    ├── __init__.py            # 将src声明为一个包
     │
-    ├── services/            # 【服务层】处理所有非UI的后台逻辑
-    │   ├── alert_receiver.py    # 告警接收Web服务（运行在独立线程）
-    │   └── config_service.py    # 配置文件读写服务
+    ├── services/              # 存放所有后台服务逻辑
+    │   ├── __init__.py
+    │   ├── config_service.py    # 配置服务模块 (无修改)
+    │   ├── alert_receiver.py    # 告警接收Web服务线程模块 (已修改)
+    │   └── database_service.py  # 【新增】数据库服务模块 (已修改)
     │
-    ├── ui/               # 【UI层】包含所有图形界面相关的组件
-    │   ├── main_window.py       # 主窗口框架，包含导航和页面容器
-    │   ├── alerts_page.py       # “告警中心”页面UI
-    │   ├── settings_page.py     # “设置”页面UI
-    │   └── quick_launch_page.py # “快捷启动”页面UI（占位）
+    ├── ui/                    # 存放所有UI相关的组件
+    │   ├── __init__.py
+    │   ├── main_window.py       # 主窗口框架 (无修改)
+    │   ├── alerts_page.py       # “告警中心”页面 (已修改)
+    │   ├── settings_page.py     # “设置”页面 (已修改)
+    │   ├── history_dialog.py    # 【新增】历史记录浏览器对话框 (已修改)
+    │   └── statistics_dialog.py # 【新增】统计分析对话框 (已修改)
     │
-    └── utils/              # 【工具层】存放通用的辅助工具或管理器
-        └── tray_manager.py      # 系统托盘图标及菜单管理器
+    └── utils/                 # 存放通用工具或管理器
+        ├── __init__.py
+        └── tray_manager.py      # 系统托盘管理器 (已修改)
 ```
 
 ### **4.2 模块间通信 (Inter-Module Communication)**
