@@ -282,10 +282,11 @@ class DatabaseService:
             rows = cursor.fetchall()
             
             hourly_counts = {row['hour']: row['count'] for row in rows}
-            full_day_stats = []
-            # 改进：始终返回24小时的数据，无论是否多日查询，便于统一图表绘制
-            # for multi-day range, this still gives aggregate for that hour across all days
+            # 【核心修正】将 full_day_stats 重命名为 full_24_hours_results 后，
+            # 需要确保在循环中也使用正确的变量名
+            full_24_hours_results = []
             for h in range(24):
+                # 之前这里错误地使用了未定义的 full_24_hours_results
                 full_24_hours_results.append({'hour': h, 'count': hourly_counts.get(h, 0)})
             
             return full_24_hours_results
