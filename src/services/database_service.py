@@ -13,6 +13,9 @@ class DatabaseService:
         self.db_path = db_path
         self.conn = None
         try:
+            # check_same_thread=False 允许跨线程访问，但需要开发者自行管理并发，
+            # 在PySide的信号槽机制下，通常是主线程操作UI，子线程操作数据，需要小心。
+            # 对于简单的读写，通常问题不大，但如果存在大量并发写入，可能需要加锁。
             self.conn = sqlite3.connect(self.db_path, check_same_thread=False)
             self.conn.row_factory = sqlite3.Row
             logging.info(f"数据库连接已成功建立: {self.db_path}")
@@ -23,6 +26,7 @@ class DatabaseService:
     def init_db(self):
         """
         初始化数据库，如果表不存在，则创建它。
+        同时创建必要的索引以提高查询性能。
         """
         try:
             cursor = self.conn.cursor()
@@ -36,8 +40,14 @@ class DatabaseService:
                     message TEXT
                 )
             """)
+            # 【新增】为常用查询字段创建索引，提高查询性能
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_alerts_timestamp ON alerts (timestamp DESC)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_alerts_severity ON alerts (severity)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_alerts_type ON alerts (type)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_alerts_source_ip ON alerts (source_ip)")
+
             self.conn.commit()
-            logging.info("数据库表 'alerts' 初始化完成。")
+            logging.info("数据库表 'alerts' 初始化完成，并创建了索引。")
         except sqlite3.Error as e:
             logging.error(f"创建数据库表失败: {e}", exc_info=True)
 
@@ -81,12 +91,36 @@ class DatabaseService:
         try:
             cursor = self.conn.cursor()
             cursor.execute("DELETE FROM alerts")
-            cursor.execute("DELETE FROM sqlite_sequence WHERE name='alerts'")
+            cursor.execute("DELETE FROM sqlite_sequence WHERE name='alerts'") # 重置自增ID
             self.conn.commit()
             logging.info("数据库'alerts'表中的所有记录已被清除。")
             return True
         except sqlite3.Error as e:
             logging.error(f"清空数据库表失败: {e}", exc_info=True)
+            return False
+            
+    # 【新增】根据ID列表删除告警记录
+    def delete_alerts_by_ids(self, alert_ids: List[int]) -> bool:
+        """
+        根据提供的ID列表删除告警记录。
+        Args:
+            alert_ids (List[int]): 要删除的告警记录ID列表。
+        Returns:
+            bool: 如果删除成功则返回 True，否则返回 False。
+        """
+        if not alert_ids:
+            return True # 没有ID，视为成功（没有需要删除的）
+        
+        placeholders = ','.join('?' for _ in alert_ids)
+        sql = f"DELETE FROM alerts WHERE id IN ({placeholders})"
+        try:
+            cursor = self.conn.cursor()
+            cursor.execute(sql, alert_ids)
+            self.conn.commit()
+            logging.info(f"成功删除 {cursor.rowcount} 条告警记录。IDs: {alert_ids}")
+            return True
+        except sqlite3.Error as e:
+            logging.error(f"删除告警记录失败: {e}", exc_info=True)
             return False
 
     def close(self):
@@ -102,10 +136,24 @@ class DatabaseService:
                       keyword: str = None, 
                       search_field: str = 'all', 
                       page: int = 1, 
-                      page_size: int = 50
+                      page_size: int = 50,
+                      order_by: str = 'timestamp',      # 【修改】新增排序字段
+                      order_direction: str = 'DESC'     # 【修改】新增排序方向
     ) -> Tuple[List[Dict[str, Any]], int]:
         """
-        根据多个条件搜索告警记录，并支持分页。
+        根据多个条件搜索告警记录，并支持分页和排序。
+        Args:
+            start_date (str): 查询起始日期 (YYYY-MM-DD)。
+            end_date (str): 查询结束日期 (YYYY-MM-DD)。
+            severities (List[str]): 严重等级列表 (如 ["INFO", "WARNING"])。
+            keyword (str): 搜索关键词。
+            search_field (str): 关键词搜索字段 ('all', 'message', 'source_ip', 'type')。
+            page (int): 当前页码 (从1开始)。
+            page_size (int): 每页记录数。
+            order_by (str): 排序字段 ('timestamp', 'severity', 'type', 'source_ip', 'id')。
+            order_direction (str): 排序方向 ('ASC' 或 'DESC')。
+        Returns:
+            Tuple[List[Dict[str, Any]], int]: 符合条件的告警记录列表和总记录数。
         """
         sql_parts = ["SELECT id, timestamp, severity, type, source_ip, message FROM alerts WHERE 1=1"]
         count_sql_parts = ["SELECT COUNT(*) FROM alerts WHERE 1=1"]
@@ -145,16 +193,30 @@ class DatabaseService:
                 count_sql_parts.append("AND type LIKE ?")
                 params.append(like_keyword)
 
-        sql_parts.append("ORDER BY timestamp DESC")
+        # 【修改】添加排序逻辑
+        # 验证排序字段，防止SQL注入
+        valid_order_by_fields = ['id', 'timestamp', 'severity', 'type', 'source_ip']
+        if order_by not in valid_order_by_fields:
+            logging.warning(f"无效的排序字段: {order_by}，将使用默认timestamp。")
+            order_by = 'timestamp'
+        
+        valid_order_directions = ['ASC', 'DESC']
+        if order_direction.upper() not in valid_order_directions:
+            logging.warning(f"无效的排序方向: {order_direction}，将使用默认DESC。")
+            order_direction = 'DESC'
+
+        sql_parts.append(f"ORDER BY {order_by} {order_direction}")
 
         try:
             cursor = self.conn.cursor()
 
+            # 查询总数
             count_sql = " ".join(count_sql_parts)
             total_count_params = params[:]
             cursor.execute(count_sql, total_count_params)
             total_count = cursor.fetchone()[0]
 
+            # 查询分页数据
             main_sql = " ".join(sql_parts)
             offset = (page - 1) * page_size
             main_sql += f" LIMIT ? OFFSET ?"
@@ -221,13 +283,8 @@ class DatabaseService:
             
             hourly_counts = {row['hour']: row['count'] for row in rows}
             full_day_stats = []
-            # 如果是单日查询，可以填充24小时
-            # 如果是多日查询，通常不填充，因为会产生大量0值，图表和表格不易读
-            # 这里选择不填充完整的24小时，只显示有数据的
-            
             # 改进：始终返回24小时的数据，无论是否多日查询，便于统一图表绘制
             # for multi-day range, this still gives aggregate for that hour across all days
-            full_24_hours_results = []
             for h in range(24):
                 full_24_hours_results.append({'hour': h, 'count': hourly_counts.get(h, 0)})
             
@@ -295,4 +352,36 @@ class DatabaseService:
             return full_24_hours_stats
         except sqlite3.Error as e:
             logging.error(f"按IP按小时统计查询失败: {e}", exc_info=True)
+            return []
+
+    # 【新增】获取所有不重复的来源IP列表
+    def get_distinct_source_ips(self, start_date: str = None, end_date: str = None) -> List[str]:
+        """
+        获取指定日期范围内所有不重复的来源IP地址列表，按活跃度降序排列。
+        Args:
+            start_date (str, optional): 起始日期 (YYYY-MM-DD)。
+            end_date (str, optional): 结束日期 (YYYY-MM-DD)。
+        Returns:
+            List[str]: 不重复的IP地址列表。
+        """
+        sql_parts = ["SELECT source_ip, COUNT(*) as count FROM alerts WHERE source_ip IS NOT NULL AND source_ip != 'N/A'"]
+        params = []
+
+        if start_date:
+            sql_parts.append("AND timestamp >= ?")
+            params.append(start_date + " 00:00:00")
+        if end_date:
+            sql_parts.append("AND timestamp <= ?")
+            params.append(end_date + " 23:59:59")
+
+        sql_parts.append("GROUP BY source_ip ORDER BY count DESC")
+        full_sql = " ".join(sql_parts)
+
+        try:
+            cursor = self.conn.cursor()
+            cursor.execute(full_sql, params)
+            rows = cursor.fetchall()
+            return [row['source_ip'] for row in rows]
+        except sqlite3.Error as e:
+            logging.error(f"获取不重复IP列表失败: {e}", exc_info=True)
             return []

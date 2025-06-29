@@ -246,12 +246,13 @@ class AlertsPageWidget(QWidget):
 
     def show_history_dialog(self):
         """创建并显示历史记录对话框。"""
-        # 将对话框作为窗口的子项，确保其生命周期管理和居中显示
+        # 【修改】将主窗口作为父窗口传递，确保对话框居中显示且生命周期受主窗口管理
         dialog = HistoryDialog(self.db_service, self.config_service, self.window())
         dialog.exec() # exec()使其成为模态对话框
 
     def show_statistics_dialog(self):
         """创建并显示统计分析对话框。"""
+        # 【修改】将主窗口作为父窗口传递
         dialog = StatisticsDialog(self.db_service, self.config_service, self.window())
         dialog.exec() # exec()使其成为模态对话框
 
@@ -265,6 +266,7 @@ class AlertsPageWidget(QWidget):
     def _load_history_on_startup(self):
         """在程序启动时，根据配置加载历史告警记录。"""
         try:
+            # 【修改】从InfoService部分读取load_history_on_startup配置
             limit_str = self.config_service.get_value("InfoService", "load_history_on_startup", "100")
             limit = int(limit_str)
             if limit > 0:
@@ -279,7 +281,7 @@ class AlertsPageWidget(QWidget):
     def add_alert(self, alert_data: dict, is_history: bool = False):
         """公开的槽函数，用于向表格添加新行并根据严重等级上色。"""
         timestamp = alert_data.get('timestamp')
-        if not timestamp or not is_history:
+        if not timestamp or not is_history: # 只有非历史记录才自动获取当前时间
             timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
 
         self.table.insertRow(0) # 在顶部插入新行
