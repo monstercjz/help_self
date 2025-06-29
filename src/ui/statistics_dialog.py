@@ -16,6 +16,7 @@ from typing import List, Dict, Any
 ALL_IPS_OPTION = "【全部IP】"
 
 class StatisticsDialog(QDialog):
+    # ... (init, _init_ui, _connect_signals, _set_date_range_shortcut, _setup_ip_activity_tab, _setup_hourly_stats_tab 等方法保持不变) ...
     """
     一个独立的对话框，用于统计和分析告警数据。
     包含四个分析选项卡，支持惰性加载和多维度钻取分析。
@@ -43,25 +44,32 @@ class StatisticsDialog(QDialog):
         self._connect_signals()
 
     def _init_ui(self):
-        # (代码无变化)
         main_layout = QVBoxLayout(self)
         self.tab_widget = QTabWidget()
         main_layout.addWidget(self.tab_widget)
+
+        # --- 1. 按IP活跃度排行榜选项卡 ---
         self.ip_activity_tab = QWidget()
         self.ip_activity_tab.setObjectName("ip_activity_tab")
         self.ip_activity_tab_layout = QVBoxLayout(self.ip_activity_tab)
         self.tab_widget.addTab(self.ip_activity_tab, "按IP活跃度排行榜")
         self._setup_ip_activity_tab()
+
+        # --- 2. 按小时分析选项卡 ---
         self.hourly_stats_tab = QWidget()
         self.hourly_stats_tab.setObjectName("hourly_stats_tab")
         self.hourly_stats_tab_layout = QVBoxLayout(self.hourly_stats_tab)
         self.tab_widget.addTab(self.hourly_stats_tab, "按小时分析")
         self._setup_hourly_stats_tab()
+
+        # --- 3. 多维分析选项卡 ---
         self.multidim_stats_tab = QWidget()
         self.multidim_stats_tab.setObjectName("multidim_stats_tab")
         self.multidim_stats_tab_layout = QVBoxLayout(self.multidim_stats_tab)
         self.tab_widget.addTab(self.multidim_stats_tab, "多维分析")
         self._setup_multidim_stats_tab()
+
+        # --- 4. 告警类型排行榜选项卡 ---
         self.type_stats_tab = QWidget()
         self.type_stats_tab.setObjectName("type_stats_tab")
         self.type_stats_tab_layout = QVBoxLayout(self.type_stats_tab)
@@ -69,23 +77,32 @@ class StatisticsDialog(QDialog):
         self._setup_type_stats_tab()
         
     def _connect_signals(self):
-        # (代码无变化)
+        """连接所有UI控件的信号到槽函数。"""
         self.tab_widget.currentChanged.connect(self._on_tab_changed)
+
+        # IP活跃度 Tab
         self.ip_activity_query_button.clicked.connect(self._perform_ip_activity_query)
         self.ip_activity_btn_today.clicked.connect(lambda: self._set_date_range_shortcut(self.ip_activity_start_date, self.ip_activity_end_date, "today"))
         self.ip_activity_btn_yesterday.clicked.connect(lambda: self._set_date_range_shortcut(self.ip_activity_start_date, self.ip_activity_end_date, "yesterday"))
         self.ip_activity_btn_last_7_days.clicked.connect(lambda: self._set_date_range_shortcut(self.ip_activity_start_date, self.ip_activity_end_date, "last7days"))
+
+        # 按小时分析 Tab
         self.hourly_query_button.clicked.connect(self._perform_hourly_stats_query)
         self.hourly_btn_today.clicked.connect(lambda: self._set_date_range_shortcut(self.hourly_start_date, self.hourly_end_date, "today"))
         self.hourly_btn_yesterday.clicked.connect(lambda: self._set_date_range_shortcut(self.hourly_start_date, self.hourly_end_date, "yesterday"))
         self.hourly_btn_last_7_days.clicked.connect(lambda: self._set_date_range_shortcut(self.hourly_start_date, self.hourly_end_date, "last7days"))
         self.hourly_ip_combo.currentIndexChanged.connect(self._on_ip_combo_changed_for_hourly)
         self.hourly_stats_table.horizontalHeader().sectionClicked.connect(self._sort_hourly_table)
+
+        # 多维分析 Tab
         self.multidim_query_button.clicked.connect(self._perform_multidim_stats_query)
         self.multidim_btn_today.clicked.connect(lambda: self._set_date_range_shortcut(self.multidim_start_date, self.multidim_end_date, "today"))
         self.multidim_btn_yesterday.clicked.connect(lambda: self._set_date_range_shortcut(self.multidim_start_date, self.multidim_end_date, "yesterday"))
         self.multidim_btn_last_7_days.clicked.connect(lambda: self._set_date_range_shortcut(self.multidim_start_date, self.multidim_end_date, "last7days"))
         self.multidim_ip_combo.currentIndexChanged.connect(self._on_ip_combo_changed_for_multidim)
+        # 【核心修正】连接新按钮的信号到槽函数
+        self.multidim_expand_button.clicked.connect(self.multidim_stats_tree.expandAll)
+        self.multidim_collapse_button.clicked.connect(self.multidim_stats_tree.collapseAll)
         self.type_query_button.clicked.connect(self._perform_type_stats_query)
         self.type_btn_today.clicked.connect(lambda: self._set_date_range_shortcut(self.type_start_date, self.type_end_date, "today"))
         self.type_btn_yesterday.clicked.connect(lambda: self._set_date_range_shortcut(self.type_start_date, self.type_end_date, "yesterday"))
@@ -93,7 +110,6 @@ class StatisticsDialog(QDialog):
         QTimer.singleShot(0, lambda: self._on_tab_changed(self.tab_widget.currentIndex()))
 
     def _set_date_range_shortcut(self, start_date_edit: QDateEdit, end_date_edit: QDateEdit, period: str):
-        # (代码无变化)
         today = QDate.currentDate()
         if period == "today":
             start_date_edit.setDate(today)
@@ -117,7 +133,6 @@ class StatisticsDialog(QDialog):
     # --- UI 设置方法 ---
 
     def _setup_ip_activity_tab(self):
-        # (代码无变化)
         date_shortcut_layout = QHBoxLayout()
         date_shortcut_layout.addWidget(QLabel("快捷日期:"))
         self.ip_activity_btn_today = QPushButton("今天")
@@ -151,7 +166,6 @@ class StatisticsDialog(QDialog):
         self.ip_activity_tab_layout.addWidget(self.ip_activity_table)
 
     def _setup_hourly_stats_tab(self):
-        # (代码无变化)
         date_shortcut_layout = QHBoxLayout()
         date_shortcut_layout.addWidget(QLabel("快捷日期:"))
         self.hourly_btn_today = QPushButton("今天")
@@ -193,7 +207,7 @@ class StatisticsDialog(QDialog):
         self.hourly_stats_tab_layout.addWidget(self.hourly_stats_table)
     
     def _setup_multidim_stats_tab(self):
-        """【新增】设置“多维分析”选项卡的UI，并应用样式表。"""
+        """【核心修正】为“多维分析”选项卡添加“展开/折叠”按钮。"""
         date_shortcut_layout = QHBoxLayout()
         date_shortcut_layout.addWidget(QLabel("快捷日期:"))
         self.multidim_btn_today = QPushButton("今天")
@@ -223,7 +237,14 @@ class StatisticsDialog(QDialog):
         self.multidim_query_button = QPushButton("查询")
         self.multidim_query_button.setStyleSheet("background-color: #0078d4; color: white; border-radius: 4px; padding: 4px 10px;")
         filter_layout.addWidget(self.multidim_query_button)
+        
+        # 【新增】添加展开和折叠按钮
         filter_layout.addStretch()
+        self.multidim_expand_button = QPushButton("展开全部")
+        self.multidim_collapse_button = QPushButton("折叠全部")
+        filter_layout.addWidget(self.multidim_expand_button)
+        filter_layout.addWidget(self.multidim_collapse_button)
+        
         self.multidim_stats_tab_layout.addLayout(filter_layout)
 
         self.multidim_stats_tree = QTreeWidget()
@@ -241,7 +262,6 @@ class StatisticsDialog(QDialog):
                 color: black; /* 确保文本颜色为黑色，而不是系统默认的白色 */
             }
         """)
-
         self.multidim_stats_tab_layout.addWidget(self.multidim_stats_tree)
 
     def _setup_type_stats_tab(self):
@@ -392,15 +412,13 @@ class StatisticsDialog(QDialog):
             header.setSortIndicatorShown(False)
 
     def _populate_multidim_tree(self, data: List[Dict[str, Any]]):
-        """【核心修正】将详细统计数据填充到多维分析的 QTreeWidget 中，并应用颜色。"""
+        """将详细统计数据填充到多维分析的 QTreeWidget 中，并应用颜色和默认折叠。"""
         self.multidim_stats_tree.clear()
         if not data:
             return
-
         tree_data = defaultdict(lambda: defaultdict(lambda: defaultdict(int)))
         for row in data:
             tree_data[row['hour']][row['severity']][row['type']] = row['count']
-
         bold_font = QFont()
         bold_font.setBold(True)
         
@@ -409,11 +427,9 @@ class StatisticsDialog(QDialog):
         severity_color = QColor("#8B4513")  # 棕褐色/深橙色
         
         self.multidim_stats_tree.setSortingEnabled(False)
-
         for hour, severities in sorted(tree_data.items()):
             hour_total = sum(sum(types.values()) for types in severities.values())
             hour_text = f"{hour:02d}:00 - {hour:02d}:59"
-            
             hour_item = QTreeWidgetItem(self.multidim_stats_tree)
             hour_item.setFont(0, bold_font)
             hour_item.setFont(1, bold_font)
@@ -422,10 +438,8 @@ class StatisticsDialog(QDialog):
             # 【新增】为小时节点设置颜色
             hour_item.setForeground(0, hour_color)
             hour_item.setForeground(1, hour_color)
-            
             hour_item.setData(0, Qt.ItemDataRole.UserRole, hour)
             hour_item.setData(1, Qt.ItemDataRole.UserRole, hour_total)
-            
             for severity, types in sorted(severities.items()):
                 severity_total = sum(types.values())
                 severity_item = QTreeWidgetItem(hour_item)
@@ -433,16 +447,12 @@ class StatisticsDialog(QDialog):
                 severity_item.setText(1, str(severity_total))
                 # 【新增】为严重等级节点设置颜色
                 severity_item.setForeground(0, severity_color)
-                
                 severity_item.setData(1, Qt.ItemDataRole.UserRole, severity_total)
-                
                 for type_name, count in sorted(types.items()):
                     type_item = QTreeWidgetItem(severity_item)
                     type_item.setText(0, f"    - {type_name}")
                     type_item.setText(1, str(count))
                     type_item.setData(1, Qt.ItemDataRole.UserRole, count)
-        
-        self.multidim_stats_tree.expandAll()
         self.multidim_stats_tree.setSortingEnabled(True)
 
     def _populate_ip_combo_box(self, combo_box: QComboBox, start_date_edit: QDateEdit, end_date_edit: QDateEdit):
