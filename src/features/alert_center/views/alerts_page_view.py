@@ -1,10 +1,11 @@
-# src/features/alert_center/views/alerts_page_view.py
+# src/features/alert_center/views/alerts_page_view.py (【最终修复版】)
 from PySide6.QtWidgets import (QWidget, QTableWidget, QTableWidgetItem,
                                QHeaderView, QVBoxLayout, QLabel, QPushButton,
                                QMenu, QHBoxLayout)
-from PySide6.QtCore import Slot, Qt, QEvent, QSize, Signal
+from PySide6.QtCore import Slot, Qt, QEvent, Signal
 from PySide6.QtGui import QColor, QIcon, QAction
 from src.ui.action_manager import ActionManager
+from datetime import datetime
 
 SEVERITY_COLORS = {"CRITICAL": QColor("#FFDDDD"), "WARNING": QColor("#FFFFCC"), "INFO": QColor("#FFFFFF")}
 LEVEL_DISPLAY_MAP = {"INFO": "ℹ️ 正常级别", "WARNING": "⚠️ 警告级别", "CRITICAL": "❗ 危及级别"}
@@ -36,7 +37,9 @@ class AlertsPageView(QWidget):
     # --- 发往Controller的信号 ---
     clear_display_requested = Signal()
     clear_database_requested = Signal()
-    load_history_requested = Signal()
+    # 【【【核心修复点】】】
+    # 将信号的定义与Controller中的连接保持一致
+    load_history_on_startup_requested = Signal()
     page_shown = Signal()
     popup_status_toggled = Signal()
     notification_level_changed = Signal(str)
@@ -130,26 +133,38 @@ class AlertsPageView(QWidget):
         if obj is self and event.type() == QEvent.Type.Show:
             self.page_shown.emit()
             if not hasattr(self, '_loaded_once'):
-                self.load_history_requested.emit()
+                # 发射正确的信号
+                self.load_history_on_startup_requested.emit()
                 self._loaded_once = True
         return super().eventFilter(obj, event)
 
-    @Slot(dict)
-    def add_alert_to_table(self, alert_data: dict):
+    @Slot(dict, bool)
+    def add_alert_to_table(self, alert_data: dict, is_history: bool = False):
+        timestamp = alert_data.get('timestamp')
+        if not is_history:
+             timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+
         self.table.insertRow(0)
+        
         severity = alert_data.get('severity', 'INFO')
+        alert_type = alert_data.get('type', '未知')
+        source_ip = alert_data.get('source_ip', 'N/A')
+        message = alert_data.get('message', '无内容')
+        
         items = [
-            QTableWidgetItem(alert_data.get('timestamp')),
+            QTableWidgetItem(timestamp),
             QTableWidgetItem(severity),
-            QTableWidgetItem(alert_data.get('type', '未知')),
-            QTableWidgetItem(alert_data.get('source_ip', 'N/A')),
-            QTableWidgetItem(alert_data.get('message', '无内容'))
+            QTableWidgetItem(alert_type),
+            QTableWidgetItem(source_ip),
+            QTableWidgetItem(message)
         ]
+        
         color = SEVERITY_COLORS.get(severity, SEVERITY_COLORS["INFO"])
+        
         for col, item in enumerate(items):
             item.setBackground(color)
             self.table.setItem(0, col, item)
-
+            
     @Slot()
     def clear_table(self):
         self.table.setRowCount(0)
