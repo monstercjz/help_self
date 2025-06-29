@@ -1,4 +1,4 @@
-# src/core/plugin_interface.py
+# desktop_center/src/core/plugin_interface.py
 from abc import ABC, abstractmethod
 from PySide6.QtWidgets import QWidget
 from .context import ApplicationContext
@@ -16,6 +16,14 @@ class IFeaturePlugin(ABC):
         """返回显示在UI上的名称（如导航栏标题）。"""
         pass
         
+    @abstractmethod
+    def load_priority(self) -> int:
+        """
+        【新增】返回插件的加载优先级。数字越小，优先级越高。
+        例如：核心服务插件=0, 普通功能=100, 依赖其他插件的功能=200。
+        """
+        pass
+
     def initialize(self, context: ApplicationContext):
         self.context = context
         self.background_services = []

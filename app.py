@@ -15,7 +15,7 @@ from src.ui.settings_page import SettingsPageWidget
 
 # --- 全局应用程序常量 ---
 APP_NAME = "Desktop Control & Monitoring Center"
-APP_VERSION = "5.2.0-Verbose-Logging" # 版本号更新
+APP_VERSION = "5.2.2-Stability-Fix" # 版本号更新
 CONFIG_FILE = 'config.ini'
 ICON_FILE = 'icon.png'
 LOG_FILE = 'app.log'
@@ -59,6 +59,12 @@ class ApplicationOrchestrator:
         self.window.setWindowTitle(self.config_service.get_value("General", "app_name", APP_NAME))
         self.tray_manager = TrayManager(self.app, self.window, ICON_FILE)
         self.action_manager = ActionManager(self.app)
+        
+        # 【新增】将托盘管理器的退出请求信号连接到应用程序的退出槽
+        # 这是解决跨线程调用GUI问题的关键步骤
+        self.tray_manager.quit_requested.connect(self.app.quit)
+        logging.info("[STEP 1.3.1] TrayManager退出信号已连接到主应用退出槽。")
+
 
         logging.info("[STEP 1.4] 创建共享的 ApplicationContext。")
         self.context = ApplicationContext(

@@ -1,4 +1,4 @@
-# src/core/plugin_manager.py
+# desktop_center/src/core/plugin_manager.py
 import importlib
 import pkgutil
 import logging
@@ -35,11 +35,13 @@ class PluginManager:
     def initialize_plugins(self):
         """初始化所有已加载的插件。"""
         logging.info("[STEP 2.2] PluginManager: 开始初始化所有已加载的插件...")
-        self.plugins.sort(key=lambda p: p.display_name() != "信息接收中心")
+        # 【修改】使用新的 load_priority() 方法进行排序，移除硬编码依赖
+        self.plugins.sort(key=lambda p: p.load_priority())
+        logging.info(f"  - 插件将按以下优先级顺序初始化: {[p.name() for p in self.plugins]}")
         
         for plugin in self.plugins:
             try:
-                logging.info(f"  - 正在初始化插件: '{plugin.name()}'...")
+                logging.info(f"  - 正在初始化插件: '{plugin.name()}' (优先级: {plugin.load_priority()})...")
                 plugin.initialize(self.context)
                 
                 page_widget = plugin.get_page_widget()
