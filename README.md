@@ -1,6 +1,13 @@
 ## 项目新架构
 desktop_center/
+├── app.py                     # 【平台核心】精简的应用协调器
+├── config.ini
+├── icon.png
+├── requirements.txt
+│
 └── src/
+    ├── __init__.py
+    │
     ├── core/                   # 【新增】平台核心代码
     │   ├── __init__.py
     │   ├── context.py
@@ -8,32 +15,45 @@ desktop_center/
     │   └── plugin_manager.py
     │
     ├── features/               # 【新增】所有功能插件的家
-    │   ├── __init__.py         # (必须有，让其成为一个包)
-    │   │
+    │   ├── __init__.py
     │   └── alert_center/       # 【插件一】告警中心
-    │       ├── __init__.py     # (必须有，让其成为一个包)
-    │       ├── plugin.py       # 【核心】告警中心插件的实现
-    │       ├── alerts_page.py  # (页面视图)
-    │       ├── alert_receiver.py # (此插件独有的后台服务)
-    │       ├── history_dialog.py # (此插件独有的对话框)
-    │       └── statistics_dialog.py
-    │
-    │   └── process_sorter/     # 【插件二】未来新增的进程排序器
     │       ├── __init__.py
-    │       ├── plugin.py
-    │       ├── sorter_page.py
-    │       └── process_monitor_thread.py
+    │       ├── plugin.py       # 插件入口，连接所有组件
+    │       │
+    │       ├── models/         # 【新增】MVC中的Model (数据处理)
+    │       │   ├── __init__.py
+    │       │   ├── history_model.py
+    │       │   └── statistics_model.py
+    │       │
+    │       ├── views/          # 【新增】MVC中的View (纯UI)
+    │       │   ├── __init__.py
+    │       │   ├── alerts_page_view.py
+    │       │   ├── history_dialog_view.py
+    │       │   └── statistics_dialog_view.py
+    │       │
+    │       ├── controllers/    # 【新增】MVC中的Controller (逻辑控制)
+    │       │   ├── __init__.py
+    │       │   ├── alerts_page_controller.py
+    │       │   ├── history_controller.py
+    │       │   └── statistics_controller.py
+    │       │
+    │       └── services/       # 【插件私有服务】
+    │           ├── __init__.py
+    │           └── alert_receiver.py
     │
     ├── services/               # 【共享服务】
-    │   ├── config_service.py   # (被所有插件共享)
-    │   └── database_service.py # (被需要数据库的插件共享)
+    │   ├── __init__.py
+    │   ├── config_service.py
+    │   └── database_service.py
     │
     ├── ui/                     # 【平台级UI和共享组件】
-    │   ├── main_window.py      # (UI外壳)
+    │   ├── __init__.py
+    │   ├── main_window.py
     │   ├── action_manager.py
-    │   └── widgets/            # (可复用的小组件)
+    │   └── settings_page.py
     │
     └── utils/                  # 【平台级工具】
+        ├── __init__.py
         └── tray_manager.py
 ## 这个新架构的优势
 - 终极解耦: “告警中心”和未来的“进程排序器”完全不知道对方的存在。它们只与平台核心的接口和上下文交互。
