@@ -156,12 +156,12 @@ if __name__ == '__main__':
     main_app = ApplicationOrchestrator()
     main_app.run()
 ```
+
 ## config.ini
 ```config
 [General]
 app_name = Desktop Center
 start_minimized = false
-load_history_on_startup = 100
 
 [InfoService]
 host = 0.0.0.0
@@ -169,14 +169,14 @@ port = 5000
 enable_desktop_popup = true
 popup_timeout = 10
 notification_level = INFO
-load_history_on_startup = 100
+load_history_on_startup = 100 
 
 [User]
 username = admin
 last_login = 2023-10-27
 
 [HistoryPage]
-page_size = 50
+page_size = 50 
 
 ```
 ## tray_manager.py 
@@ -641,6 +641,7 @@ class DatabaseService:
     def init_db(self):
         """
         初始化数据库，如果表不存在，则创建它。
+        同时创建必要的索引以提高查询性能。
         """
         try:
             cursor = self.conn.cursor()
@@ -654,8 +655,12 @@ class DatabaseService:
                     message TEXT
                 )
             """)
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_alerts_timestamp ON alerts (timestamp DESC)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_alerts_severity ON alerts (severity)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_alerts_type ON alerts (type)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_alerts_source_ip ON alerts (source_ip)")
             self.conn.commit()
-            logging.info("数据库表 'alerts' 初始化完成。")
+            logging.info("数据库表 'alerts' 初始化完成，并创建了索引。")
         except sqlite3.Error as e:
             logging.error(f"创建数据库表失败: {e}", exc_info=True)
 
@@ -706,6 +711,25 @@ class DatabaseService:
         except sqlite3.Error as e:
             logging.error(f"清空数据库表失败: {e}", exc_info=True)
             return False
+            
+    def delete_alerts_by_ids(self, alert_ids: List[int]) -> bool:
+        """
+        根据提供的ID列表删除告警记录。
+        """
+        if not alert_ids:
+            return True
+        
+        placeholders = ','.join('?' for _ in alert_ids)
+        sql = f"DELETE FROM alerts WHERE id IN ({placeholders})"
+        try:
+            cursor = self.conn.cursor()
+            cursor.execute(sql, alert_ids)
+            self.conn.commit()
+            logging.info(f"成功删除 {cursor.rowcount} 条告警记录。IDs: {alert_ids}")
+            return True
+        except sqlite3.Error as e:
+            logging.error(f"删除告警记录失败: {e}", exc_info=True)
+            return False
 
     def close(self):
         """关闭数据库连接。"""
@@ -720,10 +744,12 @@ class DatabaseService:
                       keyword: str = None, 
                       search_field: str = 'all', 
                       page: int = 1, 
-                      page_size: int = 50
+                      page_size: int = 50,
+                      order_by: str = 'timestamp',
+                      order_direction: str = 'DESC'
     ) -> Tuple[List[Dict[str, Any]], int]:
         """
-        根据多个条件搜索告警记录，并支持分页。
+        根据多个条件搜索告警记录，并支持分页和排序。
         """
         sql_parts = ["SELECT id, timestamp, severity, type, source_ip, message FROM alerts WHERE 1=1"]
         count_sql_parts = ["SELECT COUNT(*) FROM alerts WHERE 1=1"]
@@ -763,7 +789,17 @@ class DatabaseService:
                 count_sql_parts.append("AND type LIKE ?")
                 params.append(like_keyword)
 
-        sql_parts.append("ORDER BY timestamp DESC")
+        valid_order_by_fields = ['id', 'timestamp', 'severity', 'type', 'source_ip']
+        if order_by not in valid_order_by_fields:
+            logging.warning(f"无效的排序字段: {order_by}，将使用默认timestamp。")
+            order_by = 'timestamp'
+        
+        valid_order_directions = ['ASC', 'DESC']
+        if order_direction.upper() not in valid_order_directions:
+            logging.warning(f"无效的排序方向: {order_direction}，将使用默认DESC。")
+            order_direction = 'DESC'
+
+        sql_parts.append(f"ORDER BY {order_by} {order_direction}")
 
         try:
             cursor = self.conn.cursor()
@@ -814,47 +850,6 @@ class DatabaseService:
             logging.error(f"按类型统计查询失败: {e}", exc_info=True)
             return []
 
-    # 【核心修改】全局按小时统计，支持日期范围
-    def get_stats_by_hour(self, start_date: str, end_date: str) -> List[Dict[str, Any]]:
-        """
-        统计指定日期范围内每小时的告警数量 (全局)。
-        """
-        sql = """
-            SELECT
-                CAST(strftime('%H', timestamp) AS INTEGER) AS hour,
-                COUNT(*) AS count
-            FROM
-                alerts
-            WHERE
-                timestamp >= ? AND timestamp <= ?
-            GROUP BY
-                hour
-            ORDER BY
-                hour ASC
-        """
-        try:
-            cursor = self.conn.cursor()
-            cursor.execute(sql, (start_date + " 00:00:00", end_date + " 23:59:59"))
-            rows = cursor.fetchall()
-            
-            hourly_counts = {row['hour']: row['count'] for row in rows}
-            full_day_stats = []
-            # 如果是单日查询，可以填充24小时
-            # 如果是多日查询，通常不填充，因为会产生大量0值，图表和表格不易读
-            # 这里选择不填充完整的24小时，只显示有数据的
-            
-            # 改进：始终返回24小时的数据，无论是否多日查询，便于统一图表绘制
-            # for multi-day range, this still gives aggregate for that hour across all days
-            full_24_hours_results = []
-            for h in range(24):
-                full_24_hours_results.append({'hour': h, 'count': hourly_counts.get(h, 0)})
-            
-            return full_24_hours_results
-        except sqlite3.Error as e:
-            logging.error(f"全局按小时统计查询失败: {e}", exc_info=True)
-            return []
-
-    # 【核心修改】按IP活跃度统计，支持日期范围
     def get_stats_by_ip_activity(self, start_date: str = None, end_date: str = None) -> List[Dict[str, Any]]:
         """
         统计指定日期范围内各IP的告警数量。
@@ -880,8 +875,41 @@ class DatabaseService:
         except sqlite3.Error as e:
             logging.error(f"按IP活跃度统计查询失败: {e}", exc_info=True)
             return []
-
-    # 【核心修改】按IP按小时统计，支持日期范围
+    
+    # 【核心修正】恢复被误删的方法 get_stats_by_hour
+    def get_stats_by_hour(self, start_date: str, end_date: str) -> List[Dict[str, Any]]:
+        """
+        统计指定日期范围内每小时的告警数量 (全局)。
+        """
+        sql = """
+            SELECT
+                CAST(strftime('%H', timestamp) AS INTEGER) AS hour,
+                COUNT(*) AS count
+            FROM
+                alerts
+            WHERE
+                timestamp >= ? AND timestamp <= ?
+            GROUP BY
+                hour
+            ORDER BY
+                hour ASC
+        """
+        try:
+            cursor = self.conn.cursor()
+            cursor.execute(sql, (start_date + " 00:00:00", end_date + " 23:59:59"))
+            rows = cursor.fetchall()
+            
+            hourly_counts = {row['hour']: row['count'] for row in rows}
+            full_24_hours_results = []
+            for h in range(24):
+                full_24_hours_results.append({'hour': h, 'count': hourly_counts.get(h, 0)})
+            
+            return full_24_hours_results
+        except sqlite3.Error as e:
+            logging.error(f"全局按小时统计查询失败: {e}", exc_info=True)
+            return []
+            
+    # 【核心修正】恢复被误删的方法 get_stats_by_ip_and_hour
     def get_stats_by_ip_and_hour(self, ip_address: str, start_date: str, end_date: str) -> List[Dict[str, Any]]:
         """
         统计指定IP在指定日期范围内每小时的告警数量。
@@ -904,7 +932,6 @@ class DatabaseService:
             cursor.execute(sql, (ip_address, start_date + " 00:00:00", end_date + " 23:59:59"))
             rows = cursor.fetchall()
             
-            # 填充缺失的小时数据为0
             hourly_counts = {row['hour']: row['count'] for row in rows}
             full_24_hours_stats = []
             for hour in range(24):
@@ -914,21 +941,86 @@ class DatabaseService:
         except sqlite3.Error as e:
             logging.error(f"按IP按小时统计查询失败: {e}", exc_info=True)
             return []
+
+    # 【新增】获取详细的、按小时、级别和类型分组的统计数据
+    def get_detailed_hourly_stats(self, start_date: str, end_date: str, ip_address: str = None) -> List[Dict[str, Any]]:
+        """
+        获取指定日期范围内按小时、严重等级和类型分组的详细告警统计。
+        """
+        sql_parts = [
+            "SELECT",
+            "    CAST(strftime('%H', timestamp) AS INTEGER) AS hour,",
+            "    severity,",
+            "    type,",
+            "    COUNT(*) AS count",
+            "FROM alerts",
+            "WHERE timestamp >= ? AND timestamp <= ?"
+        ]
+        params = [start_date + " 00:00:00", end_date + " 23:59:59"]
+
+        if ip_address:
+            sql_parts.append("AND source_ip = ?")
+            params.append(ip_address)
+
+        sql_parts.extend([
+            "GROUP BY hour, severity, type",
+            "ORDER BY hour ASC, severity ASC, type ASC"
+        ])
+        
+        full_sql = " ".join(sql_parts)
+
+        try:
+            cursor = self.conn.cursor()
+            cursor.execute(full_sql, params)
+            rows = cursor.fetchall()
+            return [dict(row) for row in rows]
+        except sqlite3.Error as e:
+            logging.error(f"获取详细按小时统计失败: {e}", exc_info=True)
+            return []
+
+    def get_distinct_source_ips(self, start_date: str = None, end_date: str = None) -> List[str]:
+        """
+        获取指定日期范围内所有不重复的来源IP地址列表，按活跃度降序排列。
+        """
+        sql_parts = ["SELECT source_ip, COUNT(*) as count FROM alerts WHERE source_ip IS NOT NULL AND source_ip != 'N/A'"]
+        params = []
+
+        if start_date:
+            sql_parts.append("AND timestamp >= ?")
+            params.append(start_date + " 00:00:00")
+        if end_date:
+            sql_parts.append("AND timestamp <= ?")
+            params.append(end_date + " 23:59:59")
+
+        sql_parts.append("GROUP BY source_ip ORDER BY count DESC")
+        full_sql = " ".join(sql_parts)
+
+        try:
+            cursor = self.conn.cursor()
+            cursor.execute(full_sql, params)
+            rows = cursor.fetchall()
+            return [row['source_ip'] for row in rows]
+        except sqlite3.Error as e:
+            logging.error(f"获取不重复IP列表失败: {e}", exc_info=True)
+            return []
 ```
 ## history_dialog.py 
 ```python 
 # desktop_center/src/ui/history_dialog.py
 import logging
+import os
+import csv # 用于导出CSV
 from PySide6.QtWidgets import (QDialog, QVBoxLayout, QLabel, QTableWidget,
                                QTableWidgetItem, QHeaderView, QHBoxLayout,
                                QDateEdit, QLineEdit, QPushButton, QComboBox,
-                               QCheckBox, QButtonGroup, QSpacerItem, QSizePolicy)
-from PySide6.QtCore import Qt, QDate, QCoreApplication, QTimer
-from PySide6.QtGui import QColor
+                               # 【核心修正】QCheckBox 替换为 QRadioButton
+                               QRadioButton, QButtonGroup, QSpacerItem, QSizePolicy,
+                               QMenu, QApplication, QMessageBox, QFileDialog)
+from PySide6.QtCore import Qt, QDate, QCoreApplication, QTimer, QSize
+from PySide6.QtGui import QColor, QIcon, QAction
 from typing import List, Dict, Any, Tuple
 from src.services.database_service import DatabaseService
-from src.services.config_service import ConfigService # 导入ConfigService
-from datetime import datetime, timedelta
+from src.services.config_service import ConfigService
 
 SEVERITY_COLORS = {
     "CRITICAL": QColor("#FFDDDD"),
@@ -936,15 +1028,20 @@ SEVERITY_COLORS = {
     "INFO": QColor("#FFFFFF")
 }
 
+# 【修正】移除自定义排序图标常量 (这些常量已在上一轮修正中被移除，此处保留为注释说明)
+# ORDER_ASC_ICON = QIcon.fromTheme("go-up") # 上箭头
+# ORDER_DESC_ICON = QIcon.fromTheme("go-down") # 下箭头
+# ORDER_NONE_ICON = QIcon() # 无图标
+
 class HistoryDialog(QDialog):
     """
     一个独立的对话框，用于浏览和查询历史告警记录。
-    提供日期范围、严重等级、关键词搜索和分页功能。
+    提供日期范围、严重等级、关键词搜索、分页、排序、导出和删除功能。
     """
-    def __init__(self, db_service: DatabaseService, config_service: ConfigService, parent=None): # 【修正】接收config_service
+    def __init__(self, db_service: DatabaseService, config_service: ConfigService, parent=None):
         super().__init__(parent)
         self.db_service = db_service
-        self.config_service = config_service # 【新增】保存ConfigService实例
+        self.config_service = config_service
         self.setWindowTitle("历史记录浏览器")
         self.setMinimumSize(950, 700)
         
@@ -954,6 +1051,10 @@ class HistoryDialog(QDialog):
         self.total_records = 0
         self.total_pages = 0
 
+        # 【新增】排序状态变量
+        self.current_sort_column_db = 'timestamp' # 数据库字段名
+        self.current_sort_direction = 'DESC' # 排序方向 'ASC' 或 'DESC'
+        
         self._init_ui()
         self._connect_signals()
         self._load_initial_data()
@@ -963,6 +1064,20 @@ class HistoryDialog(QDialog):
         main_layout = QVBoxLayout(self)
         main_layout.setContentsMargins(15, 15, 15, 15)
         main_layout.setSpacing(10)
+
+        # 【新增】日期筛选快捷按钮布局
+        date_shortcut_layout = QHBoxLayout()
+        date_shortcut_layout.addWidget(QLabel("快捷日期:"))
+        self.btn_today = QPushButton("今天")
+        self.btn_yesterday = QPushButton("昨天")
+        self.btn_last_7_days = QPushButton("近7天")
+        self.btn_last_30_days = QPushButton("近30天")
+        date_shortcut_layout.addWidget(self.btn_today)
+        date_shortcut_layout.addWidget(self.btn_yesterday)
+        date_shortcut_layout.addWidget(self.btn_last_7_days)
+        date_shortcut_layout.addWidget(self.btn_last_30_days)
+        date_shortcut_layout.addStretch()
+        main_layout.addLayout(date_shortcut_layout)
 
         filter_layout = QHBoxLayout()
         
@@ -979,20 +1094,25 @@ class HistoryDialog(QDialog):
 
         filter_layout.addWidget(QLabel("严重等级:"))
         severity_group_layout = QHBoxLayout()
+        # 【核心修正】将所有严重等级选项都使用 QRadioButton，并加入到排他性的 QButtonGroup 中
         self.severity_buttons = QButtonGroup(self)
+        self.severity_buttons.setExclusive(True) # 确保只有其中一个被选中
         
-        self.severity_all = QCheckBox("全部")
+        self.severity_all = QRadioButton("全部")
+        self.severity_info = QRadioButton("信息")
+        self.severity_warning = QRadioButton("警告")
+        self.severity_critical = QRadioButton("危急")
+
+        # 默认选中“全部”
         self.severity_all.setChecked(True)
-        
-        self.severity_info = QCheckBox("信息")
-        self.severity_warning = QCheckBox("警告")
-        self.severity_critical = QCheckBox("危急")
 
         severity_group_layout.addWidget(self.severity_all)
         severity_group_layout.addWidget(self.severity_info)
         severity_group_layout.addWidget(self.severity_warning)
         severity_group_layout.addWidget(self.severity_critical)
         
+        # 将所有 RadioButton 添加到 QButtonGroup
+        self.severity_buttons.addButton(self.severity_all)
         self.severity_buttons.addButton(self.severity_info)
         self.severity_buttons.addButton(self.severity_warning)
         self.severity_buttons.addButton(self.severity_critical)
@@ -1022,23 +1142,42 @@ class HistoryDialog(QDialog):
 
         self.table = QTableWidget()
         self.table.setColumnCount(6)
-        self.table.setHorizontalHeaderLabels(["ID", "接收时间", "严重等级", "信息类型", "来源IP", "详细内容"])
+        # 【修改】更新列标签，添加ID列
+        self.table_header_labels = ["ID", "接收时间", "严重等级", "信息类型", "来源IP", "详细内容"]
+        self.table.setHorizontalHeaderLabels(self.table_header_labels)
         
         header = self.table.horizontalHeader()
         header.setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
-        header.setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(4, QHeaderView.ResizeMode.ResizeToContents)
+        header.setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents) # ID列
+        header.setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents) # 接收时间
+        header.setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents) # 严重等级
+        header.setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents) # 信息类型
+        header.setSectionResizeMode(4, QHeaderView.ResizeMode.ResizeToContents) # 来源IP
+
+        # 【新增】允许点击列头进行排序
+        header.setSectionsClickable(True)
+        # 【新增】设置右键菜单策略
+        self.table.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
 
         self.table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
-        self.table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
+        self.table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows) # 整行选中
+        self.table.setSelectionMode(QTableWidget.SelectionMode.ExtendedSelection) # 允许Ctrl/Shift多选
         main_layout.addWidget(self.table)
         
         pagination_layout = QHBoxLayout()
         self.status_label = QLabel("正在加载...")
         pagination_layout.addWidget(self.status_label)
+        
+        # 【新增】导出按钮
+        self.export_button = QPushButton("导出当前查询")
+        self.export_button.setStyleSheet("background-color: #f0f0f0; border-radius: 4px; padding: 4px 10px;")
+        pagination_layout.addWidget(self.export_button)
+
+        # 【新增】删除选中按钮
+        self.delete_selected_button = QPushButton("删除选中记录")
+        self.delete_selected_button.setStyleSheet("background-color: #e04a4a; color: white; border-radius: 4px; padding: 4px 10px;")
+        pagination_layout.addWidget(self.delete_selected_button)
+
         pagination_layout.addStretch()
 
         self.first_page_button = QPushButton("首页")
@@ -1059,6 +1198,12 @@ class HistoryDialog(QDialog):
 
     def _connect_signals(self):
         """连接UI控件的信号到槽函数。"""
+        # 【新增】日期快捷按钮
+        self.btn_today.clicked.connect(lambda: self._set_date_range_shortcut("today"))
+        self.btn_yesterday.clicked.connect(lambda: self._set_date_range_shortcut("yesterday"))
+        self.btn_last_7_days.clicked.connect(lambda: self._set_date_range_shortcut("last7days"))
+        self.btn_last_30_days.clicked.connect(lambda: self._set_date_range_shortcut("last30days"))
+
         self.query_button.clicked.connect(self._perform_search)
         self.reset_button.clicked.connect(self._reset_filters)
         
@@ -1069,30 +1214,122 @@ class HistoryDialog(QDialog):
         
         self.page_number_edit.returnPressed.connect(lambda: self._go_to_page(int(self.page_number_edit.text())))
         
-        self.severity_info.clicked.connect(self._update_severity_all)
-        self.severity_warning.clicked.connect(self._update_severity_all)
-        self.severity_critical.clicked.connect(self._update_severity_all)
-        self.severity_all.clicked.connect(self._toggle_all_severities)
+        # 【核心修正】严重等级选择现在由 QRadioButton 和排他性 QButtonGroup 自动处理
+        # 当任意严重等级 RadioButton 被点击时，触发查询
+        self.severity_buttons.buttonClicked.connect(lambda: self._perform_search())
         
         self.table.doubleClicked.connect(self._show_full_message)
+
+        # 【新增】列头排序信号
+        self.table.horizontalHeader().sectionClicked.connect(self._sort_table)
+        # 【新增】右键菜单信号
+        self.table.customContextMenuRequested.connect(self._show_context_menu)
+        # 【新增】导出和删除按钮信号
+        self.export_button.clicked.connect(self._export_data)
+        self.delete_selected_button.clicked.connect(self._delete_selected_alerts)
 
     def _load_initial_data(self):
         """对话框首次打开时加载数据。"""
         self._perform_search()
+        self._update_sort_indicator() # 【新增】初始化时更新排序指示器
+
+    # 【新增】设置日期范围快捷方法
+    def _set_date_range_shortcut(self, period: str):
+        """
+        根据预设周期设置日期范围。
+        Args:
+            period (str): 'today', 'yesterday', 'last7days', 'last30days'
+        """
+        today = QDate.currentDate()
+        if period == "today":
+            self.start_date_edit.setDate(today)
+            self.end_date_edit.setDate(today)
+        elif period == "yesterday":
+            yesterday = today.addDays(-1)
+            self.start_date_edit.setDate(yesterday)
+            self.end_date_edit.setDate(yesterday)
+        elif period == "last7days":
+            self.start_date_edit.setDate(today.addDays(-6)) # 今天算在内
+            self.end_date_edit.setDate(today)
+        elif period == "last30days":
+            self.start_date_edit.setDate(today.addDays(-29)) # 今天算在内
+            self.end_date_edit.setDate(today)
+        
+        self.current_page = 1 # 日期范围变化后回到第一页
+        self._perform_search()
+
+    # 【新增】处理表格排序
+    def _sort_table(self, logical_index: int):
+        """
+        处理表格列头点击事件，进行排序。
+        Args:
+            logical_index (int): 被点击的列的逻辑索引。
+        """
+        # 定义列索引到数据库字段的映射
+        column_map = {
+            0: 'id',
+            1: 'timestamp',
+            2: 'severity',
+            3: 'type',
+            4: 'source_ip',
+            5: 'message'
+        }
+        
+        new_sort_column_db = column_map.get(logical_index, 'timestamp')
+
+        if self.current_sort_column_db == new_sort_column_db:
+            # 如果是同一列，切换排序方向
+            self.current_sort_direction = 'ASC' if self.current_sort_direction == 'DESC' else 'DESC'
+        else:
+            # 如果是不同列，则以新列的默认降序开始
+            self.current_sort_column_db = new_sort_column_db
+            self.current_sort_direction = 'DESC' # 默认降序
+
+        self.current_page = 1 # 排序变化后回到第一页
+        self._perform_search()
+        self._update_sort_indicator() # 更新列头排序指示器
+
+    # 【修正】更新列头排序指示器，使用Qt内置API
+    def _update_sort_indicator(self):
+        """
+        根据当前排序状态更新表格列头的Qt自带排序指示器。
+        """
+        header = self.table.horizontalHeader()
+        column_map_reverse = {
+            'id': 0, 'timestamp': 1, 'severity': 2, 'type': 3,
+            'source_ip': 4, 'message': 5
+        }
+        
+        logical_index = column_map_reverse.get(self.current_sort_column_db)
+        if logical_index is not None:
+            header.setSortIndicatorShown(True) # 确保显示排序指示器
+            # 将自定义的 'ASC'/'DESC' 映射到 Qt.AscendingOrder / Qt.DescendingOrder
+            sort_order = Qt.SortOrder.AscendingOrder if self.current_sort_direction == 'ASC' else Qt.SortOrder.DescendingOrder
+            header.setSortIndicator(logical_index, sort_order)
+        else:
+            # 如果没有有效的排序列（例如，初始加载时可能还未点击），则隐藏指示器
+            header.setSortIndicatorShown(False)
+
 
     def _perform_search(self):
         """根据当前过滤条件执行数据库查询并更新UI。"""
         self.status_label.setText("正在查询...")
-        QCoreApplication.processEvents()
+        QCoreApplication.processEvents() # 确保UI更新
 
         start_date = self.start_date_edit.date().toString(Qt.DateFormat.ISODate)
         end_date = self.end_date_edit.date().toString(Qt.DateFormat.ISODate)
         
         selected_severities = []
-        if not self.severity_all.isChecked():
-            if self.severity_info.isChecked(): selected_severities.append("INFO")
-            if self.severity_warning.isChecked(): selected_severities.append("WARNING")
-            if self.severity_critical.isChecked(): selected_severities.append("CRITICAL")
+        # 【核心修正】根据当前选中 RadioButton 的文本来确定过滤条件
+        if self.severity_all.isChecked():
+            # 如果选中“全部”，则severities列表为空，数据库查询将返回所有等级
+            pass 
+        elif self.severity_info.isChecked():
+            selected_severities.append("INFO")
+        elif self.severity_warning.isChecked():
+            selected_severities.append("WARNING")
+        elif self.severity_critical.isChecked():
+            selected_severities.append("CRITICAL")
 
         keyword = self.keyword_edit.text().strip()
         search_field_map = {
@@ -1110,7 +1347,9 @@ class HistoryDialog(QDialog):
             keyword=keyword,
             search_field=search_field,
             page=self.current_page,
-            page_size=self.page_size
+            page_size=self.page_size,
+            order_by=self.current_sort_column_db,     # 【修改】传递排序字段
+            order_direction=self.current_sort_direction # 【修改】传递排序方向
         )
         
         self.total_records = total_count
@@ -1127,6 +1366,8 @@ class HistoryDialog(QDialog):
         for row_idx, record in enumerate(data):
             self.table.insertRow(row_idx)
             
+            # 【修改】ID列现在是第一列
+            alert_id = str(record.get('id', ''))
             timestamp = record.get('timestamp', 'N/A')
             severity = record.get('severity', 'INFO')
             alert_type = record.get('type', 'Unknown')
@@ -1134,7 +1375,7 @@ class HistoryDialog(QDialog):
             message = record.get('message', 'N/A')
             
             items = [
-                QTableWidgetItem(str(record.get('id', ''))),
+                QTableWidgetItem(alert_id),
                 QTableWidgetItem(timestamp),
                 QTableWidgetItem(severity),
                 QTableWidgetItem(alert_type),
@@ -1148,6 +1389,11 @@ class HistoryDialog(QDialog):
                 item.setBackground(color)
                 self.table.setItem(row_idx, col, item)
         self.table.resizeColumnsToContents()
+        # 确保ID和时间等列自适应内容
+        for i in range(5):
+             self.table.horizontalHeader().setSectionResizeMode(i, QHeaderView.ResizeMode.ResizeToContents)
+        self.table.horizontalHeader().setSectionResizeMode(5, QHeaderView.ResizeMode.Stretch)
+
 
     def _update_pagination_ui(self):
         """更新分页按钮和状态标签的启用/禁用状态。"""
@@ -1163,8 +1409,15 @@ class HistoryDialog(QDialog):
             self.next_page_button.setEnabled(False)
             self.last_page_button.setEnabled(False)
             self.page_number_edit.setEnabled(False)
+            # 【新增】如果没数据，导出和删除按钮也禁用
+            self.export_button.setEnabled(False)
+            self.delete_selected_button.setEnabled(False)
         else:
             self.page_number_edit.setEnabled(True)
+            self.export_button.setEnabled(True)
+            # 只有当有选中行时才启用删除按钮（通过槽函数动态控制）
+            # 这里先设置为True，具体由槽函数判断是否有选中行
+            self.delete_selected_button.setEnabled(True) 
 
     def _go_to_page(self, page_num: int):
         """跳转到指定页码并执行查询。"""
@@ -1185,60 +1438,215 @@ class HistoryDialog(QDialog):
         """重置所有过滤条件到默认值。"""
         self.start_date_edit.setDate(QDate.currentDate().addDays(-7))
         self.end_date_edit.setDate(QDate.currentDate())
-        self.severity_all.setChecked(True)
-        self._toggle_all_severities()
+        
+        # 【核心修正】重置时只设置“全部” RadioButton 为选中
+        self.severity_all.setChecked(True) 
+        
         self.keyword_edit.clear()
         self.search_field_combo.setCurrentIndex(0)
         self.current_page = 1
+        
+        # 【新增】重置排序状态
+        self.current_sort_column_db = 'timestamp'
+        self.current_sort_direction = 'DESC'
+        self._update_sort_indicator()
+
         self._perform_search()
 
-    def _toggle_all_severities(self):
-        """处理“全部”复选框的逻辑。"""
-        is_all_checked = self.severity_all.isChecked()
-        self.severity_info.setChecked(is_all_checked)
-        self.severity_warning.setChecked(is_all_checked)
-        self.severity_critical.setChecked(is_all_checked)
-        
-        if not is_all_checked and not (self.severity_info.isChecked() or 
-                                       self.severity_warning.isChecked() or 
-                                       self.severity_critical.isChecked()):
-            self.severity_all.setChecked(True)
+    # 【核心修正】_toggle_all_severities 和 _update_severity_all 方法不再需要，因为 QRadioButton 和排他性 QButtonGroup 自动处理了互斥逻辑。
+    # 这里将它们移除，确保代码的简洁和正确性。
+    # def _toggle_all_severities(self):
+    #     """处理“全部”复选框的逻辑。"""
+    #     is_all_checked = self.severity_all.isChecked()
+    #     self.severity_info.setChecked(is_all_checked)
+    #     self.severity_warning.setChecked(is_all_checked)
+    #     self.severity_critical.setChecked(is_all_checked)
+    #     if not is_all_checked and not (self.severity_info.isChecked() or 
+    #                                    self.severity_warning.isChecked() or 
+    #                                    self.severity_critical.isChecked()):
+    #         self.severity_all.setChecked(True)
 
-
-    def _update_severity_all(self):
-        """当单个严重等级被点击时，更新“全部”的状态。"""
-        if self.sender() is not self.severity_all:
-            if self.severity_info.isChecked() and self.severity_warning.isChecked() and self.severity_critical.isChecked():
-                self.severity_all.setChecked(True)
-            else:
-                self.severity_all.setChecked(False)
+    # def _update_severity_all(self):
+    #     """当单个严重等级被点击时，更新“全部”的状态。"""
+    #     if self.sender() is not self.severity_all:
+    #         if self.severity_info.isChecked() and self.severity_warning.isChecked() and self.severity_critical.isChecked():
+    #             self.severity_all.setChecked(True)
+    #         else:
+    #             self.severity_all.setChecked(False)
                 
     def _show_full_message(self):
         """双击表格行时显示完整消息内容。"""
         current_row = self.table.currentRow()
         if current_row >= 0:
-            message_item = self.table.item(current_row, 5)
+            message_item = self.table.item(current_row, 5) # 详细内容在第5列（索引从0开始）
             if message_item:
                 QMessageBox.information(self, "详细内容", message_item.text())
+
+    # 【新增】表格右键菜单
+    def _show_context_menu(self, pos):
+        """
+        显示表格右键上下文菜单。
+        Args:
+            pos (QPoint): 鼠标位置，用于定位菜单。
+        """
+        index = self.table.indexAt(pos)
+        if not index.isValid():
+            return
+
+        menu = QMenu(self)
+
+        # 复制单元格内容
+        copy_cell_action = QAction("复制单元格内容", self)
+        copy_cell_action.triggered.connect(lambda: QApplication.clipboard().setText(self.table.item(index.row(), index.column()).text()))
+        menu.addAction(copy_cell_action)
+
+        # 复制行所有数据
+        copy_row_action = QAction("复制行所有数据", self)
+        # 获取当前行所有数据并格式化
+        row_data = [self.table.item(index.row(), col).text() for col in range(self.table.columnCount())]
+        copy_row_action.triggered.connect(lambda: QApplication.clipboard().setText('\t'.join(row_data))) # 以制表符分隔
+        menu.addAction(copy_row_action)
+
+        menu.addSeparator()
+
+        # 显示完整消息 (如果不是消息列，则禁用)
+        show_full_message_action = QAction("显示完整消息", self)
+        if index.column() == 5: # 详细内容列
+            show_full_message_action.triggered.connect(self._show_full_message)
+        else:
+            show_full_message_action.setEnabled(False)
+        menu.addAction(show_full_message_action)
+
+        menu.exec(self.table.viewport().mapToGlobal(pos))
+
+    # 【新增】导出数据到CSV
+    def _export_data(self):
+        """将当前筛选条件下的所有数据导出为CSV文件。"""
+        # 获取用户选择的文件路径
+        file_path, _ = QFileDialog.getSaveFileName(self, "导出历史记录", 
+                                                   os.path.expanduser("~/Desktop/alerts_history.csv"), 
+                                                   "CSV Files (*.csv);;All Files (*)")
+        if not file_path:
+            return
+
+        # 重新获取所有符合当前筛选条件的数据，不分页
+        start_date = self.start_date_edit.date().toString(Qt.DateFormat.ISODate)
+        end_date = self.end_date_edit.date().toString(Qt.DateFormat.ISODate)
+        selected_severities = []
+        # 【核心修正】导出数据时，同样根据当前选中 RadioButton 获取过滤条件
+        if self.severity_all.isChecked():
+            pass # 空列表表示所有等级
+        elif self.severity_info.isChecked():
+            selected_severities.append("INFO")
+        elif self.severity_warning.isChecked():
+            selected_severities.append("WARNING")
+        elif self.severity_critical.isChecked():
+            selected_severities.append("CRITICAL")
+
+        keyword = self.keyword_edit.text().strip()
+        search_field_map = {
+            "所有字段": "all", "消息内容": "message", "来源IP": "source_ip", "信息类型": "type"
+        }
+        search_field = search_field_map.get(self.search_field_combo.currentText(), "all")
+
+        # 调用数据库服务获取所有数据 (page_size设置为一个大数，或在db_service中提供一个不分页的获取方法)
+        # 这里我们直接传入一个足够大的pageSize来获取所有数据
+        all_results, _ = self.db_service.search_alerts(
+            start_date=start_date,
+            end_date=end_date,
+            severities=selected_severities,
+            keyword=keyword,
+            search_field=search_field,
+            page=1,
+            page_size=self.total_records if self.total_records > 0 else 9999999, # 确保获取所有记录
+            order_by=self.current_sort_column_db,
+            order_direction=self.current_sort_direction
+        )
+
+        try:
+            with open(file_path, 'w', newline='', encoding='utf-8') as csvfile:
+                fieldnames = ["ID", "接收时间", "严重等级", "信息类型", "来源IP", "详细内容"]
+                writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
+                writer.writeheader()
+                for row in all_results:
+                    # 重新映射数据库字段到CSV表头
+                    writer.writerow({
+                        "ID": row.get('id', ''),
+                        "接收时间": row.get('timestamp', 'N/A'),
+                        "严重等级": row.get('severity', 'INFO'),
+                        "信息类型": row.get('type', 'Unknown'),
+                        "来源IP": row.get('source_ip', 'N/A'),
+                        "详细内容": row.get('message', '无内容')
+                    })
+            QMessageBox.information(self, "导出成功", f"数据已成功导出到:\n{file_path}")
+            logging.info(f"历史记录已导出到: {file_path}")
+        except Exception as e:
+            QMessageBox.critical(self, "导出失败", f"导出数据时发生错误:\n{e}")
+            logging.error(f"导出历史记录失败: {e}", exc_info=True)
+
+    # 【新增】删除选中记录
+    def _delete_selected_alerts(self):
+        """删除表格中选中的告警记录。"""
+        selected_rows = self.table.selectionModel().selectedRows()
+        if not selected_rows:
+            QMessageBox.information(self, "没有选中", "请选择要删除的记录。")
+            return
+
+        # 获取所有选中行的ID
+        alert_ids_to_delete = []
+        for index in selected_rows:
+            # ID在表格的第0列
+            item = self.table.item(index.row(), 0)
+            if item:
+                try:
+                    alert_ids_to_delete.append(int(item.text()))
+                except ValueError:
+                    logging.error(f"无法将ID '{item.text()}' 转换为整数，跳过。")
+                    continue
+        
+        if not alert_ids_to_delete:
+            QMessageBox.information(self, "没有有效ID", "没有找到有效的记录ID进行删除。")
+            return
+
+        reply = QMessageBox.warning(
+            self,
+            "确认删除",
+            f"您确定要删除选中的 {len(alert_ids_to_delete)} 条历史告警记录吗？\n此操作无法撤销！",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No
+        )
+
+        if reply == QMessageBox.StandardButton.Yes:
+            if self.db_service.delete_alerts_by_ids(alert_ids_to_delete):
+                QMessageBox.information(self, "删除成功", "选中的记录已成功删除。")
+                self._perform_search() # 刷新表格显示
+            else:
+                QMessageBox.critical(self, "删除失败", "删除记录时发生错误，请查看日志。")
 ```
 ## statistics_dialog.py
 ```python
 # desktop_center/src/ui/statistics_dialog.py
 import logging
+from collections import defaultdict
 from PySide6.QtWidgets import (QDialog, QVBoxLayout, QLabel, QTabWidget,
                                QWidget, QHBoxLayout, QDateEdit, QPushButton,
-                               QTableWidget, QTableWidgetItem, QHeaderView,
-                               QLineEdit, QSpacerItem, QSizePolicy)
-from PySide6.QtCore import Qt, QDate, QCoreApplication
-from PySide6.QtGui import QColor
+                               QTreeWidget, QTreeWidgetItem, QHeaderView,
+                               QLineEdit, QSpacerItem, QSizePolicy,
+                               QComboBox, QTableWidget, QTableWidgetItem)
+from PySide6.QtCore import Qt, QDate, QCoreApplication, QTimer
+from PySide6.QtGui import QColor, QFont
 from src.services.database_service import DatabaseService
 from src.services.config_service import ConfigService
-from typing import List, Dict, Any # 确保导入了List, Dict, Any
+from typing import List, Dict, Any
+
+# 定义一个常量，用于表示IP选择器中的“全部IP”选项
+ALL_IPS_OPTION = "【全部IP】"
 
 class StatisticsDialog(QDialog):
+    # ... (init, _init_ui, _connect_signals, _set_date_range_shortcut, _setup_ip_activity_tab, _setup_hourly_stats_tab 等方法保持不变) ...
     """
     一个独立的对话框，用于统计和分析告警数据。
-    包含多个选项卡，每个选项卡提供不同的统计视图。
+    包含四个分析选项卡，支持惰性加载和多维度钻取分析。
     """
     def __init__(self, db_service: DatabaseService, config_service: ConfigService, parent=None):
         super().__init__(parent)
@@ -1247,120 +1655,135 @@ class StatisticsDialog(QDialog):
         self.setWindowTitle("统计分析")
         self.setMinimumSize(800, 600)
         
+        # 用于惰性加载的标志
+        self.tab_loaded_flags = {
+            "ip_activity_tab": False,
+            "hourly_stats_tab": False,
+            "multidim_stats_tab": False,
+            "type_stats_tab": False
+        }
+
+        # 为“按小时分析”表格添加排序状态变量
+        self.hourly_sort_column = 'hour'
+        self.hourly_sort_direction = 'ASC'
+
         self._init_ui()
-        self._load_initial_data()
+        self._connect_signals()
 
     def _init_ui(self):
         main_layout = QVBoxLayout(self)
         self.tab_widget = QTabWidget()
         main_layout.addWidget(self.tab_widget)
 
-        # --- 1. 告警类型排行榜选项卡 ---
-        self.type_stats_tab = QWidget()
-        self.type_stats_tab_layout = QVBoxLayout(self.type_stats_tab)
-        self.tab_widget.addTab(self.type_stats_tab, "告警类型排行榜")
-        self._setup_type_stats_tab()
-
-        # --- 2. 全局按小时分析选项卡 ---
-        self.hour_stats_tab = QWidget()
-        self.hour_stats_tab_layout = QVBoxLayout(self.hour_stats_tab)
-        self.tab_widget.addTab(self.hour_stats_tab, "全局按小时分析")
-        self._setup_hour_stats_tab()
-
-        # --- 3. 按IP活跃度排行榜选项卡 ---
+        # --- 1. 按IP活跃度排行榜选项卡 ---
         self.ip_activity_tab = QWidget()
+        self.ip_activity_tab.setObjectName("ip_activity_tab")
         self.ip_activity_tab_layout = QVBoxLayout(self.ip_activity_tab)
         self.tab_widget.addTab(self.ip_activity_tab, "按IP活跃度排行榜")
         self._setup_ip_activity_tab()
 
-        # --- 4. 按IP按小时统计选项卡 ---
-        self.ip_hour_stats_tab = QWidget()
-        self.ip_hour_stats_tab_layout = QVBoxLayout(self.ip_hour_stats_tab)
-        self.tab_widget.addTab(self.ip_hour_stats_tab, "按IP按小时统计")
-        self._setup_ip_hour_stats_tab()
+        # --- 2. 按小时分析选项卡 ---
+        self.hourly_stats_tab = QWidget()
+        self.hourly_stats_tab.setObjectName("hourly_stats_tab")
+        self.hourly_stats_tab_layout = QVBoxLayout(self.hourly_stats_tab)
+        self.tab_widget.addTab(self.hourly_stats_tab, "按小时分析")
+        self._setup_hourly_stats_tab()
 
-    def _setup_type_stats_tab(self):
-        """设置告警类型排行榜选项卡的UI。"""
-        filter_layout = QHBoxLayout()
-        filter_layout.addWidget(QLabel("日期范围:"))
-        self.type_start_date = QDateEdit(calendarPopup=True)
-        self.type_start_date.setDate(QDate.currentDate().addDays(-7))
-        self.type_start_date.setMinimumWidth(100)
-        filter_layout.addWidget(self.type_start_date)
-        filter_layout.addWidget(QLabel("到"))
-        self.type_end_date = QDateEdit(calendarPopup=True)
-        self.type_end_date.setDate(QDate.currentDate())
-        self.type_end_date.setMinimumWidth(100)
-        filter_layout.addWidget(self.type_end_date)
+        # --- 3. 多维分析选项卡 ---
+        self.multidim_stats_tab = QWidget()
+        self.multidim_stats_tab.setObjectName("multidim_stats_tab")
+        self.multidim_stats_tab_layout = QVBoxLayout(self.multidim_stats_tab)
+        self.tab_widget.addTab(self.multidim_stats_tab, "多维分析")
+        self._setup_multidim_stats_tab()
+
+        # --- 4. 告警类型排行榜选项卡 ---
+        self.type_stats_tab = QWidget()
+        self.type_stats_tab.setObjectName("type_stats_tab")
+        self.type_stats_tab_layout = QVBoxLayout(self.type_stats_tab)
+        self.tab_widget.addTab(self.type_stats_tab, "告警类型排行榜")
+        self._setup_type_stats_tab()
         
-        self.type_query_button = QPushButton("查询")
-        self.type_query_button.setStyleSheet("background-color: #0078d4; color: white; border-radius: 4px; padding: 4px 10px;")
-        filter_layout.addWidget(self.type_query_button)
-        filter_layout.addStretch()
-        self.type_stats_tab_layout.addLayout(filter_layout)
+    def _connect_signals(self):
+        """连接所有UI控件的信号到槽函数。"""
+        self.tab_widget.currentChanged.connect(self._on_tab_changed)
 
-        self.type_stats_table = QTableWidget()
-        self.type_stats_table.setColumnCount(2)
-        self.type_stats_table.setHorizontalHeaderLabels(["告警类型", "数量"])
-        self.type_stats_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
-        self.type_stats_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
-        self.type_stats_table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
-        self.type_stats_tab_layout.addWidget(self.type_stats_table)
+        # IP活跃度 Tab
+        self.ip_activity_query_button.clicked.connect(self._perform_ip_activity_query)
+        self.ip_activity_btn_today.clicked.connect(lambda: self._set_date_range_shortcut(self.ip_activity_start_date, self.ip_activity_end_date, "today"))
+        self.ip_activity_btn_yesterday.clicked.connect(lambda: self._set_date_range_shortcut(self.ip_activity_start_date, self.ip_activity_end_date, "yesterday"))
+        self.ip_activity_btn_last_7_days.clicked.connect(lambda: self._set_date_range_shortcut(self.ip_activity_start_date, self.ip_activity_end_date, "last7days"))
 
+        # 按小时分析 Tab
+        self.hourly_query_button.clicked.connect(self._perform_hourly_stats_query)
+        self.hourly_btn_today.clicked.connect(lambda: self._set_date_range_shortcut(self.hourly_start_date, self.hourly_end_date, "today"))
+        self.hourly_btn_yesterday.clicked.connect(lambda: self._set_date_range_shortcut(self.hourly_start_date, self.hourly_end_date, "yesterday"))
+        self.hourly_btn_last_7_days.clicked.connect(lambda: self._set_date_range_shortcut(self.hourly_start_date, self.hourly_end_date, "last7days"))
+        self.hourly_ip_combo.currentIndexChanged.connect(self._on_ip_combo_changed_for_hourly)
+        self.hourly_stats_table.horizontalHeader().sectionClicked.connect(self._sort_hourly_table)
+
+        # 多维分析 Tab
+        self.multidim_query_button.clicked.connect(self._perform_multidim_stats_query)
+        self.multidim_btn_today.clicked.connect(lambda: self._set_date_range_shortcut(self.multidim_start_date, self.multidim_end_date, "today"))
+        self.multidim_btn_yesterday.clicked.connect(lambda: self._set_date_range_shortcut(self.multidim_start_date, self.multidim_end_date, "yesterday"))
+        self.multidim_btn_last_7_days.clicked.connect(lambda: self._set_date_range_shortcut(self.multidim_start_date, self.multidim_end_date, "last7days"))
+        self.multidim_ip_combo.currentIndexChanged.connect(self._on_ip_combo_changed_for_multidim)
+        # 【核心修正】连接新按钮的信号到槽函数
+        self.multidim_expand_button.clicked.connect(self.multidim_stats_tree.expandAll)
+        self.multidim_collapse_button.clicked.connect(self.multidim_stats_tree.collapseAll)
         self.type_query_button.clicked.connect(self._perform_type_stats_query)
+        self.type_btn_today.clicked.connect(lambda: self._set_date_range_shortcut(self.type_start_date, self.type_end_date, "today"))
+        self.type_btn_yesterday.clicked.connect(lambda: self._set_date_range_shortcut(self.type_start_date, self.type_end_date, "yesterday"))
+        self.type_btn_last_7_days.clicked.connect(lambda: self._set_date_range_shortcut(self.type_start_date, self.type_end_date, "last7days"))
+        QTimer.singleShot(0, lambda: self._on_tab_changed(self.tab_widget.currentIndex()))
 
-    # 【核心修改】全局按小时分析，支持日期范围
-    def _setup_hour_stats_tab(self):
-        """设置全局按小时分析选项卡的UI。"""
-        filter_layout = QHBoxLayout()
-        filter_layout.addWidget(QLabel("日期范围:"))
-        self.hour_start_date = QDateEdit(calendarPopup=True)
-        self.hour_start_date.setDate(QDate.currentDate().addDays(-7)) # 默认最近7天
-        self.hour_start_date.setMinimumWidth(100)
-        filter_layout.addWidget(self.hour_start_date)
-        filter_layout.addWidget(QLabel("到"))
-        self.hour_end_date = QDateEdit(calendarPopup=True)
-        self.hour_end_date.setDate(QDate.currentDate())
-        self.hour_end_date.setMinimumWidth(100)
-        filter_layout.addWidget(self.hour_end_date)
-        
-        self.hour_query_button = QPushButton("查询")
-        self.hour_query_button.setStyleSheet("background-color: #0078d4; color: white; border-radius: 4px; padding: 4px 10px;")
-        filter_layout.addWidget(self.hour_query_button)
-        filter_layout.addStretch()
-        self.hour_stats_tab_layout.addLayout(filter_layout)
+    def _set_date_range_shortcut(self, start_date_edit: QDateEdit, end_date_edit: QDateEdit, period: str):
+        today = QDate.currentDate()
+        if period == "today":
+            start_date_edit.setDate(today)
+            end_date_edit.setDate(today)
+        elif period == "yesterday":
+            yesterday = today.addDays(-1)
+            start_date_edit.setDate(yesterday)
+            end_date_edit.setDate(yesterday)
+        elif period == "last7days":
+            start_date_edit.setDate(today.addDays(-6))
+            end_date_edit.setDate(today)
+        if start_date_edit is self.ip_activity_start_date:
+            self._perform_ip_activity_query()
+        elif start_date_edit is self.hourly_start_date:
+            self._perform_hourly_stats_query()
+        elif start_date_edit is self.multidim_start_date:
+            self._perform_multidim_stats_query()
+        elif start_date_edit is self.type_start_date:
+            self._perform_type_stats_query()
 
-        self.hour_stats_table = QTableWidget()
-        self.hour_stats_table.setColumnCount(2)
-        self.hour_stats_table.setHorizontalHeaderLabels(["小时", "数量"])
-        self.hour_stats_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
-        self.hour_stats_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
-        self.hour_stats_table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
-        self.hour_stats_tab_layout.addWidget(self.hour_stats_table)
+    # --- UI 设置方法 ---
 
-        self.hour_query_button.clicked.connect(self._perform_hour_stats_query)
-        
-    # 【核心修改】按IP活跃度排行榜，支持日期范围
     def _setup_ip_activity_tab(self):
-        """设置按IP活跃度排行榜选项卡的UI。"""
+        date_shortcut_layout = QHBoxLayout()
+        date_shortcut_layout.addWidget(QLabel("快捷日期:"))
+        self.ip_activity_btn_today = QPushButton("今天")
+        self.ip_activity_btn_yesterday = QPushButton("昨天")
+        self.ip_activity_btn_last_7_days = QPushButton("近7天")
+        date_shortcut_layout.addWidget(self.ip_activity_btn_today)
+        date_shortcut_layout.addWidget(self.ip_activity_btn_yesterday)
+        date_shortcut_layout.addWidget(self.ip_activity_btn_last_7_days)
+        date_shortcut_layout.addStretch()
+        self.ip_activity_tab_layout.addLayout(date_shortcut_layout)
         filter_layout = QHBoxLayout()
         filter_layout.addWidget(QLabel("日期范围:"))
         self.ip_activity_start_date = QDateEdit(calendarPopup=True)
         self.ip_activity_start_date.setDate(QDate.currentDate().addDays(-7))
-        self.ip_activity_start_date.setMinimumWidth(100)
         filter_layout.addWidget(self.ip_activity_start_date)
         filter_layout.addWidget(QLabel("到"))
         self.ip_activity_end_date = QDateEdit(calendarPopup=True)
         self.ip_activity_end_date.setDate(QDate.currentDate())
-        self.ip_activity_end_date.setMinimumWidth(100)
         filter_layout.addWidget(self.ip_activity_end_date)
-        
         self.ip_activity_query_button = QPushButton("查询")
         self.ip_activity_query_button.setStyleSheet("background-color: #0078d4; color: white; border-radius: 4px; padding: 4px 10px;")
         filter_layout.addWidget(self.ip_activity_query_button)
         filter_layout.addStretch()
         self.ip_activity_tab_layout.addLayout(filter_layout)
-
         self.ip_activity_table = QTableWidget()
         self.ip_activity_table.setColumnCount(2)
         self.ip_activity_table.setHorizontalHeaderLabels(["来源IP", "数量"])
@@ -1369,128 +1792,347 @@ class StatisticsDialog(QDialog):
         self.ip_activity_table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         self.ip_activity_tab_layout.addWidget(self.ip_activity_table)
 
-        self.ip_activity_query_button.clicked.connect(self._perform_ip_activity_query)
-
-    # 【核心修改】按IP按小时统计，支持日期范围
-    def _setup_ip_hour_stats_tab(self):
-        """设置按IP按小时统计选项卡的UI。"""
+    def _setup_hourly_stats_tab(self):
+        date_shortcut_layout = QHBoxLayout()
+        date_shortcut_layout.addWidget(QLabel("快捷日期:"))
+        self.hourly_btn_today = QPushButton("今天")
+        self.hourly_btn_yesterday = QPushButton("昨天")
+        self.hourly_btn_last_7_days = QPushButton("近7天")
+        date_shortcut_layout.addWidget(self.hourly_btn_today)
+        date_shortcut_layout.addWidget(self.hourly_btn_yesterday)
+        date_shortcut_layout.addWidget(self.hourly_btn_last_7_days)
+        date_shortcut_layout.addStretch()
+        self.hourly_stats_tab_layout.addLayout(date_shortcut_layout)
         filter_layout = QHBoxLayout()
         filter_layout.addWidget(QLabel("IP地址:"))
-        self.ip_hour_ip_edit = QLineEdit()
-        self.ip_hour_ip_edit.setPlaceholderText("例如: 192.168.1.1")
-        self.ip_hour_ip_edit.setMinimumWidth(120)
-        filter_layout.addWidget(self.ip_hour_ip_edit)
-
-        filter_layout.addWidget(QLabel("日期范围:")) # 更改为日期范围
-        self.ip_hour_start_date = QDateEdit(calendarPopup=True)
-        self.ip_hour_start_date.setDate(QDate.currentDate())
-        self.ip_hour_start_date.setMinimumWidth(100)
-        filter_layout.addWidget(self.ip_hour_start_date)
+        self.hourly_ip_combo = QComboBox()
+        self.hourly_ip_combo.setEditable(True)
+        self.hourly_ip_combo.setPlaceholderText("请选择或输入IP地址")
+        self.hourly_ip_combo.setMinimumWidth(150)
+        filter_layout.addWidget(self.hourly_ip_combo)
+        filter_layout.addWidget(QLabel("日期范围:"))
+        self.hourly_start_date = QDateEdit(calendarPopup=True)
+        self.hourly_start_date.setDate(QDate.currentDate())
+        filter_layout.addWidget(self.hourly_start_date)
         filter_layout.addWidget(QLabel("到"))
-        self.ip_hour_end_date = QDateEdit(calendarPopup=True)
-        self.ip_hour_end_date.setDate(QDate.currentDate())
-        self.ip_hour_end_date.setMinimumWidth(100)
-        filter_layout.addWidget(self.ip_hour_end_date)
-        
-        self.ip_hour_query_button = QPushButton("查询")
-        self.ip_hour_query_button.setStyleSheet("background-color: #0078d4; color: white; border-radius: 4px; padding: 4px 10px;")
-        filter_layout.addWidget(self.ip_hour_query_button)
+        self.hourly_end_date = QDateEdit(calendarPopup=True)
+        self.hourly_end_date.setDate(QDate.currentDate())
+        filter_layout.addWidget(self.hourly_end_date)
+        self.hourly_query_button = QPushButton("查询")
+        self.hourly_query_button.setStyleSheet("background-color: #0078d4; color: white; border-radius: 4px; padding: 4px 10px;")
+        filter_layout.addWidget(self.hourly_query_button)
         filter_layout.addStretch()
-        self.ip_hour_stats_tab_layout.addLayout(filter_layout)
+        self.hourly_stats_tab_layout.addLayout(filter_layout)
+        self.hourly_stats_table = QTableWidget()
+        self.hourly_stats_table.setColumnCount(2)
+        self.hourly_stats_table.setHorizontalHeaderLabels(["小时", "数量"])
+        self.hourly_stats_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+        self.hourly_stats_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
+        self.hourly_stats_table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
+        self.hourly_stats_table.setSortingEnabled(False)
+        self.hourly_stats_table.horizontalHeader().setSectionsClickable(True)
+        self.hourly_stats_tab_layout.addWidget(self.hourly_stats_table)
+    
+    def _setup_multidim_stats_tab(self):
+        """【核心修正】为“多维分析”选项卡添加“展开/折叠”按钮。"""
+        date_shortcut_layout = QHBoxLayout()
+        date_shortcut_layout.addWidget(QLabel("快捷日期:"))
+        self.multidim_btn_today = QPushButton("今天")
+        self.multidim_btn_yesterday = QPushButton("昨天")
+        self.multidim_btn_last_7_days = QPushButton("近7天")
+        date_shortcut_layout.addWidget(self.multidim_btn_today)
+        date_shortcut_layout.addWidget(self.multidim_btn_yesterday)
+        date_shortcut_layout.addWidget(self.multidim_btn_last_7_days)
+        date_shortcut_layout.addStretch()
+        self.multidim_stats_tab_layout.addLayout(date_shortcut_layout)
 
-        self.ip_hour_stats_table = QTableWidget()
-        self.ip_hour_stats_table.setColumnCount(2)
-        self.ip_hour_stats_table.setHorizontalHeaderLabels(["小时", "数量"])
-        self.ip_hour_stats_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
-        self.ip_hour_stats_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
-        self.ip_hour_stats_table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
-        self.ip_hour_stats_tab_layout.addWidget(self.ip_hour_stats_table)
-
-        self.ip_hour_query_button.clicked.connect(self._perform_ip_hour_stats_query)
-
-
-    def _load_initial_data(self):
-        """对话框首次打开时加载初始数据。"""
-        self._perform_type_stats_query()
-        self._perform_hour_stats_query()
-        self._perform_ip_activity_query()
-        self._perform_ip_hour_stats_query() # 尝试加载IP按小时，如果IP为空，会返回空
-
-    def _perform_type_stats_query(self):
-        """执行告警类型统计查询。"""
-        start_date = self.type_start_date.date().toString(Qt.DateFormat.ISODate)
-        end_date = self.type_end_date.date().toString(Qt.DateFormat.ISODate)
+        filter_layout = QHBoxLayout()
+        filter_layout.addWidget(QLabel("IP地址:"))
+        self.multidim_ip_combo = QComboBox()
+        self.multidim_ip_combo.setEditable(True)
+        self.multidim_ip_combo.setPlaceholderText("请选择或输入IP地址")
+        self.multidim_ip_combo.setMinimumWidth(150)
+        filter_layout.addWidget(self.multidim_ip_combo)
+        filter_layout.addWidget(QLabel("日期范围:"))
+        self.multidim_start_date = QDateEdit(calendarPopup=True)
+        self.multidim_start_date.setDate(QDate.currentDate())
+        filter_layout.addWidget(self.multidim_start_date)
+        filter_layout.addWidget(QLabel("到"))
+        self.multidim_end_date = QDateEdit(calendarPopup=True)
+        self.multidim_end_date.setDate(QDate.currentDate())
+        filter_layout.addWidget(self.multidim_end_date)
+        self.multidim_query_button = QPushButton("查询")
+        self.multidim_query_button.setStyleSheet("background-color: #0078d4; color: white; border-radius: 4px; padding: 4px 10px;")
+        filter_layout.addWidget(self.multidim_query_button)
         
-        QCoreApplication.processEvents()
-        logging.info(f"正在查询告警类型排行榜 (日期: {start_date} - {end_date})...")
+        # 【新增】添加展开和折叠按钮
+        filter_layout.addStretch()
+        self.multidim_expand_button = QPushButton("展开全部")
+        self.multidim_collapse_button = QPushButton("折叠全部")
+        filter_layout.addWidget(self.multidim_expand_button)
+        filter_layout.addWidget(self.multidim_collapse_button)
+        
+        self.multidim_stats_tab_layout.addLayout(filter_layout)
 
-        results = self.db_service.get_stats_by_type(start_date, end_date)
+        self.multidim_stats_tree = QTreeWidget()
+        self.multidim_stats_tree.setColumnCount(2)
+        self.multidim_stats_tree.setHeaderLabels(["分析维度", "告警数量"])
+        self.multidim_stats_tree.header().setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
+        self.multidim_stats_tree.header().setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
+        self.multidim_stats_tree.setSortingEnabled(True)
+        self.multidim_stats_tree.sortByColumn(0, Qt.SortOrder.AscendingOrder)
         
-        self._update_stats_table(self.type_stats_table, results, ["type", "count"])
-        logging.info(f"告警类型排行榜查询完成，共 {len(results)} 种类型。")
+        # 【核心修正】为树状视图应用样式表以突出显示选中行
+        self.multidim_stats_tree.setStyleSheet("""
+            QTreeView::item:selected {
+                background-color: #cce8ff; /* 一个更柔和的蓝色 */
+                color: black; /* 确保文本颜色为黑色，而不是系统默认的白色 */
+            }
+        """)
+        self.multidim_stats_tab_layout.addWidget(self.multidim_stats_tree)
 
-    # 【核心修改】执行全局按小时统计查询，现在支持日期范围
-    def _perform_hour_stats_query(self):
-        """执行全局按小时统计查询。"""
-        start_date = self.hour_start_date.date().toString(Qt.DateFormat.ISODate)
-        end_date = self.hour_end_date.date().toString(Qt.DateFormat.ISODate)
-        
-        QCoreApplication.processEvents()
-        logging.info(f"正在查询 {start_date} 到 {end_date} 的全局按小时统计...")
+    def _setup_type_stats_tab(self):
+        # (代码无变化)
+        date_shortcut_layout = QHBoxLayout()
+        date_shortcut_layout.addWidget(QLabel("快捷日期:"))
+        self.type_btn_today = QPushButton("今天")
+        self.type_btn_yesterday = QPushButton("昨天")
+        self.type_btn_last_7_days = QPushButton("近7天")
+        date_shortcut_layout.addWidget(self.type_btn_today)
+        date_shortcut_layout.addWidget(self.type_btn_yesterday)
+        date_shortcut_layout.addWidget(self.type_btn_last_7_days)
+        date_shortcut_layout.addStretch()
+        self.type_stats_tab_layout.addLayout(date_shortcut_layout)
+        filter_layout = QHBoxLayout()
+        filter_layout.addWidget(QLabel("日期范围:"))
+        self.type_start_date = QDateEdit(calendarPopup=True)
+        self.type_start_date.setDate(QDate.currentDate().addDays(-7))
+        filter_layout.addWidget(self.type_start_date)
+        filter_layout.addWidget(QLabel("到"))
+        self.type_end_date = QDateEdit(calendarPopup=True)
+        self.type_end_date.setDate(QDate.currentDate())
+        filter_layout.addWidget(self.type_end_date)
+        self.type_query_button = QPushButton("查询")
+        self.type_query_button.setStyleSheet("background-color: #0078d4; color: white; border-radius: 4px; padding: 4px 10px;")
+        filter_layout.addWidget(self.type_query_button)
+        filter_layout.addStretch()
+        self.type_stats_tab_layout.addLayout(filter_layout)
+        self.type_stats_table = QTableWidget()
+        self.type_stats_table.setColumnCount(2)
+        self.type_stats_table.setHorizontalHeaderLabels(["告警类型", "数量"])
+        self.type_stats_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+        self.type_stats_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
+        self.type_stats_table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
+        self.type_stats_tab_layout.addWidget(self.type_stats_table)
 
-        results = self.db_service.get_stats_by_hour(start_date, end_date)
-        
-        self._update_stats_table(self.hour_stats_table, results, ["hour", "count"])
-        logging.info(f"按小时统计查询完成，共 {len(results)} 小时数据。")
-        
+    # --- 数据加载和查询方法 ---
+
+    def _on_tab_changed(self, index: int):
+        # (代码无变化)
+        current_widget = self.tab_widget.widget(index)
+        if not current_widget: return
+        current_tab_name = current_widget.objectName()
+        if not self.tab_loaded_flags.get(current_tab_name, False):
+            logging.info(f"第一次加载选项卡: {current_tab_name}")
+            if current_tab_name == "ip_activity_tab":
+                self._perform_ip_activity_query()
+            elif current_tab_name == "hourly_stats_tab":
+                self._populate_ip_combo_box(self.hourly_ip_combo, self.hourly_start_date, self.hourly_end_date)
+                self._perform_hourly_stats_query()
+            elif current_tab_name == "multidim_stats_tab":
+                self._populate_ip_combo_box(self.multidim_ip_combo, self.multidim_start_date, self.multidim_end_date)
+                self._perform_multidim_stats_query()
+            elif current_tab_name == "type_stats_tab":
+                self._perform_type_stats_query()
+            self.tab_loaded_flags[current_tab_name] = True
+        if current_tab_name == "hourly_stats_tab":
+            self._populate_ip_combo_box(self.hourly_ip_combo, self.hourly_start_date, self.hourly_end_date)
+            self._update_hourly_sort_indicator()
+        elif current_tab_name == "multidim_stats_tab":
+            self._populate_ip_combo_box(self.multidim_ip_combo, self.multidim_start_date, self.multidim_end_date)
+
     def _perform_ip_activity_query(self):
-        """执行按IP活跃度统计查询。"""
+        # (代码无变化)
         start_date = self.ip_activity_start_date.date().toString(Qt.DateFormat.ISODate)
         end_date = self.ip_activity_end_date.date().toString(Qt.DateFormat.ISODate)
-        
-        QCoreApplication.processEvents()
+        self._set_loading_state(self.ip_activity_table, "来源IP", "数量")
         logging.info(f"正在查询按IP活跃度排行榜 (日期: {start_date} - {end_date})...")
-
         results = self.db_service.get_stats_by_ip_activity(start_date, end_date)
-        
         self._update_stats_table(self.ip_activity_table, results, ["source_ip", "count"])
         logging.info(f"按IP活跃度排行榜查询完成，共 {len(results)} 个活跃IP。")
 
-    # 【核心修改】执行按IP按小时统计查询，现在支持日期范围
-    def _perform_ip_hour_stats_query(self):
-        """执行按IP按小时统计查询。"""
-        ip_address = self.ip_hour_ip_edit.text().strip()
-        start_date = self.ip_hour_start_date.date().toString(Qt.DateFormat.ISODate)
-        end_date = self.ip_hour_end_date.date().toString(Qt.DateFormat.ISODate)
-
+    def _perform_hourly_stats_query(self):
+        # (代码无变化)
+        ip_address = self.hourly_ip_combo.currentText().strip()
+        start_date = self.hourly_start_date.date().toString(Qt.DateFormat.ISODate)
+        end_date = self.hourly_end_date.date().toString(Qt.DateFormat.ISODate)
+        self._set_loading_state(self.hourly_stats_table, "小时", "数量")
         if not ip_address:
-            QCoreApplication.processEvents()
-            self._update_stats_table(self.ip_hour_stats_table, [], ["小时", "数量"])
-            logging.warning("IP按小时统计：IP地址为空，请填写IP地址。")
+            logging.warning("按小时分析：IP地址为空。")
+            self._update_stats_table(self.hourly_stats_table, [], ["hour", "count"])
             return
+        if ip_address == ALL_IPS_OPTION:
+            logging.info(f"正在查询全局按小时统计 (日期: {start_date} - {end_date})...")
+            results = self.db_service.get_stats_by_hour(start_date, end_date)
+        else:
+            logging.info(f"正在查询IP {ip_address} 的按小时统计 (日期: {start_date} - {end_date})...")
+            results = self.db_service.get_stats_by_ip_and_hour(ip_address, start_date, end_date)
+        if results:
+            reverse_order = (self.hourly_sort_direction == 'DESC')
+            results.sort(key=lambda x: x[self.hourly_sort_column], reverse=reverse_order)
+        self._update_stats_table(self.hourly_stats_table, results, ["hour", "count"])
+        self._update_hourly_sort_indicator()
+        logging.info(f"按小时统计查询完成，共 {len(results)} 小时数据。")
 
+    def _perform_multidim_stats_query(self):
+        # (代码无变化)
+        ip_address = self.multidim_ip_combo.currentText().strip()
+        start_date = self.multidim_start_date.date().toString(Qt.DateFormat.ISODate)
+        end_date = self.multidim_end_date.date().toString(Qt.DateFormat.ISODate)
+        self.multidim_stats_tree.clear()
+        self.multidim_stats_tree.setHeaderLabels(["分析维度 (加载中...)", "告警数量"])
         QCoreApplication.processEvents()
-        logging.info(f"正在查询IP {ip_address} 在 {start_date} 到 {end_date} 的按小时统计...")
+        if not ip_address:
+            logging.warning("多维分析：IP地址为空。")
+            self.multidim_stats_tree.setHeaderLabels(["分析维度 (无数据)", "告警数量"])
+            return
+        query_ip = None if ip_address == ALL_IPS_OPTION else ip_address
+        logging.info(f"正在查询多维按小时统计 (IP: {ip_address}, 日期: {start_date} - {end_date})...")
+        results = self.db_service.get_detailed_hourly_stats(start_date, end_date, query_ip)
+        self._populate_multidim_tree(results)
+        self.multidim_stats_tree.setHeaderLabels(["分析维度", "告警数量"])
+        logging.info(f"多维按小时统计查询完成。")
 
-        results = self.db_service.get_stats_by_ip_and_hour(ip_address, start_date, end_date)
-        
-        self._update_stats_table(self.ip_hour_stats_table, results, ["hour", "count"])
-        logging.info(f"IP按小时统计查询完成，共 {len(results)} 小时数据。")
+    def _perform_type_stats_query(self):
+        # (代码无变化)
+        start_date = self.type_start_date.date().toString(Qt.DateFormat.ISODate)
+        end_date = self.type_end_date.date().toString(Qt.DateFormat.ISODate)
+        self._set_loading_state(self.type_stats_table, "告警类型", "数量")
+        logging.info(f"正在查询告警类型排行榜 (日期: {start_date} - {end_date})...")
+        results = self.db_service.get_stats_by_type(start_date, end_date)
+        self._update_stats_table(self.type_stats_table, results, ["type", "count"])
+        logging.info(f"告警类型排行榜查询完成，共 {len(results)} 种类型。")
 
+    # --- 辅助方法 ---
+    
+    def _sort_hourly_table(self, logical_index: int):
+        # (代码无变化)
+        column_map = {0: 'hour', 1: 'count'}
+        new_sort_column = column_map.get(logical_index, 'hour')
+        if self.hourly_sort_column == new_sort_column:
+            self.hourly_sort_direction = 'ASC' if self.hourly_sort_direction == 'DESC' else 'DESC'
+        else:
+            self.hourly_sort_column = new_sort_column
+            self.hourly_sort_direction = 'DESC' if new_sort_column == 'count' else 'ASC'
+        self._perform_hourly_stats_query()
 
-    def _update_stats_table(self, table: QTableWidget, data: List[Dict[str, Any]], column_keys: List[str]):
-        """通用方法：更新统计表格。"""
-        table.setRowCount(0)
+    def _update_hourly_sort_indicator(self):
+        # (代码无变化)
+        header = self.hourly_stats_table.horizontalHeader()
+        column_map_reverse = {'hour': 0, 'count': 1}
+        logical_index = column_map_reverse.get(self.hourly_sort_column)
+        if logical_index is not None:
+            header.setSortIndicatorShown(True)
+            sort_order = Qt.SortOrder.AscendingOrder if self.hourly_sort_direction == 'ASC' else Qt.SortOrder.DescendingOrder
+            header.setSortIndicator(logical_index, sort_order)
+        else:
+            header.setSortIndicatorShown(False)
+
+    def _populate_multidim_tree(self, data: List[Dict[str, Any]]):
+        """将详细统计数据填充到多维分析的 QTreeWidget 中，并应用颜色和默认折叠。"""
+        self.multidim_stats_tree.clear()
         if not data:
             return
+        tree_data = defaultdict(lambda: defaultdict(lambda: defaultdict(int)))
+        for row in data:
+            tree_data[row['hour']][row['severity']][row['type']] = row['count']
+        bold_font = QFont()
+        bold_font.setBold(True)
+        
+        # 【新增】定义不同层级的颜色
+        hour_color = QColor("#003366")      # 深蓝色
+        severity_color = QColor("#8B4513")  # 棕褐色/深橙色
+        
+        self.multidim_stats_tree.setSortingEnabled(False)
+        for hour, severities in sorted(tree_data.items()):
+            hour_total = sum(sum(types.values()) for types in severities.values())
+            hour_text = f"{hour:02d}:00 - {hour:02d}:59"
+            hour_item = QTreeWidgetItem(self.multidim_stats_tree)
+            hour_item.setFont(0, bold_font)
+            hour_item.setFont(1, bold_font)
+            hour_item.setText(0, hour_text)
+            hour_item.setText(1, str(hour_total))
+            # 【新增】为小时节点设置颜色
+            hour_item.setForeground(0, hour_color)
+            hour_item.setForeground(1, hour_color)
+            hour_item.setData(0, Qt.ItemDataRole.UserRole, hour)
+            hour_item.setData(1, Qt.ItemDataRole.UserRole, hour_total)
+            for severity, types in sorted(severities.items()):
+                severity_total = sum(types.values())
+                severity_item = QTreeWidgetItem(hour_item)
+                severity_item.setText(0, f"  - {severity}")
+                severity_item.setText(1, str(severity_total))
+                # 【新增】为严重等级节点设置颜色
+                severity_item.setForeground(0, severity_color)
+                severity_item.setData(1, Qt.ItemDataRole.UserRole, severity_total)
+                for type_name, count in sorted(types.items()):
+                    type_item = QTreeWidgetItem(severity_item)
+                    type_item.setText(0, f"    - {type_name}")
+                    type_item.setText(1, str(count))
+                    type_item.setData(1, Qt.ItemDataRole.UserRole, count)
+        self.multidim_stats_tree.setSortingEnabled(True)
 
+    def _populate_ip_combo_box(self, combo_box: QComboBox, start_date_edit: QDateEdit, end_date_edit: QDateEdit):
+        # (代码无变化)
+        start_date = start_date_edit.date().toString(Qt.DateFormat.ISODate)
+        end_date = end_date_edit.date().toString(Qt.DateFormat.ISODate)
+        distinct_ips = self.db_service.get_distinct_source_ips(start_date, end_date)
+        current_text = combo_box.currentText()
+        combo_box.clear()
+        combo_box.addItem(ALL_IPS_OPTION)
+        if distinct_ips:
+            combo_box.addItems(distinct_ips)
+            logging.info(f"IP地址下拉框 ({combo_box.objectName()}) 已更新，共 {len(distinct_ips)} 个不重复IP。")
+        if current_text in [ALL_IPS_OPTION] + distinct_ips:
+            combo_box.setCurrentText(current_text)
+        elif current_text:
+            combo_box.setEditText(current_text)
+        else:
+            combo_box.setCurrentIndex(0)
+
+    def _on_ip_combo_changed_for_hourly(self, index: int):
+        # (代码无变化)
+        if self.tab_loaded_flags.get("hourly_stats_tab", False):
+            self._perform_hourly_stats_query()
+
+    def _on_ip_combo_changed_for_multidim(self, index: int):
+        # (代码无变化)
+        if self.tab_loaded_flags.get("multidim_stats_tab", False):
+            self._perform_multidim_stats_query()
+
+    def _set_loading_state(self, table: QTableWidget, col1_text: str, col2_text: str):
+        # (代码无变化)
+        table.setRowCount(0)
+        table.setHorizontalHeaderLabels([col1_text, f"{col2_text} (加载中...)"])
+        QCoreApplication.processEvents()
+
+    def _update_stats_table(self, table: QTableWidget, data: List[Dict[str, Any]], column_keys: List[str]):
+        # (代码无变化)
+        table.setRowCount(0)
+        col1_text = column_keys[0].capitalize().replace('_', ' ')
+        col2_text = column_keys[1].capitalize().replace('_', ' ')
+        if not data:
+            table.setHorizontalHeaderLabels([f"{col1_text} (无数据)", col2_text])
+            return
+        table.setHorizontalHeaderLabels([col1_text, col2_text])
         table.setColumnCount(len(column_keys))
-        table.setHorizontalHeaderLabels([col.capitalize().replace('_', ' ') for col in column_keys])
-
         for row_idx, record in enumerate(data):
             table.insertRow(row_idx)
             for col_idx, key in enumerate(column_keys):
-                item = QTableWidgetItem(str(record.get(key, 'N/A')))
+                item_text = str(record.get(key, 'N/A'))
+                item = QTableWidgetItem(item_text)
+                if isinstance(record.get(key), (int, float)):
+                    item.setData(Qt.ItemDataRole.UserRole, record.get(key))
                 table.setItem(row_idx, col_idx, item)
         table.resizeColumnsToContents()
 ```
@@ -1744,12 +2386,13 @@ class AlertsPageWidget(QWidget):
 
     def show_history_dialog(self):
         """创建并显示历史记录对话框。"""
-        # 将对话框作为窗口的子项，确保其生命周期管理和居中显示
+        # 【修改】将主窗口作为父窗口传递，确保对话框居中显示且生命周期受主窗口管理
         dialog = HistoryDialog(self.db_service, self.config_service, self.window())
         dialog.exec() # exec()使其成为模态对话框
 
     def show_statistics_dialog(self):
         """创建并显示统计分析对话框。"""
+        # 【修改】将主窗口作为父窗口传递
         dialog = StatisticsDialog(self.db_service, self.config_service, self.window())
         dialog.exec() # exec()使其成为模态对话框
 
@@ -1763,6 +2406,7 @@ class AlertsPageWidget(QWidget):
     def _load_history_on_startup(self):
         """在程序启动时，根据配置加载历史告警记录。"""
         try:
+            # 【修改】从InfoService部分读取load_history_on_startup配置
             limit_str = self.config_service.get_value("InfoService", "load_history_on_startup", "100")
             limit = int(limit_str)
             if limit > 0:
@@ -1777,7 +2421,7 @@ class AlertsPageWidget(QWidget):
     def add_alert(self, alert_data: dict, is_history: bool = False):
         """公开的槽函数，用于向表格添加新行并根据严重等级上色。"""
         timestamp = alert_data.get('timestamp')
-        if not timestamp or not is_history:
+        if not timestamp or not is_history: # 只有非历史记录才自动获取当前时间
             timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
 
         self.table.insertRow(0) # 在顶部插入新行
