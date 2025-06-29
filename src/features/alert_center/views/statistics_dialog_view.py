@@ -1,0 +1,186 @@
+# desktop_center/src/features/alert_center/views/statistics_dialog_view.py
+from PySide6.QtWidgets import (QDialog, QVBoxLayout, QLabel, QTabWidget, QWidget, 
+                               QHBoxLayout, QDateEdit, QPushButton, QTreeWidget, 
+                               QTreeWidgetItem, QHeaderView, QComboBox, QTableWidget, 
+                               QTableWidgetItem)
+from PySide6.QtCore import Qt, QDate, QCoreApplication, Signal, Slot
+from PySide6.QtGui import QColor, QFont
+
+ALL_IPS_OPTION = "【全部IP】" # UI常量
+
+class StatisticsDialogView(QDialog):
+    """
+    【视图】统计分析对话框。
+    纯UI组件，负责展示数据和发送用户操作信号。
+    """
+    # --- Signals to Controller ---
+    tab_changed = Signal(int)
+    query_requested = Signal(str) # "ip_activity", "hourly", "multidim", "type"
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("统计分析")
+        self.setMinimumSize(800, 600)
+        self._init_ui()
+        self.tab_widget.currentChanged.connect(self.tab_changed.emit)
+
+    def _init_ui(self):
+        main_layout = QVBoxLayout(self)
+        self.tab_widget = QTabWidget()
+        main_layout.addWidget(self.tab_widget)
+
+        self.ip_activity_tab = self._setup_tab("ip_activity_tab", self._create_ip_activity_table())
+        self.hourly_stats_tab = self._setup_tab("hourly_stats_tab", self._create_hourly_stats_table(), has_ip_combo=True)
+        self.multidim_stats_tab = self._setup_tab("multidim_stats_tab", self._create_multidim_stats_tree(), has_ip_combo=True, has_expand_buttons=True)
+        self.type_stats_tab = self._setup_tab("type_stats_tab", self._create_type_stats_table())
+
+        self.tab_widget.addTab(self.ip_activity_tab, "按IP活跃度排行榜")
+        self.tab_widget.addTab(self.hourly_stats_tab, "按小时分析")
+        self.tab_widget.addTab(self.multidim_stats_tab, "多维分析")
+        self.tab_widget.addTab(self.type_stats_tab, "告警类型排行榜")
+
+    def _setup_tab(self, name: str, content_widget: QWidget, has_ip_combo=False, has_expand_buttons=False) -> QWidget:
+        tab = QWidget()
+        tab.setObjectName(name)
+        layout = QVBoxLayout(tab)
+        
+        filter_layout = QHBoxLayout()
+        if has_ip_combo:
+            filter_layout.addWidget(QLabel("IP地址:"))
+            combo = QComboBox()
+            combo.setEditable(True)
+            combo.setPlaceholderText("请选择或输入IP地址")
+            combo.setMinimumWidth(150)
+            filter_layout.addWidget(combo)
+            setattr(self, f"{name}_ip_combo", combo)
+
+        filter_layout.addWidget(QLabel("日期范围:"))
+        start_date = QDateEdit(calendarPopup=True)
+        start_date.setDate(QDate.currentDate().addDays(-7))
+        filter_layout.addWidget(start_date)
+        setattr(self, f"{name}_start_date", start_date)
+
+        filter_layout.addWidget(QLabel("到"))
+        end_date = QDateEdit(calendarPopup=True)
+        end_date.setDate(QDate.currentDate())
+        filter_layout.addWidget(end_date)
+        setattr(self, f"{name}_end_date", end_date)
+
+        query_button = QPushButton("查询")
+        query_button.clicked.connect(lambda: self.query_requested.emit(name))
+        filter_layout.addWidget(query_button)
+
+        if has_expand_buttons:
+            filter_layout.addStretch()
+            expand_button = QPushButton("展开全部")
+            collapse_button = QPushButton("折叠全部")
+            expand_button.clicked.connect(content_widget.expandAll)
+            collapse_button.clicked.connect(content_widget.collapseAll)
+            filter_layout.addWidget(expand_button)
+            filter_layout.addWidget(collapse_button)
+        else:
+             filter_layout.addStretch()
+
+        layout.addLayout(filter_layout)
+        layout.addWidget(content_widget)
+        setattr(self, f"{name}_content", content_widget)
+        return tab
+
+    def _create_ip_activity_table(self):
+        table = QTableWidget()
+        table.setColumnCount(2)
+        table.setHorizontalHeaderLabels(["来源IP", "数量"])
+        table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+        return table
+
+    def _create_hourly_stats_table(self):
+        table = QTableWidget()
+        table.setColumnCount(2)
+        table.setHorizontalHeaderLabels(["小时", "数量"])
+        table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+        table.horizontalHeader().setSectionsClickable(True)
+        return table
+
+    def _create_multidim_stats_tree(self):
+        tree = QTreeWidget()
+        tree.setColumnCount(2)
+        tree.setHeaderLabels(["分析维度", "告警数量"])
+        tree.header().setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
+        tree.setSortingEnabled(True)
+        return tree
+
+    def _create_type_stats_table(self):
+        table = QTableWidget()
+        table.setColumnCount(2)
+        table.setHorizontalHeaderLabels(["告警类型", "数量"])
+        table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+        return table
+
+    @Slot(list)
+    def update_ip_activity_table(self, data: list):
+        self._update_simple_table(self.ip_activity_tab_content, data, ["source_ip", "count"])
+
+    @Slot(list)
+    def update_hourly_stats_table(self, data: list):
+        self._update_simple_table(self.hourly_stats_tab_content, data, ["hour", "count"])
+
+    @Slot(list)
+    def update_type_stats_table(self, data: list):
+        self._update_simple_table(self.type_stats_tab_content, data, ["type", "count"])
+
+    def _update_simple_table(self, table: QTableWidget, data: list, keys: list):
+        table.setRowCount(0)
+        table.setSortingEnabled(False)
+        for row_idx, record in enumerate(data):
+            table.insertRow(row_idx)
+            for col_idx, key in enumerate(keys):
+                table.setItem(row_idx, col_idx, QTableWidgetItem(str(record.get(key, 'N/A'))))
+        table.setSortingEnabled(True)
+        table.resizeColumnsToContents()
+
+    @Slot(dict)
+    def populate_multidim_tree(self, tree_data: dict):
+        tree: QTreeWidget = self.multidim_stats_tab_content
+        tree.clear()
+        tree.setSortingEnabled(False)
+        bold_font = QFont()
+        bold_font.setBold(True)
+        
+        for hour, severities in tree_data.items():
+            hour_total = sum(sum(types.values()) for types in severities.values())
+            hour_item = QTreeWidgetItem(tree, [f"{hour:02d}:00 - {hour:02d}:59", str(hour_total)])
+            hour_item.setFont(0, bold_font)
+            hour_item.setFont(1, bold_font)
+            for severity, types in severities.items():
+                severity_total = sum(types.values())
+                severity_item = QTreeWidgetItem(hour_item, [f"  - {severity}", str(severity_total)])
+                for type_name, count in types.items():
+                    QTreeWidgetItem(severity_item, [f"    - {type_name}", str(count)])
+        tree.setSortingEnabled(True)
+
+    @Slot(list)
+    def update_ip_combo_box(self, combo: QComboBox, ip_list: list):
+        current_text = combo.currentText()
+        combo.clear()
+        combo.addItem(ALL_IPS_OPTION)
+        if ip_list:
+            combo.addItems(ip_list)
+        if current_text in [ALL_IPS_OPTION] + ip_list:
+            combo.setCurrentText(current_text)
+        elif current_text:
+            combo.setEditText(current_text)
+        else:
+            combo.setCurrentIndex(0)
+            
+    def get_filter_parameters(self, name: str) -> dict:
+        start_date_edit = getattr(self, f"{name}_start_date")
+        end_date_edit = getattr(self, f"{name}_end_date")
+        params = {
+            "start_date": start_date_edit.date().toString(Qt.DateFormat.ISODate),
+            "end_date": end_date_edit.date().toString(Qt.DateFormat.ISODate),
+        }
+        if hasattr(self, f"{name}_ip_combo"):
+            combo = getattr(self, f"{name}_ip_combo")
+            ip_address = combo.currentText().strip()
+            params["ip_address"] = None if ip_address == ALL_IPS_OPTION else ip_address
+        return params
