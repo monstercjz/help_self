@@ -4,6 +4,7 @@ from PySide6.QtWidgets import (QDialog, QVBoxLayout, QLabel, QTableWidget, QTabl
                                QHeaderView, QHBoxLayout, QDateEdit, QLineEdit, QPushButton, 
                                QComboBox, QRadioButton, QButtonGroup, QMenu, QApplication, 
                                QMessageBox, QFileDialog)
+# 从QtCore导入Signal
 from PySide6.QtCore import Qt, QDate, QCoreApplication, Signal, QPoint, Slot
 from PySide6.QtGui import QColor
 
@@ -20,6 +21,8 @@ class HistoryDialogView(QDialog):
     export_requested = Signal(dict)
     delete_alerts_requested = Signal(list)
     page_size_changed = Signal(int)
+    # 定义当严重等级筛选变化时发出的信号
+    severity_filter_changed = Signal()
     
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -120,6 +123,9 @@ class HistoryDialogView(QDialog):
         # Connect internal UI signals that don't need a controller
         self.table.doubleClicked.connect(self._show_full_message)
         self.table.customContextMenuRequested.connect(self._show_context_menu)
+        
+        # 【变更】使用lambda函数作为适配器，忽略buttonClicked信号发出的参数
+        self.severity_buttons.buttonClicked.connect(lambda: self.severity_filter_changed.emit())
 
     @Slot(list)
     def update_table(self, data: list):

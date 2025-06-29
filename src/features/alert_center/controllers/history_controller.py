@@ -34,6 +34,9 @@ class HistoryController(QObject):
         self.view.export_button.clicked.connect(self._export_data)
         self.view.delete_selected_button.clicked.connect(self._delete_selected_alerts)
 
+        # 【新增】连接严重等级筛选变化的信号到查询槽
+        self.view.severity_filter_changed.connect(self._on_query_button_clicked)
+
         # 分页按钮
         self.view.first_page_button.clicked.connect(lambda: self._go_to_page(1))
         self.view.prev_page_button.clicked.connect(lambda: self._go_to_page(self.model.current_page - 1))
@@ -66,7 +69,7 @@ class HistoryController(QObject):
 
     @Slot()
     def _on_query_button_clicked(self):
-        """响应查询按钮点击，重置到第一页并搜索。"""
+        """响应查询按钮或筛选条件变化，重置到第一页并搜索。"""
         self.model.current_page = 1
         self._perform_search()
 
