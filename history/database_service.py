@@ -13,6 +13,9 @@ class DatabaseService:
         self.db_path = db_path
         self.conn = None
         try:
+            # check_same_thread=False 允许跨线程访问，但需要开发者自行管理并发，
+            # 在PySide的信号槽机制下，通常是主线程操作UI，子线程操作数据，需要小心。
+            # 对于简单的读写，通常问题不大，但如果存在大量并发写入，可能需要加锁。
             self.conn = sqlite3.connect(self.db_path, check_same_thread=False)
             self.conn.row_factory = sqlite3.Row
             logging.info(f"数据库连接已成功建立: {self.db_path}")
@@ -37,10 +40,12 @@ class DatabaseService:
                     message TEXT
                 )
             """)
+            # 【新增】为常用查询字段创建索引，提高查询性能
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_alerts_timestamp ON alerts (timestamp DESC)")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_alerts_severity ON alerts (severity)")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_alerts_type ON alerts (type)")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_alerts_source_ip ON alerts (source_ip)")
+
             self.conn.commit()
             logging.info("数据库表 'alerts' 初始化完成，并创建了索引。")
         except sqlite3.Error as e:
@@ -86,7 +91,7 @@ class DatabaseService:
         try:
             cursor = self.conn.cursor()
             cursor.execute("DELETE FROM alerts")
-            cursor.execute("DELETE FROM sqlite_sequence WHERE name='alerts'")
+            cursor.execute("DELETE FROM sqlite_sequence WHERE name='alerts'") # 重置自增ID
             self.conn.commit()
             logging.info("数据库'alerts'表中的所有记录已被清除。")
             return True
@@ -94,12 +99,17 @@ class DatabaseService:
             logging.error(f"清空数据库表失败: {e}", exc_info=True)
             return False
             
+    # 【新增】根据ID列表删除告警记录
     def delete_alerts_by_ids(self, alert_ids: List[int]) -> bool:
         """
         根据提供的ID列表删除告警记录。
+        Args:
+            alert_ids (List[int]): 要删除的告警记录ID列表。
+        Returns:
+            bool: 如果删除成功则返回 True，否则返回 False。
         """
         if not alert_ids:
-            return True
+            return True # 没有ID，视为成功（没有需要删除的）
         
         placeholders = ','.join('?' for _ in alert_ids)
         sql = f"DELETE FROM alerts WHERE id IN ({placeholders})"
@@ -257,77 +267,18 @@ class DatabaseService:
         except sqlite3.Error as e:
             logging.error(f"按IP活跃度统计查询失败: {e}", exc_info=True)
             return []
-    
-    # 【核心修正】恢复被误删的方法 get_stats_by_hour
-    def get_stats_by_hour(self, start_date: str, end_date: str) -> List[Dict[str, Any]]:
-        """
-        统计指定日期范围内每小时的告警数量 (全局)。
-        """
-        sql = """
-            SELECT
-                CAST(strftime('%H', timestamp) AS INTEGER) AS hour,
-                COUNT(*) AS count
-            FROM
-                alerts
-            WHERE
-                timestamp >= ? AND timestamp <= ?
-            GROUP BY
-                hour
-            ORDER BY
-                hour ASC
-        """
-        try:
-            cursor = self.conn.cursor()
-            cursor.execute(sql, (start_date + " 00:00:00", end_date + " 23:59:59"))
-            rows = cursor.fetchall()
             
-            hourly_counts = {row['hour']: row['count'] for row in rows}
-            full_24_hours_results = []
-            for h in range(24):
-                full_24_hours_results.append({'hour': h, 'count': hourly_counts.get(h, 0)})
-            
-            return full_24_hours_results
-        except sqlite3.Error as e:
-            logging.error(f"全局按小时统计查询失败: {e}", exc_info=True)
-            return []
-            
-    # 【核心修正】恢复被误删的方法 get_stats_by_ip_and_hour
-    def get_stats_by_ip_and_hour(self, ip_address: str, start_date: str, end_date: str) -> List[Dict[str, Any]]:
-        """
-        统计指定IP在指定日期范围内每小时的告警数量。
-        """
-        sql = """
-            SELECT
-                CAST(strftime('%H', timestamp) AS INTEGER) AS hour,
-                COUNT(*) AS count
-            FROM
-                alerts
-            WHERE
-                source_ip = ? AND timestamp >= ? AND timestamp <= ?
-            GROUP BY
-                hour
-            ORDER BY
-                hour ASC
-        """
-        try:
-            cursor = self.conn.cursor()
-            cursor.execute(sql, (ip_address, start_date + " 00:00:00", end_date + " 23:59:59"))
-            rows = cursor.fetchall()
-            
-            hourly_counts = {row['hour']: row['count'] for row in rows}
-            full_24_hours_stats = []
-            for hour in range(24):
-                full_24_hours_stats.append({'hour': hour, 'count': hourly_counts.get(hour, 0)})
-            
-            return full_24_hours_stats
-        except sqlite3.Error as e:
-            logging.error(f"按IP按小时统计查询失败: {e}", exc_info=True)
-            return []
-
     # 【新增】获取详细的、按小时、级别和类型分组的统计数据
     def get_detailed_hourly_stats(self, start_date: str, end_date: str, ip_address: str = None) -> List[Dict[str, Any]]:
         """
         获取指定日期范围内按小时、严重等级和类型分组的详细告警统计。
+        Args:
+            start_date (str): 起始日期 (YYYY-MM-DD)。
+            end_date (str): 结束日期 (YYYY-MM-DD)。
+            ip_address (str, optional): 如果提供，则只统计该IP的告警。默认为 None (统计所有IP)。
+        Returns:
+            List[Dict[str, Any]]: 一个字典列表，每个字典包含 hour, severity, type 和 count。
+            例如: [{'hour': 8, 'severity': 'CRITICAL', 'type': 'Login Failed', 'count': 5}, ...]
         """
         sql_parts = [
             "SELECT",
@@ -340,6 +291,7 @@ class DatabaseService:
         ]
         params = [start_date + " 00:00:00", end_date + " 23:59:59"]
 
+        # 如果指定了IP地址，则添加到查询条件
         if ip_address:
             sql_parts.append("AND source_ip = ?")
             params.append(ip_address)
