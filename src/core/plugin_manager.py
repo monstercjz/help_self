@@ -2,6 +2,8 @@
 import importlib
 import pkgutil
 import logging
+from PySide6.QtWidgets import QWidget
+from PySide6.QtCore import QThread
 from src.core.plugin_interface import IFeaturePlugin
 
 class PluginManager:
@@ -35,7 +37,6 @@ class PluginManager:
     def initialize_plugins(self):
         """初始化所有已加载的插件。"""
         logging.info("[STEP 2.2] PluginManager: 开始初始化所有已加载的插件...")
-        # 【修改】使用新的 load_priority() 方法进行排序，移除硬编码依赖
         self.plugins.sort(key=lambda p: p.load_priority())
         logging.info(f"  - 插件将按以下优先级顺序初始化: {[p.name() for p in self.plugins]}")
         
@@ -44,14 +45,24 @@ class PluginManager:
                 logging.info(f"  - 正在初始化插件: '{plugin.name()}' (优先级: {plugin.load_priority()})...")
                 plugin.initialize(self.context)
                 
+                # 【修改】对插件返回值进行健壮性检查
                 page_widget = plugin.get_page_widget()
                 if page_widget:
-                    self.context.main_window.add_page(plugin.display_name(), page_widget)
-                    logging.info(f"    - 插件 '{plugin.name()}' 的主页面已添加到主窗口。")
+                    if isinstance(page_widget, QWidget):
+                        self.context.main_window.add_page(plugin.display_name(), page_widget)
+                        logging.info(f"    - 插件 '{plugin.name()}' 的主页面已添加到主窗口。")
+                    else:
+                        logging.warning(f"    - 插件 '{plugin.name()}' 的 get_page_widget() 返回的不是有效QWidget，已忽略。")
 
-                for service in plugin.get_background_services():
-                    service.start()
-                    logging.info(f"    - 已启动插件 '{plugin.name()}' 的后台服务: {type(service).__name__}")
+                background_services = plugin.get_background_services()
+                if background_services:
+                    for service in background_services:
+                        if isinstance(service, QThread) and hasattr(service, 'start'):
+                            service.start()
+                            logging.info(f"    - 已启动插件 '{plugin.name()}' 的后台服务: {type(service).__name__}")
+                        else:
+                            logging.warning(f"    - 插件 '{plugin.name()}' 返回的后台服务 {type(service).__name__} 不是有效的QThread，已忽略。")
+                
                 logging.info(f"  - 插件 '{plugin.name()}' 初始化完成。")
             except Exception as e:
                 logging.error(f"初始化插件 {plugin.name()} 失败: {e}", exc_info=True)

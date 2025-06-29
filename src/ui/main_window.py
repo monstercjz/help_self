@@ -1,7 +1,8 @@
 # desktop_center/src/ui/main_window.py
-import logging  # 【新增】添加对logging模块的导入
-from PySide6.QtWidgets import (QMainWindow, QWidget, QListWidget, QListWidgetItem, 
-                               QHBoxLayout, QStackedWidget)
+import logging
+# 【新增】导入 QApplication 以便访问屏幕信息
+from PySide6.QtWidgets import (QApplication, QMainWindow, QWidget, QListWidget, 
+                               QListWidgetItem, QHBoxLayout, QStackedWidget)
 from PySide6.QtCore import QEvent, QSize
 
 class MainWindow(QMainWindow):
@@ -87,3 +88,21 @@ class MainWindow(QMainWindow):
         logging.info("关闭事件触发：隐藏主窗口到系统托盘。")
         event.ignore()  # 忽略默认的关闭行为（即退出）
         self.hide()     # 将窗口隐藏
+
+    def center_on_screen(self) -> None:
+        """
+        【新增】将窗口移动到主屏幕的中央。
+        """
+        try:
+            # 获取主屏幕的几何信息
+            screen_geometry = QApplication.primaryScreen().geometry()
+            # 获取窗口自身的几何信息 (包括标题栏)
+            window_geometry = self.frameGeometry()
+            # 计算居中位置
+            center_point = screen_geometry.center()
+            window_geometry.moveCenter(center_point)
+            # 移动窗口到计算出的位置
+            self.move(window_geometry.topLeft())
+            logging.info(f"主窗口已居中到屏幕位置: {window_geometry.topLeft().toTuple()}")
+        except Exception as e:
+            logging.warning(f"无法自动居中窗口: {e}", exc_info=True)

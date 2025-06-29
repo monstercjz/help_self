@@ -80,7 +80,9 @@ desktop_center/
     │
     └── utils/                  # 【平台级工具】
         ├── __init__.py
+        ├── exception_handler.py
         └── tray_manager.py
+        
 - 终极解耦: “告警中心”和未来的“进程排序器”完全不知道对方的存在。它们只与平台核心的接口和上下文交互。
 - 可扩展性极强:
     添加新功能: 只需在 src/features/ 目录下创建一个新文件夹，实现 IFeaturePlugin 接口，应用重启后就会自动加载，无需修改任何核心代码。
@@ -100,152 +102,252 @@ src/services: 公共设施。
 ```python
 # desktop_center/app.py
 import sys
+import os
 import logging
-from PySide6.QtWidgets import QApplication
+import configparser
+from PySide6.QtWidgets import QApplication, QMessageBox
 
-# 导入平台核心组件
-from src.core.context import ApplicationContext
-from src.core.plugin_manager import PluginManager
-from src.ui.main_window import MainWindow
-from src.utils.tray_manager import TrayManager
-from src.ui.action_manager import ActionManager
+# --- 1. 导入项目核心模块 ---
+# 遵循先导入服务、再导入UI、最后导入管理器的逻辑顺序
 from src.services.config_service import ConfigService
 from src.services.database_service import DatabaseService
+from src.services.notification_service import NotificationService
+from src.ui.main_window import MainWindow
 from src.ui.settings_page import SettingsPageWidget
+from src.ui.action_manager import ActionManager
+from src.utils.tray_manager import TrayManager
+from src.utils.exception_handler import setup_exception_handler
+from src.core.context import ApplicationContext
+from src.core.plugin_manager import PluginManager
 
-# --- 全局应用程序常量 ---
-APP_NAME = "Desktop Control & Monitoring Center"
-APP_VERSION = "5.2.2-Stability-Fix" # 版本号更新
+
+# --- 2. 全局应用程序常量 ---
+# 将所有硬编码的字符串和配置集中在此处，便于管理
+APP_VERSION = "5.3.8-Code-Refinement"
+APP_NAME_DEFAULT = "Desktop Control & Monitoring Center"
 CONFIG_FILE = 'config.ini'
-ICON_FILE = 'icon.png'
-LOG_FILE = 'app.log'
 DB_FILE = 'history.db'
+LOG_FILE = 'app.log'
+PNG_ICON_FILE = 'icon.png'  # 用于窗口、托盘等
+ICO_ICON_FILE = 'icon.ico'  # 专门用于Windows原生通知
+
 
 def setup_logging():
-    """配置全局日志记录器。"""
+    """
+    配置全局日志记录器。
+    此函数设计为在应用生命周期中最早被调用，它会预读配置文件以获取日志级别。
+    """
+    # 默认日志级别，以防配置文件无法读取
+    log_level_str = "INFO"
+    
+    # 步骤1: 预加载配置以获取日志级别，不实例化完整的ConfigService
+    try:
+        pre_parser = configparser.ConfigParser()
+        if pre_parser.read(CONFIG_FILE, encoding='utf-8-sig'):
+            log_level_str = pre_parser.get('Logging', 'level', fallback='INFO').upper()
+    except (configparser.Error, IOError):
+        # 即使日志系统尚未完全建立，也可以使用Python的内置警告
+        import warnings
+        warnings.warn(f"无法预读配置文件 '{CONFIG_FILE}' 以获取日志级别，将使用默认的 'INFO' 级别。")
+
+    # 步骤2: 将字符串级别转换为logging模块的常量
+    log_level = getattr(logging, log_level_str, logging.INFO)
+
+    # 步骤3: 配置日志系统
     logging.basicConfig(
-        level=logging.INFO,
+        level=log_level,
         format='%(asctime)s - %(levelname)s - [%(threadName)s] - %(message)s',
         handlers=[
             logging.FileHandler(LOG_FILE, encoding='utf-8', mode='a'),
             logging.StreamHandler(sys.stdout)
         ]
     )
-    logging.info("="*80)
+    # 打印启动横幅
+    logging.info("=" * 80)
     logging.info(f"--- 应用程序启动流程开始 (v{APP_VERSION}) ---")
-    logging.info("="*80)
-    logging.info("[STEP 0] 日志系统初始化完成。")
+    logging.info("=" * 80)
+    logging.info(f"[STEP 0] 日志系统初始化完成。日志级别设置为: {log_level_str}")
+
 
 class ApplicationOrchestrator:
-    """【平台核心】应用协调器，负责组装平台和加载插件。"""
+    """
+    【平台核心】应用协调器。
+    
+    这是整个应用程序的“大脑”，负责以正确的顺序组装所有核心组件、
+    服务和UI，加载插件，并管理应用的生命周期（启动、运行、关闭）。
+    """
     def __init__(self):
+        """初始化整个应用程序的架构。"""
         logging.info("[STEP 1.0] ApplicationOrchestrator: 开始初始化平台核心...")
 
-        logging.info("[STEP 1.1] 初始化Qt Application实例。")
-        self.app = QApplication(sys.argv)
-        self.app.setQuitOnLastWindowClosed(False)
+        # --- 1.1 基础环境准备 ---
+        # 计算所有资源文件的绝对路径，以避免在不同工作目录下出现问题
+        project_root = os.path.dirname(os.path.abspath(__file__))
+        self.config_path = os.path.join(project_root, CONFIG_FILE)
+        self.db_path = os.path.join(project_root, DB_FILE)
+        self.png_icon_path = os.path.join(project_root, PNG_ICON_FILE)
+        self.ico_icon_path = os.path.join(project_root, ICO_ICON_FILE)
+        logging.info("  - 基础路径计算完成。")
 
-        logging.info("[STEP 1.2] 初始化平台级核心服务 (Config, Database)。")
-        self.config_service = ConfigService(CONFIG_FILE)
+        # --- 1.2 初始化Qt应用实例 ---
+        self.app = QApplication(sys.argv)
+        self.app.setQuitOnLastWindowClosed(False) # 确保关闭主窗口时应用不退出
+        logging.info("  - Qt Application实例初始化完成。")
+
+        # --- 1.3 初始化核心后台服务 ---
+        # 这些服务不依赖UI，是应用的基础数据和配置提供者
+        self.config_service = ConfigService(self.config_path)
         try:
-            self.db_service = DatabaseService(DB_FILE)
+            self.db_service = DatabaseService(self.db_path)
             self.db_service.init_db()
         except Exception as e:
             logging.critical(f"数据库服务初始化失败，程序无法启动: {e}", exc_info=True)
             sys.exit(1)
-
-        logging.info("[STEP 1.3] 初始化平台级核心UI (MainWindow, TrayManager, ActionManager)。")
-        self.window = MainWindow()
-        self.window.setWindowTitle(self.config_service.get_value("General", "app_name", APP_NAME))
-        self.tray_manager = TrayManager(self.app, self.window, ICON_FILE)
-        self.action_manager = ActionManager(self.app)
         
-        # 【新增】将托盘管理器的退出请求信号连接到应用程序的退出槽
-        # 这是解决跨线程调用GUI问题的关键步骤
-        self.tray_manager.quit_requested.connect(self.app.quit)
-        logging.info("[STEP 1.3.1] TrayManager退出信号已连接到主应用退出槽。")
+        # 通知服务依赖于配置服务，因此在其后初始化
+        app_name = self.config_service.get_value("General", "app_name", APP_NAME_DEFAULT)
+        self.notification_service = NotificationService(
+            app_name=app_name,
+            app_icon=self.ico_icon_path,
+            config_service=self.config_service
+        )
+        logging.info("  - 核心后台服务 (Config, Database, Notification) 初始化完成。")
 
+        # --- 1.4 初始化核心UI组件 ---
+        # 这些是平台级的UI元素，所有插件都可能与之交互
+        self.window = MainWindow()
+        self.window.setWindowTitle(app_name)
+        self.tray_manager = TrayManager(self.app, self.window, self.png_icon_path)
+        self.action_manager = ActionManager(self.app)
+        logging.info("  - 核心UI组件 (MainWindow, TrayManager, ActionManager) 初始化完成。")
 
-        logging.info("[STEP 1.4] 创建共享的 ApplicationContext。")
+        # --- 1.5 创建共享上下文 (ApplicationContext) ---
+        # 这是整个架构的核心，它像一个“工具箱”，被传递给所有插件，
+        # 使插件能够安全地访问所有共享的平台资源。
         self.context = ApplicationContext(
             app=self.app,
             main_window=self.window,
             config_service=self.config_service,
             db_service=self.db_service,
             tray_manager=self.tray_manager,
-            action_manager=self.action_manager
+            action_manager=self.action_manager,
+            notification_service=self.notification_service
         )
+        logging.info("  - 共享的 ApplicationContext 创建完成。")
 
-        logging.info("[STEP 1.5] 初始化插件管理器 (PluginManager)。")
+        # --- 1.6 初始化插件系统 ---
         self.plugin_manager = PluginManager(self.context)
-        
-        logging.info("[STEP 2.0] ApplicationOrchestrator: 开始加载和初始化插件...")
+        logging.info("[STEP 2.0] 开始加载和初始化所有插件...")
         self.plugin_manager.load_plugins()
         self.plugin_manager.initialize_plugins()
-        logging.info("[STEP 2.3] ApplicationOrchestrator: 所有插件加载和初始化完毕。")
+        logging.info("[STEP 2.3] 所有插件加载和初始化完毕。")
         
-        logging.info("[STEP 4.0] 添加平台级页面 (如设置页面)。")
+        # --- 1.7 添加平台级页面 ---
+        # 某些页面（如“设置”）是平台的一部分，不属于任何插件
+        logging.info("[STEP 3.0] 添加平台级页面...")
         self._add_core_pages()
 
-        logging.info("[STEP 4.1] 连接应用程序退出信号。")
+        # --- 1.8 连接全局信号与槽 ---
+        # 这是最后一步，将所有组件连接起来，形成完整的应用逻辑
+        logging.info("[STEP 4.0] 连接应用程序全局信号...")
+        self.tray_manager.quit_requested.connect(self.app.quit)
         self.app.aboutToQuit.connect(self.shutdown)
-        logging.info("[STEP 4.2] 平台核心初始化流程结束。")
+        logging.info("  - 信号连接完成。")
+        
+        logging.info("[STEP 4.1] 平台核心初始化流程结束。")
 
     def _add_core_pages(self):
-        """添加不属于任何插件的核心页面。"""
+        """将不属于任何插件的核心页面（如设置页面）添加到主窗口。"""
         self.settings_page = SettingsPageWidget(self.config_service)
         self.window.add_page("设置", self.settings_page)
         logging.info("  - 核心页面 '设置' 已添加。")
 
     def run(self):
-        """启动应用程序的事件循环。"""
-        logging.info("[STEP 5.0] 显示主窗口并启动Qt事件循环...")
+        """启动应用程序的事件循环，并处理启动时的UI逻辑。"""
+        logging.info("[STEP 5.0] 启动Qt事件循环...")
         try:
+            # 启动托盘图标的后台监听
             self.tray_manager.run()
+            
+            # 发送启动通知（如果配置允许）
+            if self.config_service.get_value("General", "show_startup_notification", "true").lower() == 'true':
+                self.context.notification_service.show(
+                    title=f"{self.window.windowTitle()} 已启动",
+                    message="程序正在后台运行。您可以通过系统托盘图标访问主窗口或退出程序。"
+                )
+
+            # 根据配置决定是显示主窗口还是最小化启动
             if self.config_service.get_value("General", "start_minimized", "false").lower() != 'true':
+                self.window.center_on_screen()
                 self.window.show()
+                
+            # 阻塞并开始执行Qt事件循环
             sys.exit(self.app.exec())
         except Exception as e:
             logging.critical(f"应用程序顶层发生未捕获的异常: {e}", exc_info=True)
             sys.exit(1)
 
     def shutdown(self):
-        """安全关闭应用，先关闭插件，再关闭核心服务。"""
+        """执行安全的关闭流程，确保所有资源被正确释放。"""
         logging.info("[STEP 6.0] 应用程序关闭流程开始...")
-        logging.info("[STEP 6.1] 关闭所有插件。")
+        logging.info("  - [6.1] 关闭所有插件...")
         self.plugin_manager.shutdown_plugins()
-        logging.info("[STEP 6.2] 关闭数据库服务。")
+        logging.info("  - [6.2] 关闭数据库服务...")
         self.db_service.close()
         logging.info("[STEP 6.3] 应用程序关闭流程结束。")
 
 
 if __name__ == '__main__':
-    setup_logging()
-    main_app = ApplicationOrchestrator()
-    main_app.run()
+    """应用程序的主入口点。"""
+    try:
+        # 确保所有相对路径都是基于此文件所在目录的
+        os.chdir(os.path.dirname(os.path.abspath(__file__)))
+        
+        # 1. 优先设置日志记录，以便记录所有后续步骤
+        setup_logging()
+        
+        # 2. 其次设置全局异常处理，作为最后一道安全防线
+        setup_exception_handler()
+        
+        # 3. 实例化并运行应用协调器
+        main_app = ApplicationOrchestrator()
+        main_app.run()
+        
+    except Exception as e:
+        # 这个except块用于捕获在ApplicationOrchestrator初始化期间发生的、
+        # 无法被全局异常钩子捕获的致命错误。
+        logging.critical(f"应用程序在初始化阶段发生致命错误，无法启动: {e}", exc_info=True)
+        QMessageBox.critical(None, "启动失败", f"应用程序无法启动，请查看日志文件 app.log 获取详情。\n\n错误: {e}")
+        sys.exit(1)
 ```
 
 ## context.py
 
 ```python
-# src/core/context.py
+# desktop_center/src/core/context.py
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
 from PySide6.QtWidgets import QApplication
-from src.services.config_service import ConfigService
-from src.services.database_service import DatabaseService
-from src.ui.main_window import MainWindow
-from src.utils.tray_manager import TrayManager
-from src.ui.action_manager import ActionManager
+
+# 【修改】使用类型检查块来避免循环导入
+if TYPE_CHECKING:
+    from src.services.config_service import ConfigService
+    from src.services.database_service import DatabaseService
+    from src.services.notification_service import NotificationService
+    from src.ui.main_window import MainWindow
+    from src.utils.tray_manager import TrayManager
+    from src.ui.action_manager import ActionManager
 
 @dataclass
 class ApplicationContext:
     """一个数据类，持有所有核心/共享服务和组件的引用，供插件使用。"""
     app: QApplication
-    main_window: MainWindow
-    config_service: ConfigService
-    db_service: DatabaseService
-    tray_manager: TrayManager
-    action_manager: ActionManager
+    main_window: 'MainWindow'
+    config_service: 'ConfigService'
+    db_service: 'DatabaseService'
+    tray_manager: 'TrayManager'
+    action_manager: 'ActionManager'
+    notification_service: 'NotificationService' # 【新增】通知服务引用
 ```
 ## plugin_interface.py
 
@@ -256,38 +358,111 @@ from PySide6.QtWidgets import QWidget
 from .context import ApplicationContext
 
 class IFeaturePlugin(ABC):
-    """所有功能插件必须实现的接口。"""
+    """
+    【文档化】所有功能插件必须实现的接口（契约）。
+
+    这个接口定义了一个插件的基本行为和与平台核心交互的方式。
+    平台核心通过这些方法来识别、加载、初始化和关闭插件。
+    """
     
     @abstractmethod
     def name(self) -> str:
-        """返回插件的唯一名称，用于内部识别。"""
+        """
+        返回插件的唯一内部名称。
+
+        这个名称用于日志记录、内部管理和插件间的唯一识别。
+        它应该是简短、无空格的ASCII字符串，例如 "alert_center"。
+
+        Returns:
+            str: 插件的唯一标识符。
+        """
         pass
 
     @abstractmethod
     def display_name(self) -> str:
-        """返回显示在UI上的名称（如导航栏标题）。"""
+        """
+        返回插件在用户界面上显示的名称。
+
+        这个名称将用于主窗口的导航栏、菜单项等面向用户的地方。
+        它可以是任何UTF-8字符串，例如 "告警中心"。
+
+        Returns:
+            str: 插件的显示名称。
+        """
         pass
         
     @abstractmethod
     def load_priority(self) -> int:
         """
-        【新增】返回插件的加载优先级。数字越小，优先级越高。
-        例如：核心服务插件=0, 普通功能=100, 依赖其他插件的功能=200。
+        返回插件的加载优先级，数字越小，优先级越高。
+
+        这个值决定了插件 `initialize` 方法的调用顺序。
+        如果插件A依赖于插件B，则插件B的优先级应高于（即数值小于）插件A。
+
+        建议使用以下范围：
+        - 0-99: 核心服务型插件
+        - 100-199: 普通独立功能插件
+        - 200+: 依赖其他插件的功能插件
+
+        Returns:
+            int: 加载优先级。
         """
         pass
 
     def initialize(self, context: ApplicationContext):
+        """
+        初始化插件。
+
+        平台核心在加载所有插件后会调用此方法。插件应该在这里：
+        1. 保存 `context` 的引用，以便后续访问共享服务。
+        2. 创建并准备其UI页面（如果需要）。
+        3. 创建并准备其后台服务（如果需要）。
+        4. 注册全局动作到 `ActionManager`。
+        5. 连接到核心或其他服务的信号。
+
+        Args:
+            context (ApplicationContext): 包含所有共享服务和组件的应用上下文。
+        """
         self.context = context
         self.background_services = []
         self.page_widget = None
 
     def get_page_widget(self) -> QWidget | None:
+        """
+        返回此插件的主UI页面控件实例。
+
+        如果插件没有UI页面，应返回 `None`。
+        返回的控件将被添加到主窗口的内容区域。
+
+        Returns:
+            QWidget | None: 插件的UI页面实例或None。
+        """
         return self.page_widget
 
     def get_background_services(self) -> list:
+        """
+        返回此插件需要在后台运行的服务列表。
+
+        这些服务通常是继承自 `QThread` 的对象。
+        平台核心会自动调用每个服务的 `start()` 方法。
+
+        Returns:
+            list: 需要在后台运行的服务实例列表。
+        """
         return self.background_services
 
     def shutdown(self):
+        """
+        在应用程序关闭时，安全地关闭插件。
+
+        平台核心在退出前会调用此方法。插件应该在这里：
+        1. 停止并等待所有后台线程结束。
+        2. 断开所有信号连接。
+        3. 释放所有持有的资源。
+
+        默认实现会尝试优雅地停止 `get_background_services()` 返回的服务。
+        如果插件有更复杂的关闭逻辑，应重写此方法。
+        """
         for service in self.background_services:
             if hasattr(service, 'running') and hasattr(service, 'quit'):
                 if service.running:
@@ -303,6 +478,8 @@ class IFeaturePlugin(ABC):
 import importlib
 import pkgutil
 import logging
+from PySide6.QtWidgets import QWidget
+from PySide6.QtCore import QThread
 from src.core.plugin_interface import IFeaturePlugin
 
 class PluginManager:
@@ -336,7 +513,6 @@ class PluginManager:
     def initialize_plugins(self):
         """初始化所有已加载的插件。"""
         logging.info("[STEP 2.2] PluginManager: 开始初始化所有已加载的插件...")
-        # 【修改】使用新的 load_priority() 方法进行排序，移除硬编码依赖
         self.plugins.sort(key=lambda p: p.load_priority())
         logging.info(f"  - 插件将按以下优先级顺序初始化: {[p.name() for p in self.plugins]}")
         
@@ -345,14 +521,24 @@ class PluginManager:
                 logging.info(f"  - 正在初始化插件: '{plugin.name()}' (优先级: {plugin.load_priority()})...")
                 plugin.initialize(self.context)
                 
+                # 【修改】对插件返回值进行健壮性检查
                 page_widget = plugin.get_page_widget()
                 if page_widget:
-                    self.context.main_window.add_page(plugin.display_name(), page_widget)
-                    logging.info(f"    - 插件 '{plugin.name()}' 的主页面已添加到主窗口。")
+                    if isinstance(page_widget, QWidget):
+                        self.context.main_window.add_page(plugin.display_name(), page_widget)
+                        logging.info(f"    - 插件 '{plugin.name()}' 的主页面已添加到主窗口。")
+                    else:
+                        logging.warning(f"    - 插件 '{plugin.name()}' 的 get_page_widget() 返回的不是有效QWidget，已忽略。")
 
-                for service in plugin.get_background_services():
-                    service.start()
-                    logging.info(f"    - 已启动插件 '{plugin.name()}' 的后台服务: {type(service).__name__}")
+                background_services = plugin.get_background_services()
+                if background_services:
+                    for service in background_services:
+                        if isinstance(service, QThread) and hasattr(service, 'start'):
+                            service.start()
+                            logging.info(f"    - 已启动插件 '{plugin.name()}' 的后台服务: {type(service).__name__}")
+                        else:
+                            logging.warning(f"    - 插件 '{plugin.name()}' 返回的后台服务 {type(service).__name__} 不是有效的QThread，已忽略。")
+                
                 logging.info(f"  - 插件 '{plugin.name()}' 初始化完成。")
             except Exception as e:
                 logging.error(f"初始化插件 {plugin.name()} 失败: {e}", exc_info=True)
@@ -365,7 +551,6 @@ class PluginManager:
                 logging.info(f"  - 插件 '{plugin.name()}' 已成功关闭。")
             except Exception as e:
                 logging.error(f"关闭插件 {plugin.name()} 时发生错误: {e}", exc_info=True)
-
 ```
 
 ## config_service.py
@@ -454,9 +639,10 @@ class ConfigService:
 
 ```python
 # desktop_center/src/ui/main_window.py
-import logging  # 【新增】添加对logging模块的导入
-from PySide6.QtWidgets import (QMainWindow, QWidget, QListWidget, QListWidgetItem, 
-                               QHBoxLayout, QStackedWidget)
+import logging
+# 【新增】导入 QApplication 以便访问屏幕信息
+from PySide6.QtWidgets import (QApplication, QMainWindow, QWidget, QListWidget, 
+                               QListWidgetItem, QHBoxLayout, QStackedWidget)
 from PySide6.QtCore import QEvent, QSize
 
 class MainWindow(QMainWindow):
@@ -542,6 +728,24 @@ class MainWindow(QMainWindow):
         logging.info("关闭事件触发：隐藏主窗口到系统托盘。")
         event.ignore()  # 忽略默认的关闭行为（即退出）
         self.hide()     # 将窗口隐藏
+
+    def center_on_screen(self) -> None:
+        """
+        【新增】将窗口移动到主屏幕的中央。
+        """
+        try:
+            # 获取主屏幕的几何信息
+            screen_geometry = QApplication.primaryScreen().geometry()
+            # 获取窗口自身的几何信息 (包括标题栏)
+            window_geometry = self.frameGeometry()
+            # 计算居中位置
+            center_point = screen_geometry.center()
+            window_geometry.moveCenter(center_point)
+            # 移动窗口到计算出的位置
+            self.move(window_geometry.topLeft())
+            logging.info(f"主窗口已居中到屏幕位置: {window_geometry.topLeft().toTuple()}")
+        except Exception as e:
+            logging.warning(f"无法自动居中窗口: {e}", exc_info=True)
 ```
 
 ## action_manager.py
@@ -602,19 +806,23 @@ from PySide6.QtCore import Qt, QEvent
 
 from src.services.config_service import ConfigService
 
-# 【核心修改】元数据结构现在与最终的config.ini完全匹配
+# 【修改】元数据结构添加 "default" 字段
 SETTING_METADATA = {
     "General": {
-        "app_name": {"widget": "lineedit", "label": "应用程序名称"},
-        "start_minimized": {"widget": "combobox", "label": "启动时最小化", "items": ["禁用", "启用"], "map": {"启用": "true", "禁用": "false"}}
+        "app_name": {"widget": "lineedit", "label": "应用程序名称", "default": "Desktop Control & Monitoring Center"},
+        "start_minimized": {"widget": "combobox", "label": "启动时最小化", "items": ["禁用", "启用"], "map": {"启用": "true", "禁用": "false"}, "default": "false"}
     },
-    "InfoService": { # 新的统一区段
-        "host": {"widget": "lineedit", "label": "监听地址", "col": 0},
-        "port": {"widget": "spinbox", "label": "监听端口", "min": 1024, "max": 65535, "col": 0},
-        "enable_desktop_popup": {"widget": "combobox", "label": "桌面弹窗通知", "items": ["禁用", "启用"], "map": {"启用": "true", "禁用": "false"}, "col": 0},
-        "popup_timeout": {"widget": "spinbox", "label": "弹窗显示时长 (秒)", "min": 1, "max": 300, "col": 1},
-        "notification_level": {"widget": "combobox", "label": "通知级别阈值", "items": ["INFO", "WARNING", "CRITICAL"], "col": 1},
-        "load_history_on_startup": {"widget": "combobox", "label": "启动时加载历史", "items": ["不加载", "加载最近50条", "加载最近100条", "加载最近500条"], "map": {"不加载": "0", "加载最近50条": "50", "加载最近100条": "100", "加载最近500条": "500"}, "col": 1}
+    # 【新增】日志设置的元数据
+    "Logging": {
+        "level": {"widget": "combobox", "label": "日志级别", "items": ["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"], "default": "INFO"}
+    },
+    "InfoService": {
+        "host": {"widget": "lineedit", "label": "监听地址", "col": 0, "default": "0.0.0.0"},
+        "port": {"widget": "spinbox", "label": "监听端口", "min": 1024, "max": 65535, "col": 0, "default": 9527},
+        "enable_desktop_popup": {"widget": "combobox", "label": "桌面弹窗通知", "items": ["禁用", "启用"], "map": {"启用": "true", "禁用": "false"}, "col": 0, "default": "true"},
+        "popup_timeout": {"widget": "spinbox", "label": "弹窗显示时长 (秒)", "min": 1, "max": 300, "col": 1, "default": 10},
+        "notification_level": {"widget": "combobox", "label": "通知级别阈值", "items": ["INFO", "WARNING", "CRITICAL"], "col": 1, "default": "INFO"},
+        "load_history_on_startup": {"widget": "combobox", "label": "启动时加载历史", "items": ["不加载", "加载最近50条", "加载最近100条", "加载最近500条"], "map": {"不加载": "0", "加载最近50条": "50", "加载最近100条": "100", "加载最近500条": "500"}, "col": 1, "default": "100"}
     }
 }
 
@@ -662,41 +870,40 @@ class SettingsPageWidget(QWidget):
 
         self.installEventFilter(self)
 
-    # 【核心修改】UI创建逻辑大幅简化
     def _create_setting_cards(self):
         """根据元数据动态创建所有设置卡片。"""
-        for section, options_meta in SETTING_METADATA.items():
-            card = QGroupBox(section)
-            card.setStyleSheet("""
-                QGroupBox { font-size: 16px; font-weight: bold; color: #333; background-color: #fcfcfc; border: 1px solid #e0e0e0; border-radius: 8px; margin-top: 10px; }
-                QGroupBox::title { subcontrol-origin: margin; subcontrol-position: top left; padding: 0 10px; left: 10px; background-color: #fcfcfc; }
-            """)
-            
-            # 【核心修改】根据section名，选择不同的布局策略
-            if section == "InfoService":
-                self._populate_multi_column_layout(card, section, options_meta)
-            else:
-                form_layout = QFormLayout(card)
-                form_layout.setSpacing(12)
-                form_layout.setContentsMargins(20, 30, 20, 20)
-                self._populate_form_layout(form_layout, section, options_meta)
-            
-            self.settings_layout.addWidget(card)
+        # 【修改】确保卡片按预定顺序创建
+        ordered_sections = ["General", "Logging", "InfoService"]
+        for section in ordered_sections:
+            if section in SETTING_METADATA:
+                options_meta = SETTING_METADATA[section]
+                card = QGroupBox(section)
+                card.setStyleSheet("""
+                    QGroupBox { font-size: 16px; font-weight: bold; color: #333; background-color: #fcfcfc; border: 1px solid #e0e0e0; border-radius: 8px; margin-top: 10px; }
+                    QGroupBox::title { subcontrol-origin: margin; subcontrol-position: top left; padding: 0 10px; left: 10px; background-color: #fcfcfc; }
+                """)
+                
+                if section == "InfoService":
+                    self._populate_multi_column_layout(card, section, options_meta)
+                else:
+                    form_layout = QFormLayout(card)
+                    form_layout.setSpacing(12)
+                    form_layout.setContentsMargins(20, 30, 20, 20)
+                    self._populate_form_layout(form_layout, section, options_meta)
+                
+                self.settings_layout.addWidget(card)
 
     def _populate_multi_column_layout(self, parent_group: QGroupBox, section_name: str, options_meta: dict):
         """为InfoService卡片创建多列布局。"""
-        # 主水平布局
         main_hbox = QHBoxLayout(parent_group)
         main_hbox.setSpacing(40)
         main_hbox.setContentsMargins(20, 30, 20, 20)
 
-        # 创建两个垂直的表单布局作为列
         column1_layout = QFormLayout()
         column1_layout.setSpacing(12)
         column2_layout = QFormLayout()
         column2_layout.setSpacing(12)
 
-        # 根据元数据中的 'col' 键，将控件分配到不同的列
         for key, meta in options_meta.items():
             target_layout = column1_layout if meta.get("col", 0) == 0 else column2_layout
             self._add_widget_to_form(target_layout, section_name, key, meta)
@@ -726,32 +933,44 @@ class SettingsPageWidget(QWidget):
         elif widget_type == "combobox":
             editor_widget = QComboBox()
             editor_widget.addItems(meta["items"])
-            editor_widget.setMaximumWidth(200) # 稍微减小最大宽度
+            editor_widget.setMaximumWidth(200)
 
         if editor_widget:
             form_layout.addRow(QLabel(f"{label_text}:"), editor_widget)
             self.editors[section_name][key] = editor_widget
-
-    # ... (其他方法保持不变, 逻辑上不再需要做任何特殊处理)
 
     def _load_settings_to_ui(self):
         logging.info("正在同步全局设置页面UI...")
         for section, options in self.editors.items():
             for key, widget in options.items():
                 meta = SETTING_METADATA[section][key]
-                current_value = self.config_service.get_value(section, key)
+                # 【修改】使用元数据中的 'default' 作为 fallback
+                default_value = meta.get("default")
+                if isinstance(default_value, int): default_value = str(default_value)
+                
+                current_value = self.config_service.get_value(section, key, fallback=default_value)
 
                 if isinstance(widget, QLineEdit):
                     widget.setText(current_value)
                 elif isinstance(widget, QSpinBox):
+                    # 【修改】确保即使是默认值也能被正确处理
                     widget.setValue(int(current_value) if current_value and current_value.isdigit() else meta.get("min", 0))
                 elif isinstance(widget, QComboBox):
                     if "map" in meta:
-                        display_text = next((text for text, val in meta["map"].items() if val == current_value), meta["items"][0])
+                        display_text = next((text for text, val in meta["map"].items() if val == str(current_value)), None)
+                        # 如果找不到映射，尝试直接匹配文本
+                        if display_text is None and current_value in meta["items"]:
+                            display_text = current_value
+                        # 如果还找不到，就用默认值的映射
+                        if display_text is None:
+                            display_text = next((text for text, val in meta["map"].items() if val == str(default_value)), meta["items"][0])
                         widget.setCurrentText(display_text)
                     else:
                         if current_value in meta["items"]:
                             widget.setCurrentText(current_value)
+                        else:
+                            widget.setCurrentText(str(default_value))
+
 
     def eventFilter(self, obj, event: QEvent) -> bool:
         if obj is self and event.type() == QEvent.Type.Show:
@@ -779,7 +998,7 @@ class SettingsPageWidget(QWidget):
                         self.config_service.set_option(section, key, value)
             
             if self.config_service.save_config():
-                QMessageBox.information(self, "成功", "所有设置已成功保存！")
+                QMessageBox.information(self, "成功", "所有设置已成功保存！\n部分设置（如日志级别）需要重启应用才能生效。")
             else:
                 QMessageBox.warning(self, "失败", "保存设置时发生错误，请查看日志。")
         except Exception as e:
@@ -793,21 +1012,17 @@ class SettingsPageWidget(QWidget):
 ```python
 # desktop_center/src/utils/tray_manager.py
 import logging
-import os
-# 【新增】导入 QObject 和 Signal 以实现线程安全的信号/槽机制
 from PySide6.QtCore import QObject, Signal
 from PySide6.QtWidgets import QApplication
 from PySide6.QtGui import QIcon
 from pystray import MenuItem, Icon
 from PIL import Image
 
-# 【修改】使 TrayManager 继承自 QObject，以便使用信号
 class TrayManager(QObject):
     """
     负责管理系统托盘图标及其菜单。
     这是一个独立的组件，控制着应用的显示、隐藏和退出逻辑。
     """
-    # 【新增】定义一个信号，用于从后台线程向主线程请求退出
     quit_requested = Signal()
 
     def __init__(self, app: QApplication, window: 'MainWindow', icon_path: str):
@@ -822,7 +1037,6 @@ class TrayManager(QObject):
         Raises:
             FileNotFoundError: 如果图标文件不存在。
         """
-        # 【新增】必须调用父类QObject的构造函数
         super().__init__()
         
         self.app = app
@@ -845,9 +1059,17 @@ class TrayManager(QObject):
         logging.info("系统托盘管理器初始化完成。")
 
     def run(self) -> None:
-        """在后台线程中启动托盘图标的事件监听。"""
-        self.tray_icon.run_detached()
-        logging.info("系统托盘图标已在独立线程中运行。")
+        """
+        【修改】在后台线程中启动托盘图标的事件监听，并增加异常处理。
+        """
+        try:
+            self.tray_icon.run_detached()
+            logging.info("系统托盘图标已在独立线程中运行。")
+        except Exception as e:
+            # 捕获 pystray 启动时可能发生的任何错误 (例如在无头服务器上)
+            logging.critical(f"启动系统托盘图标失败: {e}", exc_info=True)
+            self.quit_requested.emit()
+
 
     def show_window(self) -> None:
         """从托盘菜单显示并激活主窗口。"""
@@ -857,19 +1079,63 @@ class TrayManager(QObject):
 
     def quit_app(self) -> None:
         """
-        【修改】安全地请求退出整个应用程序。
-        此方法在pystray的后台线程中被调用。
-        它发射一个信号，该信号连接到主线程中的槽，以避免跨线程GUI调用。
+        安全地请求退出整个应用程序。
         """
         logging.info("通过托盘菜单请求退出应用程序...")
         
-        # 1. 停止pystray图标的事件循环。
         self.tray_icon.stop()
         logging.info("pystray图标已停止。")
         
-        # 2. 【修改】发射信号，请求主线程执行退出操作，而不是直接调用。
         logging.info("正在发射信号以触发应用程序的优雅关闭流程...")
         self.quit_requested.emit()
+```
+
+## exception_handler.py
+
+```python
+# desktop_center/src/utils/exception_handler.py
+import sys
+import logging
+import traceback
+from PySide6.QtWidgets import QMessageBox
+
+def global_exception_hook(exctype, value, tb):
+    """
+    全局异常处理钩子。当任何线程中出现未被捕获的异常时，此函数将被调用。
+    """
+    # 格式化异常信息
+    traceback_details = "".join(traceback.format_exception(exctype, value, tb))
+    
+    # 记录致命错误日志
+    logging.critical(f"捕获到未处理的全局异常:\n{traceback_details}")
+
+    # 准备向用户显示的消息
+    error_message = (
+        "应用程序遇到了一个严重错误，需要关闭。\n\n"
+        "我们对此造成的不便深表歉意。\n\n"
+        f"错误类型: {exctype.__name__}\n"
+        f"错误信息: {value}\n\n"
+        "详细信息已记录到 app.log 文件中，请联系技术支持。"
+    )
+
+    # 显示一个阻塞的错误消息框
+    # 注意: 这个QMessageBox是在异常发生后创建的，可能在非GUI线程中。
+    # Qt通常能处理这种情况，但最稳妥的方式是确保它在主线程显示。
+    # 在这个简单场景下，直接显示通常是可行的。
+    error_box = QMessageBox()
+    error_box.setIcon(QMessageBox.Icon.Critical)
+    error_box.setWindowTitle("应用程序严重错误")
+    error_box.setText(error_message)
+    error_box.setStandardButtons(QMessageBox.StandardButton.Ok)
+    error_box.exec()
+
+    # 退出应用程序
+    sys.exit(1)
+
+def setup_exception_handler():
+    """设置全局异常钩子。"""
+    sys.excepthook = global_exception_hook
+    logging.info("全局异常处理器已设置。")
 ```
 
 ## 目前需要做的
