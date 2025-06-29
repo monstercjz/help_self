@@ -48,7 +48,7 @@ class TrayManager(QObject):
 
     def run(self) -> None:
         """
-        【修改】在后台线程中启动托盘图标的事件监听，并增加异常处理。
+        在后台线程中启动托盘图标的事件监听，并增加异常处理。
         """
         try:
             self.tray_icon.run_detached()
@@ -58,6 +58,11 @@ class TrayManager(QObject):
             logging.critical(f"启动系统托盘图标失败: {e}", exc_info=True)
             self.quit_requested.emit()
 
+    def stop_icon(self) -> None:
+        """【新增】停止pystray图标的公共方法，由应用协调器调用。"""
+        if self.tray_icon.visible:
+            self.tray_icon.stop()
+            logging.info("pystray图标已停止。")
 
     def show_window(self) -> None:
         """从托盘菜单显示并激活主窗口。"""
@@ -67,12 +72,13 @@ class TrayManager(QObject):
 
     def quit_app(self) -> None:
         """
-        安全地请求退出整个应用程序。
+        【变更】安全地请求退出整个应用程序。
+        此方法现在只负责发出信号，将实际的关闭操作完全委托给应用协调器。
         """
         logging.info("通过托盘菜单请求退出应用程序...")
         
-        self.tray_icon.stop()
-        logging.info("pystray图标已停止。")
+        # 【变更】移除此处的stop调用，关闭操作由ApplicationOrchestrator.shutdown统一处理。
+        # self.tray_icon.stop()
         
         logging.info("正在发射信号以触发应用程序的优雅关闭流程...")
         self.quit_requested.emit()

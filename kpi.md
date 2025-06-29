@@ -17,7 +17,7 @@
 检查代码是否正确、符合任务范围，避免副作用。
 保证代码风格与现有代码保持一致，防止引入回归问题。明确确认此改动是否会影响到下游流程。
 - 5.清晰交付成果
-做好代码变更的版本日志，做好新增及变化代码相应的注释，严禁随意删除已有注释。
+做好代码变更的版本日志，做好新增及变化代码相应的注释，严禁随意修改删除已有注释。
 总结变更内容及其原因。
 列出所有被修改的文件及每个文件的具体改动。如果有任何假设或风险，请明确标注以供评审。
 最终提交的代码应该是涉及到代码变更的整个代码文件，禁止提供有折叠的不完整代码块。
@@ -70,6 +70,7 @@ desktop_center/
     ├── services/               # 【共享服务】
     │   ├── __init__.py
     │   ├── config_service.py
+        ├── notification_service.py
     │   └── database_service.py
     │
     ├── ui/                     # 【平台级UI和共享组件】
@@ -250,6 +251,7 @@ class ApplicationOrchestrator:
         # --- 1.8 连接全局信号与槽 ---
         # 这是最后一步，将所有组件连接起来，形成完整的应用逻辑
         logging.info("[STEP 4.0] 连接应用程序全局信号...")
+        # 【变更】将信号连接放在启动后台服务之前，避免竞态条件
         self.tray_manager.quit_requested.connect(self.app.quit)
         self.app.aboutToQuit.connect(self.shutdown)
         logging.info("  - 信号连接完成。")
@@ -267,6 +269,7 @@ class ApplicationOrchestrator:
         logging.info("[STEP 5.0] 启动Qt事件循环...")
         try:
             # 启动托盘图标的后台监听
+            # 【变更】信号已在init阶段连接，此处只负责启动
             self.tray_manager.run()
             
             # 发送启动通知（如果配置允许）
@@ -288,13 +291,22 @@ class ApplicationOrchestrator:
             sys.exit(1)
 
     def shutdown(self):
-        """执行安全的关闭流程，确保所有资源被正确释放。"""
+        """
+        【变更】执行集中的、安全的关闭流程，确保所有资源被正确释放。
+        """
         logging.info("[STEP 6.0] 应用程序关闭流程开始...")
-        logging.info("  - [6.1] 关闭所有插件...")
+        
+        logging.info("  - [6.1] 停止系统托盘图标...")
+        # 【新增】将托盘图标的关闭操作集中到此处
+        self.tray_manager.stop_icon()
+        
+        logging.info("  - [6.2] 关闭所有插件...")
         self.plugin_manager.shutdown_plugins()
-        logging.info("  - [6.2] 关闭数据库服务...")
+        
+        logging.info("  - [6.3] 关闭数据库服务...")
         self.db_service.close()
-        logging.info("[STEP 6.3] 应用程序关闭流程结束。")
+        
+        logging.info("[STEP 6.4] 应用程序关闭流程结束。")
 
 
 if __name__ == '__main__':
@@ -1060,7 +1072,7 @@ class TrayManager(QObject):
 
     def run(self) -> None:
         """
-        【修改】在后台线程中启动托盘图标的事件监听，并增加异常处理。
+        在后台线程中启动托盘图标的事件监听，并增加异常处理。
         """
         try:
             self.tray_icon.run_detached()
@@ -1070,6 +1082,11 @@ class TrayManager(QObject):
             logging.critical(f"启动系统托盘图标失败: {e}", exc_info=True)
             self.quit_requested.emit()
 
+    def stop_icon(self) -> None:
+        """【新增】停止pystray图标的公共方法，由应用协调器调用。"""
+        if self.tray_icon.visible:
+            self.tray_icon.stop()
+            logging.info("pystray图标已停止。")
 
     def show_window(self) -> None:
         """从托盘菜单显示并激活主窗口。"""
@@ -1079,12 +1096,13 @@ class TrayManager(QObject):
 
     def quit_app(self) -> None:
         """
-        安全地请求退出整个应用程序。
+        【变更】安全地请求退出整个应用程序。
+        此方法现在只负责发出信号，将实际的关闭操作完全委托给应用协调器。
         """
         logging.info("通过托盘菜单请求退出应用程序...")
         
-        self.tray_icon.stop()
-        logging.info("pystray图标已停止。")
+        # 【变更】移除此处的stop调用，关闭操作由ApplicationOrchestrator.shutdown统一处理。
+        # self.tray_icon.stop()
         
         logging.info("正在发射信号以触发应用程序的优雅关闭流程...")
         self.quit_requested.emit()
@@ -1137,6 +1155,70 @@ def setup_exception_handler():
     sys.excepthook = global_exception_hook
     logging.info("全局异常处理器已设置。")
 ```
+## notification_service.py
 
+```python
+# desktop_center/src/services/notification_service.py
+import logging
+import os
+from plyer import notification
+from src.services.config_service import ConfigService
+
+class NotificationService:
+    """
+    负责管理和显示桌面弹窗通知的核心服务。
+    此版本使用系统的原生通知功能，通过 'plyer' 库实现。
+    """
+    def __init__(self, app_name: str, app_icon: str, config_service: ConfigService):
+        """
+        初始化通知服务。
+
+        Args:
+            app_name (str): 应用程序的名称，将显示在通知中。
+            app_icon (str): 指向应用程序图标文件的路径 (.ico for Windows)。
+            config_service (ConfigService): 配置服务实例。
+        """
+        self.app_name = app_name
+        self.app_icon = app_icon
+        self.config_service = config_service
+        logging.info("通知服务 (NotificationService) 初始化完成。")
+
+    def show(self, title: str, message: str, level: str = 'INFO'):
+        """
+        供所有插件调用的公共接口，用于显示一个系统原生通知。
+
+        Args:
+            title (str): 通知的标题。
+            message (str): 通知的主体内容。
+            level (str, optional): 通知的级别（暂未使用，为未来扩展保留）。
+        """
+        # 1. 检查全局配置是否允许弹窗
+        if self.config_service.get_value("InfoService", "enable_desktop_popup", "true").lower() != 'true':
+            logging.info("桌面通知被全局禁用，本次通知已忽略。")
+            return
+
+        # 2. 检查通知级别是否满足阈值 (未来可扩展)
+        # ...
+
+        # 3. 调用plyer发送通知
+        try:
+            # 确保图标文件存在
+            icon_path = self.app_icon if os.path.exists(self.app_icon) else ''
+            
+            timeout_str = self.config_service.get_value("InfoService", "popup_timeout", "10")
+            timeout = int(timeout_str) if timeout_str.isdigit() else 10
+            
+            notification.notify(
+                title=title,
+                message=message,
+                app_name=self.app_name,
+                app_icon=icon_path,
+                timeout=timeout
+            )
+            logging.info(f"已发送系统通知: title='{title}'")
+        except Exception as e:
+            # plyer在某些环境下（如无GUI的服务器或缺少依赖）可能会失败
+            logging.error(f"发送系统通知时发生错误: {e}", exc_info=True)
+```
 ## 目前需要做的
 分析这个架构是否合理，如果合理，当前我提供的代码中是否有需要完善的点

@@ -148,6 +148,7 @@ class ApplicationOrchestrator:
         # --- 1.8 连接全局信号与槽 ---
         # 这是最后一步，将所有组件连接起来，形成完整的应用逻辑
         logging.info("[STEP 4.0] 连接应用程序全局信号...")
+        # 【变更】将信号连接放在启动后台服务之前，避免竞态条件
         self.tray_manager.quit_requested.connect(self.app.quit)
         self.app.aboutToQuit.connect(self.shutdown)
         logging.info("  - 信号连接完成。")
@@ -165,6 +166,7 @@ class ApplicationOrchestrator:
         logging.info("[STEP 5.0] 启动Qt事件循环...")
         try:
             # 启动托盘图标的后台监听
+            # 【变更】信号已在init阶段连接，此处只负责启动
             self.tray_manager.run()
             
             # 发送启动通知（如果配置允许）
@@ -186,13 +188,22 @@ class ApplicationOrchestrator:
             sys.exit(1)
 
     def shutdown(self):
-        """执行安全的关闭流程，确保所有资源被正确释放。"""
+        """
+        【变更】执行集中的、安全的关闭流程，确保所有资源被正确释放。
+        """
         logging.info("[STEP 6.0] 应用程序关闭流程开始...")
-        logging.info("  - [6.1] 关闭所有插件...")
+        
+        logging.info("  - [6.1] 停止系统托盘图标...")
+        # 【新增】将托盘图标的关闭操作集中到此处
+        self.tray_manager.stop_icon()
+        
+        logging.info("  - [6.2] 关闭所有插件...")
         self.plugin_manager.shutdown_plugins()
-        logging.info("  - [6.2] 关闭数据库服务...")
+        
+        logging.info("  - [6.3] 关闭数据库服务...")
         self.db_service.close()
-        logging.info("[STEP 6.3] 应用程序关闭流程结束。")
+        
+        logging.info("[STEP 6.4] 应用程序关闭流程结束。")
 
 
 if __name__ == '__main__':
