@@ -1,8 +1,7 @@
-# src/core/plugin_manager.py (【修正版】)
+# src/core/plugin_manager.py
 import importlib
 import pkgutil
 import logging
-# 【修正】保持导入风格统一
 from src.core.plugin_interface import IFeaturePlugin
 
 class PluginManager:
@@ -16,6 +15,7 @@ class PluginManager:
         使用 walk_packages 递归地发现并加载所有在 src.features 包下的插件。
         """
         import src.features
+        logging.info("[STEP 2.1] PluginManager: 开始扫描 'src/features' 目录以发现插件...")
         
         for module_info in pkgutil.walk_packages(path=src.features.__path__, prefix=src.features.__name__ + '.'):
             try:
@@ -23,30 +23,34 @@ class PluginManager:
                 for item_name in dir(module):
                     item = getattr(module, item_name)
                     if isinstance(item, type) and issubclass(item, IFeaturePlugin) and item is not IFeaturePlugin:
-                        # 检查插件是否已经加载，防止重复
                         if not any(isinstance(p, item) for p in self.plugins):
                             plugin_instance = item()
                             self.plugins.append(plugin_instance)
-                            logging.info(f"成功加载插件: {plugin_instance.name()} from {module_info.name}")
+                            logging.info(f"  - 插件已发现并加载: {plugin_instance.name()} (from {module_info.name})")
             except Exception as e:
                 logging.error(f"加载插件模块 {module_info.name} 时失败: {e}", exc_info=True)
+        logging.info("[STEP 2.1] PluginManager: 插件扫描和加载完成。")
+
 
     def initialize_plugins(self):
         """初始化所有已加载的插件。"""
-        # 为了让“信息接收中心”排在第一位，可以简单排序
+        logging.info("[STEP 2.2] PluginManager: 开始初始化所有已加载的插件...")
         self.plugins.sort(key=lambda p: p.display_name() != "信息接收中心")
         
         for plugin in self.plugins:
             try:
+                logging.info(f"  - 正在初始化插件: '{plugin.name()}'...")
                 plugin.initialize(self.context)
                 
                 page_widget = plugin.get_page_widget()
                 if page_widget:
                     self.context.main_window.add_page(plugin.display_name(), page_widget)
+                    logging.info(f"    - 插件 '{plugin.name()}' 的主页面已添加到主窗口。")
 
                 for service in plugin.get_background_services():
                     service.start()
-                    logging.info(f"已启动插件 '{plugin.name()}' 的后台服务: {type(service).__name__}")
+                    logging.info(f"    - 已启动插件 '{plugin.name()}' 的后台服务: {type(service).__name__}")
+                logging.info(f"  - 插件 '{plugin.name()}' 初始化完成。")
             except Exception as e:
                 logging.error(f"初始化插件 {plugin.name()} 失败: {e}", exc_info=True)
 
@@ -55,6 +59,6 @@ class PluginManager:
         for plugin in self.plugins:
             try:
                 plugin.shutdown()
-                logging.info(f"插件 {plugin.name()} 已关闭。")
+                logging.info(f"  - 插件 '{plugin.name()}' 已成功关闭。")
             except Exception as e:
                 logging.error(f"关闭插件 {plugin.name()} 时发生错误: {e}", exc_info=True)

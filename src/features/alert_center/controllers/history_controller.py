@@ -1,4 +1,4 @@
-# src/features/alert_center/controllers/history_controller.py
+# src/features/alert_center/controllers/history_controller.py (【已修复】)
 from PySide6.QtCore import QObject, Slot
 from PySide6.QtWidgets import QMessageBox, QFileDialog
 import logging
@@ -56,18 +56,28 @@ class HistoryController(QObject):
                                                    "CSV Files (*.csv)")
         if not file_path: return
         
-        params['page'] = 1
-        params['page_size'] = 9999999 
-        all_results, _ = self.db_service.search_alerts(**params)
+        # 【修复】确保获取所有数据，而不是仅当前页
+        # 复制一份参数，防止修改原始字典
+        export_params = params.copy()
+        export_params['page'] = 1
+        export_params['page_size'] = 9999999 
+        all_results, total = self.db_service.search_alerts(**export_params)
         
+        if not all_results:
+            QMessageBox.information(self.view, "提示", "没有符合当前筛选条件的数据可导出。")
+            return
+            
         try:
             with open(file_path, 'w', newline='', encoding='utf-8') as f:
-                if not all_results:
-                     QMessageBox.information(self.view, "提示", "没有数据可导出。")
-                     return
-                writer = csv.DictWriter(f, fieldnames=all_results[0].keys())
-                writer.writeheader()
-                writer.writerows(all_results)
-            QMessageBox.information(self.view, "成功", f"数据已导出到:\n{file_path}")
+                # 使用视图中定义的表头顺序
+                fieldnames = ["id", "timestamp", "severity", "type", "source_ip", "message"]
+                writer = csv.writer(f)
+                writer.writerow(self.view.table_header_labels) # 写入中文表头
+                
+                for row_data in all_results:
+                    writer.writerow([row_data.get(key, '') for key in fieldnames])
+
+            QMessageBox.information(self.view, "成功", f"共 {len(all_results)} 条数据已导出到:\n{file_path}")
         except Exception as e:
             QMessageBox.critical(self.view, "失败", f"导出失败: {e}")
+            logging.error(f"导出CSV失败: {e}", exc_info=True)
