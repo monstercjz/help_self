@@ -2,7 +2,7 @@
 import logging
 from PySide6.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QPushButton,
                                    QGroupBox, QFormLayout, QSpinBox, QLabel,
-                                   QComboBox, QDialogButtonBox)
+                                   QComboBox, QDialogButtonBox, QLineEdit) # 【修改】新增 QLineEdit
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QScreen
 
@@ -18,7 +18,7 @@ class SettingsDialog(QDialog):
         self.context = context
         self.strategy_manager = strategy_manager
         self.setWindowTitle("排列设置")
-        self.setMinimumWidth(550)
+        self.setMinimumWidth(600)
 
         main_layout = QVBoxLayout(self)
         main_layout.setContentsMargins(20, 20, 20, 20)
@@ -27,8 +27,8 @@ class SettingsDialog(QDialog):
         columns_layout = QHBoxLayout()
         columns_layout.setSpacing(20)
 
-        # --- 左列：网格排列设置 ---
-        grid_group = QGroupBox("网格排列设置")
+        # --- 左列：网格与监控设置 ---
+        grid_group = QGroupBox("网格与监控设置")
         grid_group.setStyleSheet("QGroupBox { font-size: 14px; font-weight: bold; }")
         grid_form_layout = QFormLayout(grid_group)
         grid_form_layout.setSpacing(12)
@@ -56,11 +56,11 @@ class SettingsDialog(QDialog):
         self.cols_spinbox.setMaximumWidth(200)
         grid_form_layout.addRow("列数:", self.cols_spinbox)
         
+        margin_layout = QHBoxLayout()
         self.margin_top_spinbox = QSpinBox(); self.margin_top_spinbox.setRange(-500, 500); self.margin_top_spinbox.setMaximumWidth(60)
         self.margin_bottom_spinbox = QSpinBox(); self.margin_bottom_spinbox.setRange(-500, 500); self.margin_bottom_spinbox.setMaximumWidth(60)
         self.margin_left_spinbox = QSpinBox(); self.margin_left_spinbox.setRange(-500, 500); self.margin_left_spinbox.setMaximumWidth(60)
         self.margin_right_spinbox = QSpinBox(); self.margin_right_spinbox.setRange(-500, 500); self.margin_right_spinbox.setMaximumWidth(60)
-        margin_layout = QHBoxLayout()
         margin_layout.addWidget(QLabel("上:")); margin_layout.addWidget(self.margin_top_spinbox)
         margin_layout.addWidget(QLabel("下:")); margin_layout.addWidget(self.margin_bottom_spinbox)
         margin_layout.addWidget(QLabel("左:")); margin_layout.addWidget(self.margin_left_spinbox)
@@ -68,9 +68,9 @@ class SettingsDialog(QDialog):
         margin_layout.addStretch()
         grid_form_layout.addRow("屏幕边距 (px):", margin_layout)
 
+        spacing_layout = QHBoxLayout()
         self.spacing_horizontal_spinbox = QSpinBox(); self.spacing_horizontal_spinbox.setRange(-100, 100); self.spacing_horizontal_spinbox.setMaximumWidth(80)
         self.spacing_vertical_spinbox = QSpinBox(); self.spacing_vertical_spinbox.setRange(-100, 100); self.spacing_vertical_spinbox.setMaximumWidth(80)
-        spacing_layout = QHBoxLayout()
         spacing_layout.addWidget(QLabel("水平:")); spacing_layout.addWidget(self.spacing_horizontal_spinbox)
         spacing_layout.addWidget(QLabel("垂直:")); spacing_layout.addWidget(self.spacing_vertical_spinbox)
         spacing_layout.addStretch()
@@ -81,11 +81,17 @@ class SettingsDialog(QDialog):
         self.animation_delay_spinbox.setSuffix(" ms")
         self.animation_delay_spinbox.setMaximumWidth(200)
         grid_form_layout.addRow("排列动画延时:", self.animation_delay_spinbox)
+
+        self.monitor_interval_spinbox = QSpinBox()
+        self.monitor_interval_spinbox.setRange(1, 300)
+        self.monitor_interval_spinbox.setSuffix(" 秒")
+        self.monitor_interval_spinbox.setMaximumWidth(200)
+        grid_form_layout.addRow("自动监测间隔:", self.monitor_interval_spinbox)
         
         columns_layout.addWidget(grid_group)
 
-        # --- 右列：其他设置 ---
-        other_group = QGroupBox("其他设置")
+        # --- 右列：其他与推送设置 ---
+        other_group = QGroupBox("其他与推送设置")
         other_group.setStyleSheet("QGroupBox { font-size: 14px; font-weight: bold; }")
         
         other_v_layout = QVBoxLayout(other_group)
@@ -97,10 +103,30 @@ class SettingsDialog(QDialog):
         other_form_layout.addRow("级联X偏移 (px):", self.cascade_x_offset_spinbox)
         other_form_layout.addRow("级联Y偏移 (px):", self.cascade_y_offset_spinbox)
         
+        other_form_layout.addRow(QLabel("---"))
+
         self.enable_notifications_combobox = QComboBox()
         self.enable_notifications_combobox.addItems(["启用", "禁用"])
         self.enable_notifications_combobox.setMaximumWidth(200)
-        other_form_layout.addRow("插件操作通知:", self.enable_notifications_combobox)
+        other_form_layout.addRow("桌面操作通知:", self.enable_notifications_combobox)
+
+        self.enable_push_combobox = QComboBox()
+        self.enable_push_combobox.addItems(["启用", "禁用"])
+        self.enable_push_combobox.setMaximumWidth(200)
+        other_form_layout.addRow("Webhook推送:", self.enable_push_combobox)
+
+        self.push_host_input = QLineEdit()
+        self.push_host_input.setMaximumWidth(200)
+        other_form_layout.addRow("推送主机:", self.push_host_input)
+
+        self.push_port_input = QSpinBox()
+        self.push_port_input.setRange(1, 65535)
+        self.push_port_input.setMaximumWidth(200)
+        other_form_layout.addRow("推送端口:", self.push_port_input)
+
+        self.push_path_input = QLineEdit()
+        self.push_path_input.setMaximumWidth(200)
+        other_form_layout.addRow("推送路径:", self.push_path_input)
         
         other_v_layout.addLayout(other_form_layout)
         other_v_layout.addStretch()
@@ -143,16 +169,13 @@ class SettingsDialog(QDialog):
     def load_settings(self):
         """从 ConfigService 加载设置到UI。"""
         config = self.context.config_service
-        strategy_name = config.get_value("WindowArranger", "sorting_strategy", "默认排序 (按标题)")
-        self.sorting_strategy_combobox.setCurrentText(strategy_name)
+        default_host = config.get_value("WebhookDefaults", "default_host", "127.0.0.1")
+        default_port = config.get_value("WebhookDefaults", "default_port", "5000")
 
+        self.sorting_strategy_combobox.setCurrentText(config.get_value("WindowArranger", "sorting_strategy", "默认排序 (按标题)"))
         self.screen_selection_combobox.setCurrentIndex(int(config.get_value("WindowArranger", "target_screen_index", "0")))
-        
-        enable_notifications = config.get_value("WindowArranger", "enable_notifications", "true")
-        self.enable_notifications_combobox.setCurrentIndex(0 if enable_notifications == 'true' else 1)
-        
-        direction = config.get_value("WindowArranger", "grid_direction", "row-major")
-        self.grid_direction_combobox.setCurrentIndex(0 if direction == "row-major" else 1)
+        self.enable_notifications_combobox.setCurrentIndex(0 if config.get_value("WindowArranger", "enable_notifications", "true") == 'true' else 1)
+        self.grid_direction_combobox.setCurrentIndex(0 if config.get_value("WindowArranger", "grid_direction", "row-major") == "row-major" else 1)
         self.rows_spinbox.setValue(int(config.get_value("WindowArranger", "grid_rows", "2")))
         self.cols_spinbox.setValue(int(config.get_value("WindowArranger", "grid_cols", "3")))
         self.margin_top_spinbox.setValue(int(config.get_value("WindowArranger", "grid_margin_top", "0")))
@@ -162,21 +185,25 @@ class SettingsDialog(QDialog):
         self.spacing_horizontal_spinbox.setValue(int(config.get_value("WindowArranger", "grid_spacing_h", "10")))
         self.spacing_vertical_spinbox.setValue(int(config.get_value("WindowArranger", "grid_spacing_v", "10")))
         self.animation_delay_spinbox.setValue(int(config.get_value("WindowArranger", "animation_delay", "50")))
+        self.monitor_interval_spinbox.setValue(int(config.get_value("WindowArranger", "monitor_interval", "5")))
         self.cascade_x_offset_spinbox.setValue(int(config.get_value("WindowArranger", "cascade_x_offset", "30")))
         self.cascade_y_offset_spinbox.setValue(int(config.get_value("WindowArranger", "cascade_y_offset", "30")))
+        self.enable_push_combobox.setCurrentIndex(0 if config.get_value("WindowArranger", "enable_push", "false") == 'true' else 1)
+        self.push_host_input.setText(config.get_value("WindowArranger", "push_host", ""))
+        self.push_port_input.setValue(int(config.get_value("WindowArranger", "push_port") or default_port))
+        self.push_path_input.setText(config.get_value("WindowArranger", "push_path", "/alert"))
+        self.push_host_input.setPlaceholderText(f"默认: {default_host}")
+        self.push_port_input.setSpecialValueText(f"默认: {default_port}")
+
         logging.info("[WindowArranger] 设置对话框已加载配置。")
         
     def save_settings(self):
         """将UI上的设置保存到 ConfigService。"""
         config = self.context.config_service
         config.set_option("WindowArranger", "sorting_strategy", self.sorting_strategy_combobox.currentText())
-
-        enable_notifications = "true" if self.enable_notifications_combobox.currentIndex() == 0 else "false"
-        config.set_option("WindowArranger", "enable_notifications", enable_notifications)
-        
+        config.set_option("WindowArranger", "enable_notifications", "true" if self.enable_notifications_combobox.currentIndex() == 0 else "false")
         config.set_option("WindowArranger", "target_screen_index", str(self.screen_selection_combobox.currentIndex()))
-        direction = "row-major" if self.grid_direction_combobox.currentIndex() == 0 else "col-major"
-        config.set_option("WindowArranger", "grid_direction", direction)
+        config.set_option("WindowArranger", "grid_direction", "row-major" if self.grid_direction_combobox.currentIndex() == 0 else "col-major")
         config.set_option("WindowArranger", "grid_rows", str(self.rows_spinbox.value()))
         config.set_option("WindowArranger", "grid_cols", str(self.cols_spinbox.value()))
         config.set_option("WindowArranger", "grid_margin_top", str(self.margin_top_spinbox.value()))
@@ -186,8 +213,13 @@ class SettingsDialog(QDialog):
         config.set_option("WindowArranger", "grid_spacing_h", str(self.spacing_horizontal_spinbox.value()))
         config.set_option("WindowArranger", "grid_spacing_v", str(self.spacing_vertical_spinbox.value()))
         config.set_option("WindowArranger", "animation_delay", str(self.animation_delay_spinbox.value()))
+        config.set_option("WindowArranger", "monitor_interval", str(self.monitor_interval_spinbox.value()))
         config.set_option("WindowArranger", "cascade_x_offset", str(self.cascade_x_offset_spinbox.value()))
         config.set_option("WindowArranger", "cascade_y_offset", str(self.cascade_y_offset_spinbox.value()))
+        config.set_option("WindowArranger", "enable_push", "true" if self.enable_push_combobox.currentIndex() == 0 else "false")
+        config.set_option("WindowArranger", "push_host", self.push_host_input.text())
+        config.set_option("WindowArranger", "push_port", str(self.push_port_input.value()))
+        config.set_option("WindowArranger", "push_path", self.push_path_input.text())
         config.save_config()
         logging.info("[WindowArranger] 排列设置已保存。")
 

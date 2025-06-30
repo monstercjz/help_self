@@ -12,6 +12,7 @@ from src.features.window_arranger.views.arranger_page_view import ArrangerPageVi
 from src.features.window_arranger.views.settings_dialog_view import SettingsDialog
 from src.features.window_arranger.models.window_info import WindowInfo
 from src.features.window_arranger.controllers.sorting_strategy_manager import SortingStrategyManager
+from src.features.window_arranger.services.monitor_service import MonitorService
 from PySide6.QtGui import QScreen
 
 class ArrangerController:
@@ -23,13 +24,47 @@ class ArrangerController:
         self.view = view
         self.detected_windows: list[WindowInfo] = []
         self.strategy_manager = SortingStrategyManager()
+        self.monitor_service = MonitorService(self.context)
 
+        # 连接主视图的信号
         self.view.detect_windows_requested.connect(self.detect_windows)
         self.view.open_settings_requested.connect(self.open_settings_dialog)
+        self.view.toggle_monitoring_requested.connect(self.toggle_monitoring)
         self.view.arrange_grid_requested.connect(self.arrange_windows_grid)
         self.view.arrange_cascade_requested.connect(self.arrange_windows_cascade)
         
+        # 连接后台服务的信号
+        self.monitor_service.status_updated.connect(self.view.status_label.setText)
+
         self._load_filter_settings()
+        self._initial_monitor_start()
+
+    def _initial_monitor_start(self):
+        """根据配置决定是否在启动时开启监控。"""
+        if self.context.config_service.get_value("WindowArranger", "auto_monitor_enabled", "false") == 'true':
+            # 只有在启动时自动开启，才真正去拨动UI按钮
+            self.view.monitor_toggle_button.setChecked(True)
+
+    def toggle_monitoring(self, checked: bool):
+        """启动或停止后台监控服务。"""
+        self.context.config_service.set_option("WindowArranger", "auto_monitor_enabled", str(checked).lower())
+        self.context.config_service.save_config()
+        
+        if checked:
+            if not self.detected_windows:
+                self._show_notification_if_enabled("无法启动监控", "请先至少成功检测一次窗口，以确定监控目标。")
+                self.view.set_monitoring_status(False) # 将按钮弹回
+                return
+            
+            if not self.monitor_service.isRunning():
+                self.monitor_service.update_expected_states(self.detected_windows)
+                self.monitor_service.start()
+        else:
+            if self.monitor_service.isRunning():
+                self.monitor_service.stop()
+        
+        # 确保UI状态与实际服务状态一致
+        self.view.set_monitoring_status(self.monitor_service.isRunning())
 
     def open_settings_dialog(self):
         """打开设置对话框，并在保存后自动重新检测窗口。"""
@@ -160,6 +195,7 @@ class ArrangerController:
         
         self.view.update_detected_windows_list(self.detected_windows)
         self._show_notification_if_enabled(title="窗口检测完成", message=f"已检测到 {num_detected} 个符合条件的窗口。")
+        self.view.status_label.setText("检测完成，准备排列。")
 
     def _arrange_windows(self, arrange_function):
         """通用排列逻辑，包含延时和状态更新。"""
@@ -176,6 +212,11 @@ class ArrangerController:
         
         timestamp = datetime.now().strftime("%H:%M:%S")
         self.view.status_label.setText(f"上次排列于 {timestamp} 完成 ({arranged_count} 个窗口)")
+
+        if self.monitor_service.isRunning():
+            self.monitor_service.update_expected_states(windows_to_arrange)
+        
+        return arranged_count
 
     def arrange_windows_grid(self):
         """将选定的窗口按网格布局排列。"""
@@ -294,3 +335,8 @@ class ArrangerController:
         count = self._arrange_windows(do_cascade_arrangement)
         if count is not None:
             self._show_notification_if_enabled(title="级联排列完成", message=f"已成功排列 {count} 个窗口。")
+    
+    def shutdown(self):
+        """由插件的 shutdown 方法调用，确保后台线程被安全停止。"""
+        if self.monitor_service.isRunning():
+            self.monitor_service.stop()

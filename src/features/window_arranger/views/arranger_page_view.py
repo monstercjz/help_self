@@ -12,6 +12,7 @@ class ArrangerPageView(QWidget):
     """
     detect_windows_requested = Signal()
     open_settings_requested = Signal()
+    toggle_monitoring_requested = Signal(bool)
     arrange_grid_requested = Signal()
     arrange_cascade_requested = Signal()
 
@@ -23,12 +24,18 @@ class ArrangerPageView(QWidget):
         main_layout.setContentsMargins(20, 20, 20, 20)
         main_layout.setSpacing(15)
         
-        # --- 标题和设置按钮行 ---
         header_layout = QHBoxLayout()
         title_label = QLabel("桌面窗口排列")
         title_label.setStyleSheet("font-size: 22px; font-weight: bold; color: #333;")
         header_layout.addWidget(title_label)
         header_layout.addStretch()
+
+        self.monitor_toggle_button = QPushButton("启动自动监控")
+        self.monitor_toggle_button.setCheckable(True)
+        self.monitor_toggle_button.setMinimumHeight(30)
+        self.monitor_toggle_button.toggled.connect(self.toggle_monitoring_requested.emit)
+        self.set_monitoring_status(False)
+        header_layout.addWidget(self.monitor_toggle_button)
         
         self.settings_button = QPushButton("排列设置")
         try:
@@ -41,7 +48,6 @@ class ArrangerPageView(QWidget):
         header_layout.addWidget(self.settings_button)
         main_layout.addLayout(header_layout)
         
-        # 窗口过滤组
         filter_group = QGroupBox("窗口过滤")
         filter_group.setStyleSheet("QGroupBox { font-size: 16px; font-weight: bold; color: #333; margin-top: 10px; } QGroupBox::title { subcontrol-origin: margin; subcontrol-position: top left; padding: 0 10px; left: 10px; }")
         filter_layout = QFormLayout(filter_group)
@@ -62,8 +68,7 @@ class ArrangerPageView(QWidget):
         
         main_layout.addWidget(filter_group)
 
-        # 检测到的窗口列表组
-        self.windows_list_group = QGroupBox() # 标题设为空
+        self.windows_list_group = QGroupBox()
         self.windows_list_group.setStyleSheet("QGroupBox { margin-top: 10px; }")
         windows_list_layout = QVBoxLayout(self.windows_list_group)
         windows_list_layout.setContentsMargins(15, 15, 15, 15)
@@ -80,34 +85,21 @@ class ArrangerPageView(QWidget):
         
         detect_button = QPushButton("检测桌面窗口")
         detect_button.setMinimumHeight(30)
-        detect_button.setStyleSheet("""
-            QPushButton { font-size: 14px; background-color: #5cb85c; color: white; border: none; border-radius: 5px; padding: 5px 15px; }
-            QPushButton:hover { background-color: #4cae4c; }
-            QPushButton:pressed { background-color: #449d44; }
-        """)
+        detect_button.setStyleSheet("QPushButton { font-size: 14px; background-color: #5cb85c; color: white; border: none; border-radius: 5px; padding: 5px 15px; } QPushButton:hover { background-color: #4cae4c; } QPushButton:pressed { background-color: #449d44; }")
         detect_button.clicked.connect(self.detect_windows_requested.emit)
         windows_list_layout.addWidget(detect_button)
         main_layout.addWidget(self.windows_list_group)
         
-        # 动作按钮
         action_buttons_layout = QHBoxLayout()
         self.arrange_grid_button = QPushButton("网格排列")
         self.arrange_grid_button.setMinimumHeight(35)
-        self.arrange_grid_button.setStyleSheet("""
-            QPushButton { font-size: 14px; font-weight: bold; background-color: #007bff; color: white; border: none; border-radius: 5px; padding: 0 20px; }
-            QPushButton:hover { background-color: #0056b3; }
-            QPushButton:pressed { background-color: #004085; }
-        """)
+        self.arrange_grid_button.setStyleSheet("QPushButton { font-size: 14px; font-weight: bold; background-color: #007bff; color: white; border: none; border-radius: 5px; padding: 0 20px; } QPushButton:hover { background-color: #0056b3; } QPushButton:pressed { background-color: #004085; }")
         self.arrange_grid_button.clicked.connect(self.arrange_grid_requested.emit)
         action_buttons_layout.addWidget(self.arrange_grid_button)
 
         self.arrange_cascade_button = QPushButton("级联排列")
         self.arrange_cascade_button.setMinimumHeight(35)
-        self.arrange_cascade_button.setStyleSheet("""
-            QPushButton { font-size: 14px; font-weight: bold; background-color: #17a2b8; color: white; border: none; border-radius: 5px; padding: 0 20px; }
-            QPushButton:hover { background-color: #138496; }
-            QPushButton:pressed { background-color: #117a8b; }
-        """)
+        self.arrange_cascade_button.setStyleSheet("QPushButton { font-size: 14px; font-weight: bold; background-color: #17a2b8; color: white; border: none; border-radius: 5px; padding: 0 20px; } QPushButton:hover { background-color: #138496; } QPushButton:pressed { background-color: #117a8b; }")
         self.arrange_cascade_button.clicked.connect(self.arrange_cascade_requested.emit)
         action_buttons_layout.addWidget(self.arrange_cascade_button)
         main_layout.addLayout(action_buttons_layout)
@@ -118,7 +110,21 @@ class ArrangerPageView(QWidget):
         main_layout.addWidget(self.status_label)
 
         main_layout.addStretch(1)
+        
+    def set_monitoring_status(self, is_monitoring: bool):
+        """更新监控按钮的视觉状态。"""
+        # Block signals to prevent emitting toggled signal when we set state programmatically
+        self.monitor_toggle_button.blockSignals(True)
+        self.monitor_toggle_button.setChecked(is_monitoring)
+        self.monitor_toggle_button.blockSignals(False)
 
+        if is_monitoring:
+            self.monitor_toggle_button.setText("停止自动监控")
+            self.monitor_toggle_button.setStyleSheet("background-color: #d9534f; color: white; font-weight: bold;")
+        else:
+            self.monitor_toggle_button.setText("启动自动监控")
+            self.monitor_toggle_button.setStyleSheet("") # 恢复默认样式
+    
     def update_detected_windows_list(self, window_infos: list[object]):
         """更新UI上的检测到的窗口列表，并为每个项目添加复选框。"""
         self.detected_windows_list_widget.clear()

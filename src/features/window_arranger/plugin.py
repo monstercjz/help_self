@@ -42,19 +42,16 @@ class WindowArrangerPlugin(IFeaturePlugin):
         logging.info(f"  - 插件 '{self.name()}' 初始化完成。")
 
     def get_background_services(self) -> list:
-        """
-        此插件目前没有需要后台运行的服务（如 QThread）。
-        """
+        """此插件的核心后台服务(MonitorService)由其控制器管理，因此这里返回空。"""
         return []
 
     def shutdown(self):
         """
         在应用程序关闭时，安全地执行插件的关闭操作。
-        这里主要用于保存插件主界面上当前的过滤设置到配置文件。
         """
-        logging.info(f"  - 插件 '{self.name()}': 正在执行关闭前操作 (保存过滤设置)...")
-        # 确保控制器存在且有保存设置的方法
+        logging.info(f"  - 插件 '{self.name()}': 正在执行关闭前操作...")
         if hasattr(self, 'controller') and self.controller:
-            # 【修复】调用正确的方法名来保存主视图上的设置
             self.controller._save_settings_from_view()
-        super().shutdown() # 调用父类方法确保所有后台服务（如果有）被停止
+            if hasattr(self.controller, 'shutdown'):
+                self.controller.shutdown()
+        super().shutdown()
