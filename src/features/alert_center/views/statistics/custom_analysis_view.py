@@ -24,26 +24,24 @@ class CustomAnalysisView(QWidget):
         self._init_ui()
 
     def _init_ui(self):
+        # 根布局：垂直组合F (组合E + 分析结果)
         main_layout = QVBoxLayout(self)
         
-        # --- 顶部：日期过滤器 和 维度选择 （水平排列）---
-        top_controls_layout = QHBoxLayout()
-        top_controls_layout.setSpacing(15) # 增加间距
+        # --- 组合E (水平组合C + 单元D) 的容器 ---
+        # 严格限制这个容器的高度
+        top_section_container = QWidget()
+        # 【变更】严格限制这个容器的高度
+        top_section_container.setMaximumHeight(145) # 根据实际需要调整这个值
+        top_section_layout = QHBoxLayout(top_section_container) # 组合E的布局
 
-        # 左侧：日期过滤器组
-        date_filter_group = QGroupBox("第一步：选择数据时间范围")
-        date_filter_layout = QVBoxLayout(date_filter_group)
-        self.date_filter = DateFilterWidget()
-        date_filter_layout.addWidget(self.date_filter)
-        top_controls_layout.addWidget(date_filter_group)
-        top_controls_layout.setStretchFactor(date_filter_group, 1) # 让日期组可以伸展
 
-        # 右侧：维度选择组
+
+        # --- 单元D (维度选择区域) ---
         dimension_group = QGroupBox("第二步：配置分析维度和顺序")
         dimension_main_layout = QHBoxLayout(dimension_group)
 
         available_layout = QVBoxLayout()
-        available_layout.addWidget(QLabel("可用维度:"))
+        # available_layout.addWidget(QLabel("可用维度:"))
         self.available_dims_list = QListWidget()
         for display_name, internal_name in self.AVAILABLE_DIMS.items():
             item = QListWidgetItem(display_name)
@@ -57,46 +55,64 @@ class CustomAnalysisView(QWidget):
         button_layout.addStretch()
         self.add_button = QPushButton(">>")
         self.remove_button = QPushButton("<<")
-        self.up_button = QPushButton("↑ 上移")
-        self.down_button = QPushButton("↓ 下移")
+        self.up_button = QPushButton("↑ ↑ ↑")
+        self.down_button = QPushButton("↓ ↓ ↓")
         button_layout.addWidget(self.add_button)
         button_layout.addWidget(self.remove_button)
-        button_layout.addSpacing(10)
+        # button_layout.addSpacing(10)
         button_layout.addWidget(self.up_button)
         button_layout.addWidget(self.down_button)
         button_layout.addStretch()
         dimension_main_layout.addLayout(button_layout)
         
         selected_layout = QVBoxLayout()
-        selected_layout.addWidget(QLabel("已选维度 (可拖拽或使用按钮排序):"))
+        # selected_layout.addWidget(QLabel("已选维度 (可拖拽或使用按钮排序):"))
         self.selected_dims_list = QListWidget()
         self.selected_dims_list.setDragDropMode(QAbstractItemView.DragDropMode.InternalMove)
         self.selected_dims_list.setMaximumHeight(150)
         selected_layout.addWidget(self.selected_dims_list)
         dimension_main_layout.addLayout(selected_layout)
         
-        top_controls_layout.addWidget(dimension_group)
-        top_controls_layout.setStretchFactor(dimension_group, 2) # 维度组占据更多水平空间
-        
-        main_layout.addLayout(top_controls_layout)
+        top_section_layout.addWidget(dimension_group) # 单元D添加到组合E的右侧
+        top_section_layout.setStretch(0, 1) # 组合C和单元D平分或按比例分配水平空间
+        top_section_layout.setStretch(1, 2) # 维度选择区域可以稍微宽一点
 
-        # --- 中部：执行按钮 和 展开/折叠按钮 （水平排列）---
-        middle_controls_layout = QHBoxLayout()
-        middle_controls_layout.setContentsMargins(0, 5, 0, 5) # 垂直间距
+
+        # --- 组合C (垂直组合A + 单元B) ---
+        C_layout = QVBoxLayout()
+
+        # 单元B (日期过滤器)
+        date_filter_group = QGroupBox("第一步：选择数据时间范围")
+        date_filter_layout = QVBoxLayout(date_filter_group)
+        self.date_filter = DateFilterWidget()
+        date_filter_layout.addWidget(self.date_filter)
+        C_layout.addWidget(date_filter_group)
         
+        top_section_layout.addLayout(C_layout) # 组合C添加到组合E的左侧
+
+        # 组合A (水平组合：执行按钮 + 展开/折叠按钮)
+        control_buttons_layout = QHBoxLayout()
         self.analyze_button = QPushButton("执行分析")
         self.analyze_button.setStyleSheet("font-size: 14px; font-weight: bold; padding: 5px;")
-        middle_controls_layout.addWidget(self.analyze_button)
         
-        middle_controls_layout.addStretch() # 将按钮推到右侧
+        # control_buttons_layout.addStretch() # 将按钮推到右侧
+        control_buttons_layout.addWidget(self.analyze_button)
         self.expand_all_button = QPushButton("展开全部")
         self.collapse_all_button = QPushButton("折叠全部")
-        middle_controls_layout.addWidget(self.expand_all_button)
-        middle_controls_layout.addWidget(self.collapse_all_button)
+        control_buttons_layout.addWidget(self.expand_all_button)
+        control_buttons_layout.addWidget(self.collapse_all_button)
+        
+        C_layout.addLayout(control_buttons_layout)
 
-        main_layout.addLayout(middle_controls_layout)
+        
 
-        # --- 底部：分析结果 （垂直排列，占据剩余空间）---
+        
+        
+
+
+        main_layout.addWidget(top_section_container) # 将严格限制高度的组合E添加到主布局
+
+        # --- “分析结果”区域 ---
         results_group = QGroupBox("分析结果")
         results_layout = QVBoxLayout(results_group)
         self.tree = QTreeWidget()
@@ -107,10 +123,18 @@ class CustomAnalysisView(QWidget):
         self.tree.sortByColumn(1, Qt.SortOrder.DescendingOrder)
         results_layout.addWidget(self.tree)
         
-        main_layout.addWidget(results_group)
-        # 【关键】让结果组占据所有剩余垂直空间
-        main_layout.setStretch(2, 1) # results_group是main_layout的第三个widget，索引为2
+        # 结果区域的控制按钮 (原有的)
+        # 它们现在已经包含在组合A中，所以这里不需要重复
+        # tree_control_layout = QHBoxLayout()
+        # tree_control_layout.addStretch()
+        # self.expand_all_button = QPushButton("展开全部")
+        # self.collapse_all_button = QPushButton("折叠全部")
+        # tree_control_layout.addWidget(self.expand_all_button)
+        # tree_control_layout.addWidget(self.collapse_all_button)
+        # results_layout.addLayout(tree_control_layout)
 
+        main_layout.addWidget(results_group)
+        main_layout.setStretch(1, 1) # 【关键】让结果区域占据所有剩余的垂直空间
 
         self._connect_signals()
     
@@ -120,13 +144,14 @@ class CustomAnalysisView(QWidget):
         self.up_button.clicked.connect(self._move_item_up)
         self.down_button.clicked.connect(self._move_item_down)
         
+        # 将 analyze_button, expand_all_button, collapse_all_button 的连接从顶部布局移到这里
         self.analyze_button.clicked.connect(self._request_analysis)
+        self.expand_all_button.clicked.connect(self.tree.expandAll)
+        self.collapse_all_button.clicked.connect(self.tree.collapseAll)
+
         self.available_dims_list.itemDoubleClicked.connect(self._add_dimension)
         self.selected_dims_list.itemDoubleClicked.connect(self._remove_dimension)
         self.date_filter.filter_changed.connect(self._request_analysis)
-
-        self.expand_all_button.clicked.connect(self.tree.expandAll)
-        self.collapse_all_button.clicked.connect(self.tree.collapseAll)
 
     def _add_dimension(self):
         selected_items = self.available_dims_list.selectedItems()
