@@ -47,7 +47,8 @@ class CustomAnalysisView(QWidget):
         dimension_main_layout.addLayout(available_layout)
 
         button_layout = QVBoxLayout()
-        button_layout.addSpacerItem(QSpacerItem(20, 40, QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Expanding))
+        # 【变更】使用addStretch()替换有问题的Expanding Spacers，以实现居中对齐而不抢占空间
+        button_layout.addStretch()
         self.add_button = QPushButton(">>")
         self.remove_button = QPushButton("<<")
         self.up_button = QPushButton("↑ 上移")
@@ -57,7 +58,7 @@ class CustomAnalysisView(QWidget):
         button_layout.addSpacing(10)
         button_layout.addWidget(self.up_button)
         button_layout.addWidget(self.down_button)
-        button_layout.addSpacerItem(QSpacerItem(20, 40, QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Expanding))
+        button_layout.addStretch()
         dimension_main_layout.addLayout(button_layout)
         
         selected_layout = QVBoxLayout()
@@ -82,16 +83,16 @@ class CustomAnalysisView(QWidget):
         self.tree.setStyleSheet("QTreeView::item:selected { background-color: #cce8ff; color: black; }")
         results_layout.addWidget(self.tree)
         
-        # 【新增】展开/收缩按钮布局
         tree_control_layout = QHBoxLayout()
-        tree_control_layout.addStretch() # 将按钮推到右侧
+        tree_control_layout.addStretch()
         self.expand_all_button = QPushButton("展开全部")
         self.collapse_all_button = QPushButton("折叠全部")
         tree_control_layout.addWidget(self.expand_all_button)
         tree_control_layout.addWidget(self.collapse_all_button)
-        results_layout.addLayout(tree_control_layout) # 添加到结果组布局中
+        results_layout.addLayout(tree_control_layout)
 
         main_layout.addWidget(results_group)
+        # 【关键】确保结果区域（索引为3的控件）占据所有可用的额外垂直空间
         main_layout.setStretch(3, 1)
 
         self._connect_signals()
@@ -107,7 +108,6 @@ class CustomAnalysisView(QWidget):
         self.selected_dims_list.itemDoubleClicked.connect(self._remove_dimension)
         self.date_filter.filter_changed.connect(self._request_analysis)
 
-        # 【新增】连接展开/收缩按钮的信号
         self.expand_all_button.clicked.connect(self.tree.expandAll)
         self.collapse_all_button.clicked.connect(self.tree.collapseAll)
 
@@ -158,11 +158,11 @@ class CustomAnalysisView(QWidget):
         if not tree_data: return
 
         level_colors = [
-            QColor("#003366"),  # Level 0 - Dark Blue
-            QColor("#8B4513"),  # Level 1 - Saddle Brown
-            QColor("#006400"),  # Level 2 - Dark Green
-            QColor("#483D8B"),  # Level 3 - Dark Slate Blue
-            QColor("#800000"),  # Level 4 - Maroon
+            QColor("#003366"),
+            QColor("#8B4513"),
+            QColor("#006400"),
+            QColor("#483D8B"),
+            QColor("#800000"),
         ]
         bold_font = QFont()
         bold_font.setBold(True)
