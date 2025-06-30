@@ -1,5 +1,6 @@
 # desktop_center/src/features/alert_center/views/statistics/hourly_stats_view.py
 from PySide6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QTableWidget, QHeaderView, QTableWidgetItem
+# 【变更】添加 Qt 的导入
 from PySide6.QtCore import Signal, Slot, Qt, QEvent
 from ...widgets.date_filter_widget import DateFilterWidget
 from ...widgets.ip_filter_widget import IPFilterWidget
@@ -46,9 +47,11 @@ class HourlyStatsView(QWidget):
         for row, record in enumerate(data):
             self.table.insertRow(row)
             hour_item = QTableWidgetItem()
+            # 使用 setData 以确保数值排序正确
             hour_item.setData(Qt.ItemDataRole.DisplayRole, f"{record.get('hour', 0):02d}:00")
             self.table.setItem(row, 0, hour_item)
             count_item = QTableWidgetItem()
+            # 使用 setData 以确保数值排序正确
             count_item.setData(Qt.ItemDataRole.DisplayRole, record.get('count', 0))
             self.table.setItem(row, 1, count_item)
         self.table.setSortingEnabled(True)

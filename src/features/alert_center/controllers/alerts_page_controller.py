@@ -5,9 +5,6 @@ from PySide6.QtWidgets import QMessageBox
 
 from src.core.context import ApplicationContext
 from ..views.alerts_page_view import AlertsPageView
-# 【变更】移除顶层的循环依赖导入
-# from .history_controller import HistoryController
-# from .statistics_dialog_controller import StatisticsDialogController
 
 class AlertsPageController(QObject):
     def __init__(self, context: ApplicationContext, parent=None):
@@ -76,15 +73,12 @@ class AlertsPageController(QObject):
 
     @Slot()
     def show_history_dialog(self):
-        # 【变更】在运行时进行局部导入，打破模块级依赖
         from .history_controller import HistoryController
-        # 控制器持有对话框的控制器，确保其生命周期
         self.history_controller = HistoryController(self.context, self.view)
         self.history_controller.show_dialog()
 
     @Slot()
     def show_statistics_dialog(self):
-        # 【变更】在运行时进行局部导入，打破模块级依赖
         from .statistics_dialog_controller import StatisticsDialogController
         self.statistics_controller = StatisticsDialogController(self.context, self.view)
         self.statistics_controller.show_dialog()

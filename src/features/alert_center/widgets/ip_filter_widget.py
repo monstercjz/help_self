@@ -14,7 +14,8 @@ class IPFilterWidget(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
         self._init_ui()
-        self.combo_box.currentIndexChanged.connect(self.filter_changed.emit)
+        # 【变更】为带参数的内置信号添加lambda适配器，确保发射的信号不带参数
+        self.combo_box.currentIndexChanged.connect(lambda: self.filter_changed.emit())
 
     def _init_ui(self):
         layout = QHBoxLayout(self)
@@ -28,11 +29,13 @@ class IPFilterWidget(QWidget):
         layout.addStretch()
         
     def get_ip(self) -> str | None:
+        """获取当前选择的IP地址。如果选择“全部IP”，则返回None。"""
         ip = self.combo_box.currentText().strip()
         return None if ip == ALL_IPS_OPTION or not ip else ip
 
     @Slot(list)
     def set_ip_list(self, ip_list: List[str]):
+        """更新下拉框中的IP列表。"""
         current_text = self.get_ip() or ALL_IPS_OPTION
         self.combo_box.blockSignals(True)
         self.combo_box.clear()
