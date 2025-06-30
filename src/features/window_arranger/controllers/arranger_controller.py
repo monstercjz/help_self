@@ -42,7 +42,6 @@ class ArrangerController:
     def _initial_monitor_start(self):
         """根据配置决定是否在启动时开启监控。"""
         if self.context.config_service.get_value("WindowArranger", "auto_monitor_enabled", "false") == 'true':
-            # 只有在启动时自动开启，才真正去拨动UI按钮
             self.view.monitor_toggle_button.setChecked(True)
 
     def toggle_monitoring(self, checked: bool):
@@ -51,12 +50,18 @@ class ArrangerController:
         self.context.config_service.save_config()
         
         if checked:
+            # 【修复】在启动监控前，强制执行一次最新的检测，以确保窗口列表有效
+            logging.info("[WindowArranger] 启动监控前，正在刷新窗口列表...")
+            self.detect_windows()
+            
+            # 检查检测后是否有可监控的窗口
             if not self.detected_windows:
-                self._show_notification_if_enabled("无法启动监控", "请先至少成功检测一次窗口，以确定监控目标。")
-                self.view.set_monitoring_status(False) # 将按钮弹回
+                self._show_notification_if_enabled("无法启动监控", "未检测到任何符合条件的窗口。")
+                self.view.set_monitoring_status(False)
                 return
             
             if not self.monitor_service.isRunning():
+                # 使用刚刚刷新过的、最新的窗口列表来更新期望状态
                 self.monitor_service.update_expected_states(self.detected_windows)
                 self.monitor_service.start()
         else:
@@ -213,6 +218,7 @@ class ArrangerController:
         timestamp = datetime.now().strftime("%H:%M:%S")
         self.view.status_label.setText(f"上次排列于 {timestamp} 完成 ({arranged_count} 个窗口)")
 
+        # 在手动排列后，如果监控服务正在运行，则用最新的排列结果更新其期望状态
         if self.monitor_service.isRunning():
             self.monitor_service.update_expected_states(windows_to_arrange)
         
