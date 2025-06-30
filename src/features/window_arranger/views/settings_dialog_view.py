@@ -10,13 +10,10 @@ from src.core.context import ApplicationContext
 from src.features.window_arranger.controllers.sorting_strategy_manager import SortingStrategyManager
 
 class SettingsDialog(QDialog):
-    """
-    一个独立的对话框，用于管理窗口排列的所有设置。
-    """
-    def __init__(self, context: ApplicationContext, strategy_manager: SortingStrategyManager, parent=None): # 【修改】接收 strategy_manager
+    def __init__(self, context: ApplicationContext, strategy_manager: SortingStrategyManager, parent=None):
         super().__init__(parent)
         self.context = context
-        self.strategy_manager = strategy_manager # 【修改】
+        self.strategy_manager = strategy_manager
         self.setWindowTitle("排列设置")
         self.setMinimumWidth(550)
 
@@ -27,27 +24,21 @@ class SettingsDialog(QDialog):
         columns_layout = QHBoxLayout()
         columns_layout.setSpacing(20)
 
-        # --- 左列：网格排列设置 ---
         grid_group = QGroupBox("网格排列设置")
+        # ... (grid_group 内容无变化)
         grid_group.setStyleSheet("QGroupBox { font-size: 14px; font-weight: bold; }")
         grid_form_layout = QFormLayout(grid_group)
         grid_form_layout.setSpacing(12)
-        
-        # 【新增】排序方案选择
         self.sorting_strategy_combobox = QComboBox()
         self.sorting_strategy_combobox.setMaximumWidth(200)
         grid_form_layout.addRow("排序方案:", self.sorting_strategy_combobox)
-
         self.screen_selection_combobox = QComboBox()
         self.screen_selection_combobox.setMaximumWidth(200)
         grid_form_layout.addRow("目标屏幕:", self.screen_selection_combobox)
-
         self.grid_direction_combobox = QComboBox()
         self.grid_direction_combobox.addItems(["先排满行 (→)", "先排满列 (↓)"])
         self.grid_direction_combobox.setMaximumWidth(200)
         grid_form_layout.addRow("排列方向:", self.grid_direction_combobox)
-
-        # ... (其余控件无变化)
         self.rows_spinbox = QSpinBox()
         self.rows_spinbox.setRange(1, 20)
         self.rows_spinbox.setMaximumWidth(200)
@@ -77,19 +68,29 @@ class SettingsDialog(QDialog):
         
         columns_layout.addWidget(grid_group)
 
-        # ... (右列和按钮栏无变化)
-        cascade_group = QGroupBox("级联排列设置")
-        cascade_group.setStyleSheet("QGroupBox { font-size: 14px; font-weight: bold; }")
-        cascade_v_layout = QVBoxLayout(cascade_group)
-        cascade_form_layout = QFormLayout()
-        cascade_form_layout.setSpacing(12)
+        # --- 右列：其他设置 ---
+        other_group = QGroupBox("其他设置") # 【修改】重命名 group box
+        other_group.setStyleSheet("QGroupBox { font-size: 14px; font-weight: bold; }")
+        
+        other_v_layout = QVBoxLayout(other_group)
+        other_form_layout = QFormLayout()
+        other_form_layout.setSpacing(12)
+        
+        # 将级联设置放入其中
         self.cascade_x_offset_spinbox = QSpinBox(); self.cascade_x_offset_spinbox.setRange(0, 100); self.cascade_x_offset_spinbox.setMaximumWidth(200)
         self.cascade_y_offset_spinbox = QSpinBox(); self.cascade_y_offset_spinbox.setRange(0, 100); self.cascade_y_offset_spinbox.setMaximumWidth(200)
-        cascade_form_layout.addRow("X 偏移 (px):", self.cascade_x_offset_spinbox)
-        cascade_form_layout.addRow("Y 偏移 (px):", self.cascade_y_offset_spinbox)
-        cascade_v_layout.addLayout(cascade_form_layout)
-        cascade_v_layout.addStretch()
-        columns_layout.addWidget(cascade_group, 1)
+        other_form_layout.addRow("级联X偏移 (px):", self.cascade_x_offset_spinbox)
+        other_form_layout.addRow("级联Y偏移 (px):", self.cascade_y_offset_spinbox)
+        
+        # 【新增】通知设置
+        self.enable_notifications_combobox = QComboBox()
+        self.enable_notifications_combobox.addItems(["启用", "禁用"])
+        self.enable_notifications_combobox.setMaximumWidth(200)
+        other_form_layout.addRow("插件操作通知:", self.enable_notifications_combobox)
+        
+        other_v_layout.addLayout(other_form_layout)
+        other_v_layout.addStretch()
+        columns_layout.addWidget(other_group, 1)
 
         main_layout.addLayout(columns_layout)
 
@@ -98,13 +99,12 @@ class SettingsDialog(QDialog):
         button_box.rejected.connect(self.reject)
         main_layout.addWidget(button_box)
 
-        # 加载数据
-        self._populate_sorting_strategies() # 【新增】
+        self._populate_sorting_strategies()
         self._populate_screen_selection()
         self.load_settings()
 
-    # 【新增】填充排序策略下拉框
     def _populate_sorting_strategies(self):
+        # ... (此方法无变化)
         strategy_names = self.strategy_manager.get_strategy_names()
         self.sorting_strategy_combobox.addItems(strategy_names)
 
@@ -128,11 +128,15 @@ class SettingsDialog(QDialog):
 
     def load_settings(self):
         config = self.context.config_service
-        # 【新增】加载排序策略
         strategy_name = config.get_value("WindowArranger", "sorting_strategy", "默认排序 (按标题)")
         self.sorting_strategy_combobox.setCurrentText(strategy_name)
 
         self.screen_selection_combobox.setCurrentIndex(int(config.get_value("WindowArranger", "target_screen_index", "0")))
+        
+        # 【新增】加载通知设置
+        enable_notifications = config.get_value("WindowArranger", "enable_notifications", "true")
+        self.enable_notifications_combobox.setCurrentIndex(0 if enable_notifications == 'true' else 1)
+        
         # ... (其余加载无变化)
         direction = config.get_value("WindowArranger", "grid_direction", "row-major")
         self.grid_direction_combobox.setCurrentIndex(0 if direction == "row-major" else 1)
@@ -150,11 +154,14 @@ class SettingsDialog(QDialog):
         
     def save_settings(self):
         config = self.context.config_service
-        # 【新增】保存排序策略
         config.set_option("WindowArranger", "sorting_strategy", self.sorting_strategy_combobox.currentText())
 
-        config.set_option("WindowArranger", "target_screen_index", str(self.screen_selection_combobox.currentIndex()))
+        # 【新增】保存通知设置
+        enable_notifications = "true" if self.enable_notifications_combobox.currentIndex() == 0 else "false"
+        config.set_option("WindowArranger", "enable_notifications", enable_notifications)
+        
         # ... (其余保存无变化)
+        config.set_option("WindowArranger", "target_screen_index", str(self.screen_selection_combobox.currentIndex()))
         direction = "row-major" if self.grid_direction_combobox.currentIndex() == 0 else "col-major"
         config.set_option("WindowArranger", "grid_direction", direction)
         config.set_option("WindowArranger", "grid_rows", str(self.rows_spinbox.value()))

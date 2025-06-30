@@ -4,7 +4,7 @@ import math
 import pygetwindow as gw
 import psutil
 import win32process
-from PySide6.QtWidgets import QDialog # 【新增】导入 QDialog
+from PySide6.QtWidgets import QDialog
 from src.core.context import ApplicationContext
 from src.features.window_arranger.views.arranger_page_view import ArrangerPageView
 from src.features.window_arranger.views.settings_dialog_view import SettingsDialog
@@ -34,7 +34,6 @@ class ArrangerController:
         """打开设置对话框，并在保存后自动重新检测窗口。"""
         dialog = SettingsDialog(self.context, self.strategy_manager, self.view)
         
-        # 【修改】检查对话框的返回结果
         if dialog.exec() == QDialog.Accepted:
             logging.info("[WindowArranger] 设置已保存，将自动重新检测窗口以应用新设置...")
             self.detect_windows()
@@ -61,6 +60,11 @@ class ArrangerController:
         config.set_option("WindowArranger", "exclude_title_keywords", exclude_keywords)
         config.save_config()
         logging.info("[WindowArranger] 过滤设置已保存。")
+        
+    def _show_notification_if_enabled(self, title: str, message: str):
+        """如果配置允许，则显示通知。"""
+        if self.context.config_service.get_value("WindowArranger", "enable_notifications", "true") == 'true':
+            self.context.notification_service.show(title=title, message=message)
     
     def detect_windows(self):
         """检测并使用选定的策略对窗口进行排序。"""
@@ -77,7 +81,7 @@ class ArrangerController:
         exclude_keywords_list = [kw.strip().lower() for kw in exclude_keywords_str.split(',') if kw.strip()]
         
         if not title_keywords and not process_keywords:
-            self.context.notification_service.show(title="检测失败", message="请输入窗口标题关键词或进程名称进行过滤。")
+            self._show_notification_if_enabled(title="检测失败", message="请输入窗口标题关键词或进程名称进行过滤。")
             self.view.update_detected_windows_list([])
             return
 
@@ -135,13 +139,17 @@ class ArrangerController:
             else:
                 self.detected_windows = unfiltered_windows
                 self.view.update_detected_windows_list(self.detected_windows)
-                self.context.notification_service.show(title="排序失败", message="无法加载任何排序策略。")
+                self._show_notification_if_enabled(title="排序失败", message="无法加载任何排序策略。")
                 return
 
         self.detected_windows = strategy.sort(unfiltered_windows)
         
+        num_detected = len(self.detected_windows)
+        new_title = f"检测结果 ({num_detected} 个) | 排序: {strategy_name}"
+        self.view.windows_list_group.setTitle(new_title)
+        
         self.view.update_detected_windows_list(self.detected_windows)
-        self.context.notification_service.show(title="窗口检测完成", message=f"已检测到 {len(self.detected_windows)} 个符合条件的窗口。")
+        self._show_notification_if_enabled(title="窗口检测完成", message=f"已检测到 {num_detected} 个符合条件的窗口。")
 
     def arrange_windows_grid(self):
         """将选定的窗口按网格布局排列。"""
@@ -160,13 +168,13 @@ class ArrangerController:
         windows_to_arrange = self.view.get_selected_window_infos()
 
         if not windows_to_arrange:
-            self.context.notification_service.show(title="窗口排列失败", message="没有选择可排列的窗口。")
+            self._show_notification_if_enabled(title="窗口排列失败", message="没有选择可排列的窗口。")
             return
 
         target_screen_index = int(config.get_value("WindowArranger", "target_screen_index", "0"))
         screens = self.context.app.screens()
         if not (0 <= target_screen_index < len(screens)):
-            self.context.notification_service.show(title="排列失败", message="配置中目标屏幕索引无效。")
+            self._show_notification_if_enabled(title="排列失败", message="配置中目标屏幕索引无效。")
             return
             
         target_screen = screens[target_screen_index]
@@ -179,7 +187,7 @@ class ArrangerController:
         num_windows = len(windows_to_arrange)
         if num_windows > rows * cols:
             logging.warning(f"窗口数量({num_windows})超过网格槽位({rows*cols})，部分窗口可能无法排列。")
-            self.context.notification_service.show(title="警告", message=f"窗口数量({num_windows})超过网格槽位，部分窗口可能无法排列。")
+            self._show_notification_if_enabled(title="警告", message=f"窗口数量({num_windows})超过网格槽位，部分窗口可能无法排列。")
         
         available_width_for_grid = usable_screen_width - margin_left - margin_right
         available_height_for_grid = usable_screen_height - margin_top - margin_bottom
@@ -214,7 +222,7 @@ class ArrangerController:
             except Exception as e:
                 logging.error(f"排列窗口 '{window_info.title}' 失败: {e}", exc_info=True)
         
-        self.context.notification_service.show(title="网格排列完成", message=f"已成功排列 {arranged_count} 个窗口。")
+        self._show_notification_if_enabled(title="网格排列完成", message=f"已成功排列 {arranged_count} 个窗口。")
 
     def arrange_windows_cascade(self):
         """将选定的窗口按级联布局排列。"""
@@ -226,13 +234,13 @@ class ArrangerController:
         windows_to_arrange = self.view.get_selected_window_infos()
         
         if not windows_to_arrange:
-            self.context.notification_service.show(title="窗口排列失败", message="没有选择可排列的窗口。")
+            self._show_notification_if_enabled(title="窗口排列失败", message="没有选择可排列的窗口。")
             return
             
         target_screen_index = int(config.get_value("WindowArranger", "target_screen_index", "0"))
         screens = self.context.app.screens()
         if not (0 <= target_screen_index < len(screens)):
-            self.context.notification_service.show(title="排列失败", message="配置中目标屏幕索引无效。")
+            self._show_notification_if_enabled(title="排列失败", message="配置中目标屏幕索引无效。")
             return
 
         target_screen = screens[target_screen_index]
@@ -272,4 +280,4 @@ class ArrangerController:
             except Exception as e:
                 logging.error(f"排列窗口 '{window_info.title}' 失败: {e}", exc_info=True)
 
-        self.context.notification_service.show(title="级联排列完成", message=f"已成功排列 {arranged_count} 个窗口。")
+        self._show_notification_if_enabled(title="级联排列完成", message=f"已成功排列 {arranged_count} 个窗口。")
