@@ -11,4 +11,5 @@ class WindowInfo:
     top: int
     width: int
     height: int
+    process_name: str # 【新增】进程名
     pygw_window_obj: object # 存储 pygetwindow.Window 实例
