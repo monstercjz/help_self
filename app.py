@@ -4,6 +4,8 @@ import os
 import logging
 import configparser
 from PySide6.QtWidgets import QApplication, QMessageBox
+from PySide6.QtGui import QIcon 
+import ctypes # 【新增】导入 ctypes 用于Windows AppUserModelID
 
 # --- 1. 导入项目核心模块 ---
 # 遵循先导入服务、再导入UI、最后导入管理器的逻辑顺序
@@ -28,6 +30,9 @@ DB_FILE = 'history.db'
 LOG_FILE = 'app.log'
 PNG_ICON_FILE = 'icon.png'  # 用于窗口、托盘等
 ICO_ICON_FILE = 'icon.ico'  # 专门用于Windows原生通知
+
+# 【新增】定义一个唯一的应用程序用户模型ID
+APP_USER_MODEL_ID = "com.YourCompany.DesktopCenter.v1"
 
 
 def setup_logging():
@@ -89,6 +94,18 @@ class ApplicationOrchestrator:
 
         # --- 1.2 初始化Qt应用实例 ---
         self.app = QApplication(sys.argv)
+        
+        # 【变更】为Windows设置AppUserModelID，以确保任务栏图标的正确关联
+        if sys.platform == "win32":
+            try:
+                # 设置AppUserModelID必须在QApplication实例创建后、主窗口显示前
+                ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(APP_USER_MODEL_ID)
+                logging.info(f"  - Windows AppUserModelID '{APP_USER_MODEL_ID}' 已设置。")
+            except Exception as e:
+                logging.warning(f"  - 无法设置Windows AppUserModelID: {e}")
+
+        # 设置QApplication的全局图标，这将影响任务栏图标
+        self.app.setWindowIcon(QIcon(self.png_icon_path)) 
         self.app.setQuitOnLastWindowClosed(False) # 确保关闭主窗口时应用不退出
         logging.info("  - Qt Application实例初始化完成。")
 
