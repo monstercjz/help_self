@@ -1,5 +1,5 @@
 # desktop_center/src/features/alert_center/views/statistics/hourly_stats_view.py
-from PySide6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QTableWidget, QHeaderView, QTableWidgetItem
+from PySide6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QTableWidget, QHeaderView, QTableWidgetItem, QAbstractItemView
 from PySide6.QtCore import Signal, Slot, Qt, QEvent
 from ...widgets.date_filter_widget import DateFilterWidget
 from ...widgets.ip_filter_widget import IPFilterWidget
@@ -16,11 +16,9 @@ class HourlyStatsView(QWidget):
     def _init_ui(self):
         layout = QVBoxLayout(self)
         
-        # 【变更】将 QHBoxLayout 改为 QVBoxLayout，实现垂直排列
-        filter_layout = QVBoxLayout()
+        filter_layout = QHBoxLayout()
         self.date_filter = DateFilterWidget()
         self.ip_filter = IPFilterWidget()
-        # 依次添加，实现上下排列
         filter_layout.addWidget(self.date_filter)
         filter_layout.addWidget(self.ip_filter)
         layout.addLayout(filter_layout)
@@ -31,6 +29,8 @@ class HourlyStatsView(QWidget):
         self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
         self.table.setStyleSheet("QTableWidget::item:selected { background-color: #cce8ff; color: black; }")
         self.table.setSortingEnabled(True)
+        # 【变更】设置表格的选中行为为SelectRows
+        self.table.setSelectionBehavior(QAbstractItemView.SelectRows)
         layout.addWidget(self.table)
         
         self.date_filter.filter_changed.connect(self.query_requested.emit)

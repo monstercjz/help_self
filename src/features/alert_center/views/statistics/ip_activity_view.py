@@ -1,6 +1,5 @@
 # desktop_center/src/features/alert_center/views/statistics/ip_activity_view.py
-from PySide6.QtWidgets import QWidget, QVBoxLayout, QTableWidget, QHeaderView, QTableWidgetItem
-# 【变更】添加 Qt 的导入
+from PySide6.QtWidgets import QWidget, QVBoxLayout, QTableWidget, QHeaderView, QTableWidgetItem, QAbstractItemView
 from PySide6.QtCore import Signal, Slot, QEvent, Qt
 from ...widgets.date_filter_widget import DateFilterWidget
 
@@ -24,6 +23,8 @@ class IPActivityView(QWidget):
         self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
         self.table.setStyleSheet("QTableWidget::item:selected { background-color: #cce8ff; color: black; }")
         self.table.setSortingEnabled(True)
+        # 【变更】设置表格的选中行为为SelectRows
+        self.table.setSelectionBehavior(QAbstractItemView.SelectRows)
         layout.addWidget(self.table)
         
         self.date_filter.filter_changed.connect(self.query_requested.emit)
@@ -41,7 +42,6 @@ class IPActivityView(QWidget):
             self.table.insertRow(row)
             self.table.setItem(row, 0, QTableWidgetItem(record.get('source_ip', 'N/A')))
             count_item = QTableWidgetItem()
-            # 使用 setData 以确保数值排序正确
             count_item.setData(Qt.ItemDataRole.DisplayRole, record.get('count', 0))
             self.table.setItem(row, 1, count_item)
         self.table.setSortingEnabled(True)
