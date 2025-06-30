@@ -62,10 +62,10 @@ class ArrangerController(QObject):
                 self.view.set_monitoring_status(False)
                 # 即使没有窗口，也应该通过MonitorService报告，让它发出STOPPED事件
                 self.monitor_service._dispatch_event(
-                    event_type="MONITOR_START_FAILED",
+                    type="MONITOR_START_FAILED",
                     title="监控启动失败",
                     message="未检测到符合条件的窗口，无法启动自动监测。",
-                    level="WARNING"
+                    severity="WARNING"
                 )
                 return
             
@@ -252,10 +252,10 @@ class ArrangerController(QObject):
         count = self._arrange_windows(self._execute_grid_arrangement)
         if count > 0:
             self.monitor_service._dispatch_event(
-                event_type="MANUAL_ARRANGE_COMPLETED",
+                type="MANUAL_ARRANGE_COMPLETED",
                 title="手动网格排列完成",
                 message=f"已成功手动排列 {count} 个窗口。",
-                level="INFO",
+                severity="INFO",
                 details={"arranged_count": count, "type": "grid"}
             )
 
@@ -265,10 +265,10 @@ class ArrangerController(QObject):
         count = self._arrange_windows(self._execute_cascade_arrangement)
         if count > 0:
             self.monitor_service._dispatch_event(
-                event_type="MANUAL_ARRANGE_COMPLETED",
+                type="MANUAL_ARRANGE_COMPLETED",
                 title="手动级联排列完成",
                 message=f"已成功手动排列 {count} 个窗口。",
-                level="INFO",
+                severity="INFO",
                 details={"arranged_count": count, "type": "cascade"}
             )
     

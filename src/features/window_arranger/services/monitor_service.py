@@ -46,10 +46,10 @@ class MonitorService(QThread):
         self.start()
         # 初始状态报告
         self._dispatch_event(
-            event_type="MONITOR_STARTED",
+            type="MONITOR_STARTED",
             title=f"监控已启动",
             message=f"自动监测服务已启动，模式: {self.mode.capitalize()}。",
-            level="INFO",
+            severity="INFO",
             details={"initial_window_count": len(self.position_map)}
         )
 
@@ -77,10 +77,10 @@ class MonitorService(QThread):
         logging.info("[MonitorService] 自动监测服务已停止。")
         self.status_updated.emit("监控已停止")
         self._dispatch_event(
-            event_type="MONITOR_STOPPED",
+            type="MONITOR_STOPPED",
             title=f"监控已停止",
             message=f"自动监测服务已停止运行。",
-            level="WARNING"
+            severity="WARNING"
         )
 
 
@@ -91,12 +91,12 @@ class MonitorService(QThread):
         self.quit()
         self.wait(2000)
 
-    def _dispatch_event(self, event_type: str, title: str, message: str, level: str, details: dict = None):
+    def _dispatch_event(self, type: str, title: str, message: str, severity: str, details: dict = None):
         """【新增】统一处理日志、桌面通知和 Webhook 推送。"""
         # 1. 构造完整的事件数据包
         event_data = {
-            "event_type": event_type,
-            "level": level,
+            "type": type,
+            "severity": severity,
             "title": title,
             "message": message,
             "timestamp": datetime.now().isoformat(),
@@ -105,8 +105,8 @@ class MonitorService(QThread):
         }
 
         # 2. 日志记录
-        log_level = getattr(logging, level.upper(), logging.INFO)
-        logging.log(log_level, f"[{self.mode.capitalize()} - {event_type}] {title}: {message}")
+        log_level = getattr(logging, severity.upper(), logging.INFO)
+        logging.log(log_level, f"[{self.mode.capitalize()} - {type}] {title}: {message}")
 
         # 3. 桌面通知 (如果启用)
         if self.context.config_service.get_value("WindowArranger", "enable_notifications", "true").lower() == 'true':
@@ -137,10 +137,10 @@ class MonitorService(QThread):
         if not self.find_windows_func:
             logging.warning("[MonitorService] 窗口查找函数未设置，跳过监测。")
             self._dispatch_event(
-                event_type="MONITOR_WARNING",
+                type="MONITOR_WARNING",
                 title="监测警告",
                 message="窗口查找函数未设置，无法执行监测。",
-                level="CRITICAL"
+                severity="CRITICAL"
             )
             return
             
@@ -164,10 +164,10 @@ class MonitorService(QThread):
             if hwnd not in current_hwnds:
                 # 窗口已关闭：从快照中移除
                 self._dispatch_event(
-                    event_type="MONITOR_WINDOW_DISAPPEARED",
+                    type="MONITOR_WINDOW_DISAPPEARED",
                     title=f"窗口 '{expected_title}' 已关闭",
                     message=f"快照模式下检测到窗口 '{expected_title}' (HWND:{hwnd}) 已关闭，从监控中移除。",
-                    level="WARNING",
+                    severity="WARNING",
                     details={"hwnd": hwnd, "title": expected_title, "pid": expected_pid}
                 )
                 del self.position_map[hwnd]
@@ -188,10 +188,10 @@ class MonitorService(QThread):
                 if hwnd in self.position_map: # 确保在旧的position_map中存在
                     _, _, title = self.position_map[hwnd]
                     self._dispatch_event(
-                        event_type="MONITOR_WINDOW_DISAPPEARED",
+                        type="MONITOR_WINDOW_DISAPPEARED",
                         title=f"窗口 '{title}' 消失",
                         message=f"模板模式下，检测到窗口 '{title}' (HWND:{hwnd}) 消失。",
-                        level="WARNING",
+                        severity="WARNING",
                         details={"hwnd": hwnd, "title": title}
                     )
             
@@ -200,18 +200,18 @@ class MonitorService(QThread):
                 if hwnd in current_win_map: # 确保在当前窗口中存在
                     title = current_win_map[hwnd].title
                     self._dispatch_event(
-                        event_type="WINDOW_ADDED",
+                        type="WINDOW_ADDED",
                         title=f"新窗口 '{title}' 加入",
                         message=f"模板模式下，检测到新窗口 '{title}' (HWND:{hwnd}) 加入。",
-                        level="INFO",
+                        severity="INFO",
                         details={"hwnd": hwnd, "title": title}
                     )
 
             self._dispatch_event(
-                event_type="MONITOR_FORCE_REARRANGE",
+                type="MONITOR_FORCE_REARRANGE",
                 title=f"窗口集合变化，强制重排",
                 message=f"检测到 {len(added_hwnds)} 个新增窗口，{len(removed_hwnds)} 个窗口消失，正在执行全面重排。",
-                level="WARNING",
+                severity="WARNING",
                 details={
                     "added_count": len(added_hwnds),
                     "removed_count": len(removed_hwnds),
@@ -234,10 +234,10 @@ class MonitorService(QThread):
         """模板模式下的强制重排逻辑，使用注入的排序和布局计算函数。"""
         if not self.rearrange_logic_func or not self.sorting_func:
             self._dispatch_event(
-                event_type="MONITOR_REARRANGE_FAILED",
+                type="MONITOR_REARRANGE_FAILED",
                 title="强制重排失败",
                 message="布局或排序函数未设置，无法执行重排。",
-                level="CRITICAL",
+                severity="CRITICAL",
             )
             return
 
@@ -261,10 +261,10 @@ class MonitorService(QThread):
         self.baseline_hwnds = set(self.position_map.keys())
         self.status_updated.emit("布局已自动重排")
         self._dispatch_event(
-            event_type="MONITOR_REARRANGE_COMPLETED",
+            type="MONITOR_REARRANGE_COMPLETED",
             title="布局重排完成",
             message=f"已成功重排 {len(sorted_windows)} 个窗口。",
-            level="INFO",
+            severity="INFO",
             details={"arranged_count": len(sorted_windows)}
         )
 
@@ -284,10 +284,10 @@ class MonitorService(QThread):
                     QCoreApplication.processEvents()
             except Exception as e:
                 self._dispatch_event(
-                    event_type="MONITOR_APPLY_TRANSFORM_FAILED",
+                    type="MONITOR_APPLY_TRANSFORM_FAILED",
                     title=f"窗口 '{window_info.title}' 变换失败",
                     message=f"无法将窗口 '{window_info.title}' 移动到目标位置 ({x},{y},{w},{h})。错误: {e}",
-                    level="WARNING",
+                    severity="WARNING",
                     details={"hwnd": window_info.pygw_window_obj._hWnd, "title": window_info.title, "error": str(e)}
                 )
 
@@ -299,10 +299,10 @@ class MonitorService(QThread):
         # 进程ID校验：防止句柄复用导致的操作错误
         if window_info.pid != expected_pid:
             self._dispatch_event(
-                event_type="MONITOR_HANDLE_REUSED",
+                type="MONITOR_HANDLE_REUSED",
                 title=f"句柄复用警告: '{window_info.title}'",
                 message=f"检测到句柄复用 (HWND: {hwnd})。原进程(PID:{expected_pid})已关闭，新进程为 '{window_info.process_name}'(PID:{window_info.pid})。从监控中移除。",
-                level="WARNING",
+                severity="WARNING",
                 details={"hwnd": hwnd, "new_title": window_info.title, "old_pid": expected_pid, "new_pid": window_info.pid}
             )
             # 从position_map中移除此项，因为它不再是“预期”的窗口
@@ -316,10 +316,10 @@ class MonitorService(QThread):
         current_rect = QRect(window_info.left, window_info.top, window_info.width, window_info.height)
         if not self._is_rect_close(current_rect, expected_rect):
             self._dispatch_event(
-                event_type="MONITOR_WINDOW_MOVED",
+                type="MONITOR_WINDOW_MOVED",
                 title=f"窗口 '{window_info.title}' 已移位",
                 message=f"窗口 '{window_info.title}' (HWND:{hwnd}) 位置已偏离 ({current_rect.getRect()}), 正在恢复到期望位置 ({expected_rect.getRect()})。",
-                level="INFO",
+                severity="INFO",
                 details={"hwnd": hwnd, "title": window_info.title, "old_rect": current_rect.getRect(), "new_rect": expected_rect.getRect()}
             )
             try:
@@ -329,10 +329,10 @@ class MonitorService(QThread):
                 self.status_updated.emit(f"已校正: {window_info.title[:30]}...")
             except Exception as e:
                 self._dispatch_event(
-                    event_type="RESTORE_FAILED",
+                    type="RESTORE_FAILED",
                     title=f"窗口 '{window_info.title}' 恢复失败",
                     message=f"尝试恢复窗口 '{window_info.title}' (HWND:{hwnd}) 失败: {e}",
-                    level="WARNING",
+                    severity="WARNING",
                     details={"hwnd": hwnd, "title": window_info.title, "error": str(e)}
                 )
 
