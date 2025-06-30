@@ -27,6 +27,7 @@ class ArrangerController:
         self._populate_screen_selection()
         self._load_settings()
 
+    # ... (_populate_screen_selection, _load_settings, _save_settings 无变化)
     def _populate_screen_selection(self):
         """获取所有屏幕信息并填充到UI的屏幕选择下拉框中。"""
         self.screens = self.context.app.screens()
@@ -48,7 +49,7 @@ class ArrangerController:
             "filter_keyword": self.context.config_service.get_value("WindowArranger", "filter_keyword", "完全控制"),
             "process_name_filter": self.context.config_service.get_value("WindowArranger", "process_name_filter", ""),
             "target_screen_index": self.context.config_service.get_value("WindowArranger", "target_screen_index", "0"),
-            "exclude_title_keywords": self.context.config_service.get_value("WindowArranger", "exclude_title_keywords", "Radmin Viewer"), # 【新增】加载排除关键词
+            "exclude_title_keywords": self.context.config_service.get_value("WindowArranger", "exclude_title_keywords", "Radmin Viewer"),
             "grid_rows": self.context.config_service.get_value("WindowArranger", "grid_rows", "2"),
             "grid_cols": self.context.config_service.get_value("WindowArranger", "grid_cols", "3"),
             "grid_spacing": self.context.config_service.get_value("WindowArranger", "grid_spacing", "10"),
@@ -63,14 +64,14 @@ class ArrangerController:
         filter_keyword = self.view.get_filter_keyword()
         process_name_filter = self.view.get_process_name_filter()
         target_screen_index = self.view.get_selected_screen_index()
-        exclude_keywords = self.view.get_exclude_keywords() # 【新增】获取排除关键词
+        exclude_keywords = self.view.get_exclude_keywords()
         grid_rows, grid_cols, grid_spacing = self.view.get_grid_params()
         cascade_x_offset, cascade_y_offset = self.view.get_cascade_params()
 
         self.context.config_service.set_option("WindowArranger", "filter_keyword", filter_keyword)
         self.context.config_service.set_option("WindowArranger", "process_name_filter", process_name_filter)
         self.context.config_service.set_option("WindowArranger", "target_screen_index", str(target_screen_index))
-        self.context.config_service.set_option("WindowArranger", "exclude_title_keywords", exclude_keywords) # 【新增】保存排除关键词
+        self.context.config_service.set_option("WindowArranger", "exclude_title_keywords", exclude_keywords)
         self.context.config_service.set_option("WindowArranger", "grid_rows", str(grid_rows))
         self.context.config_service.set_option("WindowArranger", "grid_cols", str(grid_cols))
         self.context.config_service.set_option("WindowArranger", "grid_spacing", str(grid_spacing))
@@ -86,13 +87,16 @@ class ArrangerController:
         logging.info("[WindowArranger] 正在检测窗口...")
         self._save_settings()
 
-        title_keyword = self.view.get_filter_keyword()
-        process_keyword = self.view.get_process_name_filter()
-        exclude_keywords_str = self.view.get_exclude_keywords() # 【修改】获取排除关键词
-        # 【修改】处理排除关键词列表
+        # 【修改】获取并处理多值关键词
+        title_keyword_str = self.view.get_filter_keyword()
+        process_keyword_str = self.view.get_process_name_filter()
+        exclude_keywords_str = self.view.get_exclude_keywords()
+        
+        title_keywords = [kw.strip().lower() for kw in title_keyword_str.split(',') if kw.strip()]
+        process_keywords = [kw.strip().lower() for kw in process_keyword_str.split(',') if kw.strip()]
         exclude_keywords_list = [kw.strip().lower() for kw in exclude_keywords_str.split(',') if kw.strip()]
         
-        if not title_keyword and not process_keyword:
+        if not title_keywords and not process_keywords:
             self.context.notification_service.show(
                 title="检测失败",
                 message="请输入窗口标题关键词或进程名称进行过滤。"
@@ -114,49 +118,44 @@ class ArrangerController:
             logging.debug(f"--- Processing window: Title='{current_window_title}' (hWnd={win._hWnd}) ---")
             logging.debug(f"  Raw properties: Visible={win.visible}, Minimized={win.isMinimized}, SelfApp={win._hWnd == app_main_window_id}")
 
-            # 1. 基础过滤条件：窗口可见、未最小化、有标题、非自身窗口
             if not (win.title and win.visible and not win.isMinimized and win._hWnd != app_main_window_id):
                 logging.debug(f"  - Skipped '{current_window_title}': Failed basic visibility/title/self check.")
                 continue
 
-            # 【新增】排除逻辑，作为最高优先级检查
-            is_excluded = False
             if exclude_keywords_list:
-                for ex_kw in exclude_keywords_list:
-                    if ex_kw in current_window_title.lower():
-                        is_excluded = True
-                        logging.debug(f"  - Skipped '{current_window_title}': Title matched exclude keyword '{ex_kw}'.")
-                        break # 找到一个匹配的排除词就跳出循环
-            if is_excluded:
-                continue # 跳过这个窗口，继续下一个
+                if any(ex_kw in current_window_title.lower() for ex_kw in exclude_keywords_list):
+                    logging.debug(f"  - Skipped '{current_window_title}': Title matched an exclude keyword.")
+                    continue
 
-            # ... (后续的标题和进程匹配逻辑保持不变)
+            # 【修改】支持多值匹配
             is_title_match = False
-            if title_keyword:
-                is_title_match = (title_keyword.lower() in win.title.lower())
-            logging.debug(f"  - Title match for '{current_window_title}': {is_title_match} (Keyword: '{title_keyword}')")
+            if title_keywords:
+                if any(kw in win.title.lower() for kw in title_keywords):
+                    is_title_match = True
+            logging.debug(f"  - Title match for '{current_window_title}': {is_title_match} (Keywords: {title_keywords})")
 
             is_process_match = False
-            if process_keyword:
+            if process_keywords:
                 try:
                     thread_id, pid = win32process.GetWindowThreadProcessId(win._hWnd)
                     if pid != 0:
                         process = psutil.Process(pid)
                         current_process_name = process.name()
-                        is_process_match = (process_keyword.lower() in current_process_name.lower())
+                        if any(kw in current_process_name.lower() for kw in process_keywords):
+                            is_process_match = True
                 except Exception:
                     is_process_match = False
-            logging.debug(f"  - Process name for '{current_window_title}': '{current_process_name}', Process match: {is_process_match} (Keyword: '{process_keyword}')")
+            logging.debug(f"  - Process name for '{current_window_title}': '{current_process_name}', Process match: {is_process_match} (Keywords: {process_keywords})")
 
             should_add = False
-            if process_keyword:
+            if process_keywords: # 如果指定了进程过滤器
                 if is_process_match:
-                    if title_keyword:
+                    if title_keywords: # 如果同时指定了标题过滤器
                         if is_title_match:
                             should_add = True
-                    else:
+                    else: # 没有指定标题过滤器，只要进程匹配即可
                         should_add = True
-            elif title_keyword:
+            elif title_keywords: # 如果只指定了标题过滤器
                 if is_title_match:
                     should_add = True
             
@@ -177,15 +176,13 @@ class ArrangerController:
         self.view.update_detected_windows_list(self.detected_windows)
         
         num_detected = len(self.detected_windows)
-        logging.info(f"[WindowArranger] 已检测到 {num_detected} 个符合条件的窗口 (标题:'{title_keyword}', 进程:'{process_keyword}')。")
+        logging.info(f"[WindowArranger] 已检测到 {num_detected} 个符合条件的窗口 (标题:'{title_keyword_str}', 进程:'{process_keyword_str}')。")
         self.context.notification_service.show(
             title="窗口检测完成",
             message=f"已检测到 {num_detected} 个符合条件的窗口。"
         )
 
     # --- arrange_windows_grid and arrange_windows_cascade are unchanged ---
-    # ... but will be provided here for completeness ...
-
     def arrange_windows_grid(self, rows: int, cols: int, spacing: int):
         """
         将检测到的窗口按网格布局排列。

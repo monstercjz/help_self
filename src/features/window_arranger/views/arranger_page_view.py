@@ -38,21 +38,20 @@ class ArrangerPageView(QWidget):
         filter_layout.setContentsMargins(20, 30, 20, 20)
         
         self.filter_keyword_input = QLineEdit("完全控制")
-        self.filter_keyword_input.setPlaceholderText("输入窗口标题包含的关键词")
+        self.filter_keyword_input.setPlaceholderText("输入标题关键词, 用逗号分隔多个") # 【修改】更新提示
         filter_layout.addRow("标题关键词:", self.filter_keyword_input)
 
         self.process_name_input = QLineEdit()
-        self.process_name_input.setPlaceholderText("输入进程名称 (例如: Radmin.exe)")
+        self.process_name_input.setPlaceholderText("输入进程名, 用逗号分隔多个") # 【修改】更新提示
         filter_layout.addRow("进程名称:", self.process_name_input)
         
-        # 【新增】排除关键词输入框
         self.exclude_title_input = QLineEdit("Radmin Viewer")
         self.exclude_title_input.setPlaceholderText("输入要排除的标题关键词，用逗号分隔")
         filter_layout.addRow("排除标题包含:", self.exclude_title_input)
         
         main_layout.addWidget(filter_group)
 
-        # 检测到的窗口列表组
+        # 检测到的窗口列表组 (无变化)
         windows_list_group = QGroupBox("检测到的窗口")
         windows_list_group.setStyleSheet("""
             QGroupBox { font-size: 16px; font-weight: bold; color: #333; margin-top: 10px; }
@@ -84,12 +83,6 @@ class ArrangerPageView(QWidget):
 
         # 排列设置组 (无变化)
         settings_group = QGroupBox("排列设置")
-        # ... (此处代码无变化，保持原样)
-        # ...
-        
-        # 为了简洁，省略未改变的 settings_group 和 action_buttons_layout 部分
-        # 在实际文件中，它们应保持原样
-        # ... settings_group and action_buttons_layout code here ...
         settings_group.setStyleSheet("""
             QGroupBox { font-size: 16px; font-weight: bold; color: #333; margin-top: 10px; }
             QGroupBox::title { subcontrol-origin: margin; subcontrol-position: top left; padding: 0 10px; left: 10px; }
@@ -127,6 +120,7 @@ class ArrangerPageView(QWidget):
         settings_layout.addRow("级联Y偏移 (px):", self.cascade_y_offset_spinbox)
         main_layout.addWidget(settings_group)
         
+        # 动作按钮 (无变化)
         action_buttons_layout = QHBoxLayout()
         self.arrange_grid_button = QPushButton("网格排列")
         self.arrange_grid_button.setMinimumHeight(35)
@@ -151,6 +145,7 @@ class ArrangerPageView(QWidget):
 
         main_layout.addStretch(1)
 
+    # ... (其余方法保持不变)
     def _emit_arrange_grid(self):
         """当网格排列按钮被点击时，发射带参数的信号。"""
         rows = self.rows_spinbox.value()
@@ -193,7 +188,6 @@ class ArrangerPageView(QWidget):
                     selected_windows.append(window_info)
         return selected_windows
 
-
     def get_filter_keyword(self) -> str:
         """获取当前设置的窗口标题过滤关键词。"""
         return self.filter_keyword_input.text().strip()
@@ -202,7 +196,6 @@ class ArrangerPageView(QWidget):
         """获取当前设置的进程名过滤关键词。"""
         return self.process_name_input.text().strip()
     
-    # 【新增】获取排除关键词
     def get_exclude_keywords(self) -> str:
         """获取排除关键词字符串。"""
         return self.exclude_title_input.text().strip()
@@ -242,7 +235,6 @@ class ArrangerPageView(QWidget):
         self.filter_keyword_input.setText(settings_data.get("filter_keyword", "完全控制"))
         self.process_name_input.setText(settings_data.get("process_name_filter", ""))
         self.screen_selection_combobox.setCurrentIndex(int(settings_data.get("target_screen_index", 0)))
-        # 【新增】加载排除关键词
         self.exclude_title_input.setText(settings_data.get("exclude_title_keywords", "Radmin Viewer"))
         
         self.rows_spinbox.setValue(int(settings_data.get("grid_rows", 2)))
