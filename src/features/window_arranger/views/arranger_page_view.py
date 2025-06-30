@@ -4,7 +4,7 @@ from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QPushButton,
                                    QListWidget, QListWidgetItem, QLineEdit,
                                    QAbstractItemView)
 from PySide6.QtCore import Signal, Qt
-from PySide6.QtGui import QIcon, QFont
+from PySide6.QtGui import QIcon
 
 class ArrangerPageView(QWidget):
     """
@@ -43,10 +43,7 @@ class ArrangerPageView(QWidget):
         
         # 窗口过滤组
         filter_group = QGroupBox("窗口过滤")
-        filter_group.setStyleSheet("""
-            QGroupBox { font-size: 16px; font-weight: bold; color: #333; margin-top: 10px; }
-            QGroupBox::title { subcontrol-origin: margin; subcontrol-position: top left; padding: 0 10px; left: 10px; }
-        """)
+        filter_group.setStyleSheet("QGroupBox { font-size: 16px; font-weight: bold; color: #333; margin-top: 10px; } QGroupBox::title { subcontrol-origin: margin; subcontrol-position: top left; padding: 0 10px; left: 10px; }")
         filter_layout = QFormLayout(filter_group)
         filter_layout.setSpacing(12)
         filter_layout.setContentsMargins(20, 30, 20, 20)
@@ -66,22 +63,19 @@ class ArrangerPageView(QWidget):
         main_layout.addWidget(filter_group)
 
         # 检测到的窗口列表组
-        self.windows_list_group = QGroupBox("检测到的窗口")
-        self.windows_list_group.setStyleSheet("""
-            QGroupBox { font-size: 16px; font-weight: bold; color: #333; margin-top: 10px; }
-            QGroupBox::title { subcontrol-origin: margin; subcontrol-position: top left; padding: 0 10px; left: 10px; }
-        """)
+        self.windows_list_group = QGroupBox() # 标题设为空
+        self.windows_list_group.setStyleSheet("QGroupBox { margin-top: 10px; }")
         windows_list_layout = QVBoxLayout(self.windows_list_group)
-        windows_list_layout.setContentsMargins(20, 30, 20, 20)
+        windows_list_layout.setContentsMargins(15, 15, 15, 15)
+
+        self.summary_label = QLabel("请先检测窗口")
+        self.summary_label.setStyleSheet("font-size: 16px; font-weight: bold; margin-bottom: 5px;")
+        windows_list_layout.addWidget(self.summary_label)
 
         self.detected_windows_list_widget = QListWidget()
         self.detected_windows_list_widget.setMinimumHeight(200)
         self.detected_windows_list_widget.setSelectionMode(QAbstractItemView.ExtendedSelection)
-        self.detected_windows_list_widget.setStyleSheet("""
-            QListWidget { border: 1px solid #ddd; border-radius: 5px; padding: 5px; }
-            QListWidget::item { padding: 5px; }
-            QListWidget::indicator { width: 16px; height: 16px; }
-        """)
+        self.detected_windows_list_widget.setStyleSheet("QListWidget { border: 1px solid #ddd; border-radius: 5px; padding: 5px; } QListWidget::item { padding: 5px; } QListWidget::indicator { width: 16px; height: 16px; }")
         windows_list_layout.addWidget(self.detected_windows_list_widget)
         
         detect_button = QPushButton("检测桌面窗口")
@@ -117,6 +111,11 @@ class ArrangerPageView(QWidget):
         self.arrange_cascade_button.clicked.connect(self.arrange_cascade_requested.emit)
         action_buttons_layout.addWidget(self.arrange_cascade_button)
         main_layout.addLayout(action_buttons_layout)
+        
+        self.status_label = QLabel("准备就绪")
+        self.status_label.setStyleSheet("color: #666; font-style: italic; margin-top: 5px;")
+        self.status_label.setAlignment(Qt.AlignRight)
+        main_layout.addWidget(self.status_label)
 
         main_layout.addStretch(1)
 
