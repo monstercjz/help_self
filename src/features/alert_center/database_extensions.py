@@ -10,28 +10,32 @@ class AlertCenterDatabaseExtensions:
     def get_custom_stats(self, dimensions: List[str], start_date: str = None, end_date: str = None) -> List[Dict[str, Any]]:
         """
         根据用户选择的动态维度进行分组统计。
-
-        Args:
-            dimensions (List[str]): 用户选择的维度字段列表, e.g., ['severity', 'type']
-            start_date (str, optional): 起始日期.
-            end_date (str, optional): 结束日期.
-
-        Returns:
-            List[Dict[str, Any]]: 查询结果列表.
+        【变更】支持IP、按天、按小时作为维度。
         """
         if not dimensions:
             return []
 
-        # 安全性检查：确保所有维度都在允许的字段列表中
-        allowed_dimensions = {'severity', 'type', 'source_ip'}
-        safe_dimensions = [dim for dim in dimensions if dim in allowed_dimensions]
-        if not safe_dimensions:
+        # 维度白名单和到SQL表达式的映射
+        dim_to_sql_expr = {
+            'severity': 'severity',
+            'type': 'type',
+            'source_ip': 'source_ip',
+            'dim_date': "strftime('%Y-%m-%d', timestamp)",
+            'dim_hour': "strftime('%H', timestamp)",
+        }
+
+        # 过滤并转换用户选择的维度
+        safe_dims = [dim for dim in dimensions if dim in dim_to_sql_expr]
+        if not safe_dims:
             logging.warning("自定义分析收到了无效的维度，查询已中止。")
             return []
 
-        dim_str = ", ".join(safe_dimensions)
-        
-        sql_parts = [f"SELECT {dim_str}, COUNT(*) as count FROM alerts WHERE 1=1"]
+        # 构建SELECT和GROUP BY子句
+        select_clauses = [f"{dim_to_sql_expr[dim]} AS {dim}" for dim in safe_dims]
+        select_str = ", ".join(select_clauses)
+        group_by_str = ", ".join([dim_to_sql_expr[dim] for dim in safe_dims])
+
+        sql_parts = [f"SELECT {select_str}, COUNT(*) as count FROM alerts WHERE 1=1"]
         params = []
 
         if start_date:
@@ -41,14 +45,13 @@ class AlertCenterDatabaseExtensions:
             sql_parts.append("AND timestamp <= ?")
             params.append(end_date + " 23:59:59")
 
-        sql_parts.append(f"GROUP BY {dim_str}")
-        sql_parts.append(f"ORDER BY {dim_str}")
+        sql_parts.append(f"GROUP BY {group_by_str}")
+        sql_parts.append(f"ORDER BY {group_by_str}")
         
         full_sql = " ".join(sql_parts)
         logging.info(f"执行自定义分析查询: {full_sql} with params {params}")
 
         try:
-            # self.conn 会由继承了此Mixin的DatabaseService提供
             cursor = self.conn.cursor()
             cursor.execute(full_sql, params)
             rows = cursor.fetchall()
