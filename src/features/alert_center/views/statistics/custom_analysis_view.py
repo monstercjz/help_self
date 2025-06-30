@@ -4,7 +4,6 @@ from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QListWidget, Q
                                QLabel, QGroupBox, QSpacerItem, QSizePolicy)
 from PySide6.QtCore import Signal, Slot, QEvent, Qt
 from PySide6.QtGui import QFont, QColor
-# 【变更】添加缺失的DateFilterWidget导入
 from ...widgets.date_filter_widget import DateFilterWidget
 
 class CustomAnalysisView(QWidget):
@@ -27,12 +26,19 @@ class CustomAnalysisView(QWidget):
     def _init_ui(self):
         main_layout = QVBoxLayout(self)
         
+        # --- 顶部：日期过滤器 和 维度选择 （水平排列）---
+        top_controls_layout = QHBoxLayout()
+        top_controls_layout.setSpacing(15) # 增加间距
+
+        # 左侧：日期过滤器组
         date_filter_group = QGroupBox("第一步：选择数据时间范围")
         date_filter_layout = QVBoxLayout(date_filter_group)
         self.date_filter = DateFilterWidget()
         date_filter_layout.addWidget(self.date_filter)
-        main_layout.addWidget(date_filter_group)
+        top_controls_layout.addWidget(date_filter_group)
+        top_controls_layout.setStretchFactor(date_filter_group, 1) # 让日期组可以伸展
 
+        # 右侧：维度选择组
         dimension_group = QGroupBox("第二步：配置分析维度和顺序")
         dimension_main_layout = QHBoxLayout(dimension_group)
 
@@ -69,12 +75,28 @@ class CustomAnalysisView(QWidget):
         selected_layout.addWidget(self.selected_dims_list)
         dimension_main_layout.addLayout(selected_layout)
         
-        main_layout.addWidget(dimension_group)
+        top_controls_layout.addWidget(dimension_group)
+        top_controls_layout.setStretchFactor(dimension_group, 2) # 维度组占据更多水平空间
+        
+        main_layout.addLayout(top_controls_layout)
+
+        # --- 中部：执行按钮 和 展开/折叠按钮 （水平排列）---
+        middle_controls_layout = QHBoxLayout()
+        middle_controls_layout.setContentsMargins(0, 5, 0, 5) # 垂直间距
         
         self.analyze_button = QPushButton("执行分析")
         self.analyze_button.setStyleSheet("font-size: 14px; font-weight: bold; padding: 5px;")
-        main_layout.addWidget(self.analyze_button)
+        middle_controls_layout.addWidget(self.analyze_button)
+        
+        middle_controls_layout.addStretch() # 将按钮推到右侧
+        self.expand_all_button = QPushButton("展开全部")
+        self.collapse_all_button = QPushButton("折叠全部")
+        middle_controls_layout.addWidget(self.expand_all_button)
+        middle_controls_layout.addWidget(self.collapse_all_button)
 
+        main_layout.addLayout(middle_controls_layout)
+
+        # --- 底部：分析结果 （垂直排列，占据剩余空间）---
         results_group = QGroupBox("分析结果")
         results_layout = QVBoxLayout(results_group)
         self.tree = QTreeWidget()
@@ -85,16 +107,10 @@ class CustomAnalysisView(QWidget):
         self.tree.sortByColumn(1, Qt.SortOrder.DescendingOrder)
         results_layout.addWidget(self.tree)
         
-        tree_control_layout = QHBoxLayout()
-        tree_control_layout.addStretch()
-        self.expand_all_button = QPushButton("展开全部")
-        self.collapse_all_button = QPushButton("折叠全部")
-        tree_control_layout.addWidget(self.expand_all_button)
-        tree_control_layout.addWidget(self.collapse_all_button)
-        results_layout.addLayout(tree_control_layout)
-
         main_layout.addWidget(results_group)
-        main_layout.setStretch(3, 1)
+        # 【关键】让结果组占据所有剩余垂直空间
+        main_layout.setStretch(2, 1) # results_group是main_layout的第三个widget，索引为2
+
 
         self._connect_signals()
     
