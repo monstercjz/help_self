@@ -24,21 +24,17 @@ class CustomAnalysisView(QWidget):
         self._init_ui()
 
     def _init_ui(self):
-        # 【变更】采用全新的三段式垂直布局
         main_layout = QVBoxLayout(self)
         
-        # --- 1. 顶部：日期过滤器 ---
         date_filter_group = QGroupBox("第一步：选择数据时间范围")
         date_filter_layout = QVBoxLayout(date_filter_group)
         self.date_filter = DateFilterWidget()
         date_filter_layout.addWidget(self.date_filter)
         main_layout.addWidget(date_filter_group)
 
-        # --- 2. 中部：维度选择 ---
         dimension_group = QGroupBox("第二步：配置分析维度和顺序")
         dimension_main_layout = QHBoxLayout(dimension_group)
 
-        # 左侧：可用维度
         available_layout = QVBoxLayout()
         available_layout.addWidget(QLabel("可用维度:"))
         self.available_dims_list = QListWidget()
@@ -46,30 +42,37 @@ class CustomAnalysisView(QWidget):
             item = QListWidgetItem(display_name)
             item.setData(Qt.ItemDataRole.UserRole, internal_name)
             self.available_dims_list.addItem(item)
+        # 【变更】限制列表高度
+        self.available_dims_list.setMaximumHeight(150)
         available_layout.addWidget(self.available_dims_list)
         dimension_main_layout.addLayout(available_layout)
 
-        # 中间：操作按钮
         button_layout = QVBoxLayout()
         button_layout.addSpacerItem(QSpacerItem(20, 40, QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Expanding))
         self.add_button = QPushButton(">>")
         self.remove_button = QPushButton("<<")
+        # 【变更】新增上移和下移按钮
+        self.up_button = QPushButton("↑ 上移")
+        self.down_button = QPushButton("↓ 下移")
         button_layout.addWidget(self.add_button)
         button_layout.addWidget(self.remove_button)
+        button_layout.addSpacing(10)
+        button_layout.addWidget(self.up_button)
+        button_layout.addWidget(self.down_button)
         button_layout.addSpacerItem(QSpacerItem(20, 40, QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Expanding))
         dimension_main_layout.addLayout(button_layout)
         
-        # 右侧：已选维度
         selected_layout = QVBoxLayout()
-        selected_layout.addWidget(QLabel("已选维度 (可拖拽排序):"))
+        selected_layout.addWidget(QLabel("已选维度 (可拖拽或使用按钮排序):"))
         self.selected_dims_list = QListWidget()
         self.selected_dims_list.setDragDropMode(QAbstractItemView.DragDropMode.InternalMove)
+        # 【变更】限制列表高度
+        self.selected_dims_list.setMaximumHeight(150)
         selected_layout.addWidget(self.selected_dims_list)
         dimension_main_layout.addLayout(selected_layout)
         
         main_layout.addWidget(dimension_group)
         
-        # --- 3. 底部：执行与结果 ---
         self.analyze_button = QPushButton("执行分析")
         self.analyze_button.setStyleSheet("font-size: 14px; font-weight: bold; padding: 5px;")
         main_layout.addWidget(self.analyze_button)
@@ -83,15 +86,17 @@ class CustomAnalysisView(QWidget):
         results_layout.addWidget(self.tree)
         
         main_layout.addWidget(results_group)
-        # 让结果区域占据更多空间
         main_layout.setStretch(3, 1)
-
 
         self._connect_signals()
     
     def _connect_signals(self):
         self.add_button.clicked.connect(self._add_dimension)
         self.remove_button.clicked.connect(self._remove_dimension)
+        # 【变更】连接新按钮的信号
+        self.up_button.clicked.connect(self._move_item_up)
+        self.down_button.clicked.connect(self._move_item_down)
+        
         self.analyze_button.clicked.connect(self._request_analysis)
         self.available_dims_list.itemDoubleClicked.connect(self._add_dimension)
         self.selected_dims_list.itemDoubleClicked.connect(self._remove_dimension)
@@ -100,6 +105,7 @@ class CustomAnalysisView(QWidget):
     def _add_dimension(self):
         selected_items = self.available_dims_list.selectedItems()
         if not selected_items: return
+        # takeItem会从列表中移除并返回该项
         item = self.available_dims_list.takeItem(self.available_dims_list.row(selected_items[0]))
         self.selected_dims_list.addItem(item)
         
@@ -108,6 +114,21 @@ class CustomAnalysisView(QWidget):
         if not selected_items: return
         item = self.selected_dims_list.takeItem(self.selected_dims_list.row(selected_items[0]))
         self.available_dims_list.addItem(item)
+
+    # 【变更】新增上移和下移的槽函数
+    def _move_item_up(self):
+        current_row = self.selected_dims_list.currentRow()
+        if current_row > 0:
+            item = self.selected_dims_list.takeItem(current_row)
+            self.selected_dims_list.insertItem(current_row - 1, item)
+            self.selected_dims_list.setCurrentRow(current_row - 1)
+
+    def _move_item_down(self):
+        current_row = self.selected_dims_list.currentRow()
+        if 0 <= current_row < self.selected_dims_list.count() - 1:
+            item = self.selected_dims_list.takeItem(current_row)
+            self.selected_dims_list.insertItem(current_row + 1, item)
+            self.selected_dims_list.setCurrentRow(current_row + 1)
 
     def _request_analysis(self):
         selected_dims = []
@@ -129,9 +150,23 @@ class CustomAnalysisView(QWidget):
         self.tree.clear()
         if not tree_data: return
 
+        # 【变更】定义层级颜色
+        level_colors = [
+            QColor("#003366"),  # Level 0 - Dark Blue
+            QColor("#8B4513"),  # Level 1 - Saddle Brown
+            QColor("#006400"),  # Level 2 - Dark Green
+            QColor("#483D8B"),  # Level 3 - Dark Slate Blue
+            QColor("#800000"),  # Level 4 - Maroon
+        ]
+        bold_font = QFont()
+        bold_font.setBold(True)
+
         def build_ui_tree(parent_item, data_node, level):
             if not isinstance(data_node, dict): return
             if level >= len(dimensions): return
+
+            # 获取当前层级的颜色，如果超出则使用最后一种颜色
+            color = level_colors[min(level, len(level_colors) - 1)]
 
             for key, value_node in data_node.items():
                 count = value_node.get('_count', 0)
@@ -140,6 +175,13 @@ class CustomAnalysisView(QWidget):
                 display_key = f"{int(key):02d}:00" if dimensions[level] == 'dim_hour' and str(key).isdigit() else str(key)
                 
                 item = QTreeWidgetItem(parent_item, [display_key, str(count)])
+                # 【变更】应用颜色和字体
+                item.setForeground(0, color)
+                item.setForeground(1, color)
+                if level == 0: # 只对顶层节点加粗
+                    item.setFont(0, bold_font)
+                    item.setFont(1, bold_font)
+
                 if children:
                     build_ui_tree(item, children, level + 1)
         
