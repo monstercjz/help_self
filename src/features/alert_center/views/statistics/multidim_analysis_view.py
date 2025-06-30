@@ -30,6 +30,11 @@ class MultidimAnalysisView(QWidget):
         self.tree.setColumnCount(2)
         self.tree.setHeaderLabels(["分析维度", "告警数量"])
         self.tree.header().setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
+        # QHeaderView.ResizeMode.Fixed: 列宽固定，由resizeSection设定。
+        # QHeaderView.ResizeMode.Interactive: 用户可以手动拖拽调整列宽。
+        # QHeaderView.ResizeMode.Stretch: 列宽会伸展以填充所有可用空间。如果有多个列设置为Stretch，它们会平均分配空间。
+        # QHeaderView.ResizeMode.ResizeToContents: 列宽会自动调整以适应其内容。这通常用于内容长度不固定但希望紧凑显示的列。
+        # QHeaderView.ResizeMode.Custom: 自定义模式，需要自己处理resize事件。
         self.tree.setSortingEnabled(True)
         self.tree.setStyleSheet("QTreeView::item:selected { background-color: #cce8ff; color: black; }")
         
