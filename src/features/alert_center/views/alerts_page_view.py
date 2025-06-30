@@ -71,6 +71,12 @@ class AlertsPageView(QWidget):
         header.setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)
         self.table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         self.table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
+        self.table.setStyleSheet("""
+            QTableWidget::item:selected {
+                background-color: #cce8ff;
+                color: black;
+            }
+        """)
         main_layout.addWidget(self.table)
         
         button_layout = QHBoxLayout()
@@ -124,11 +130,26 @@ class AlertsPageView(QWidget):
 
         self.ops_button = FlatMenuButton(" 操作 ▾")
         self.ops_button.setToolTip("更多操作")
+        
+        # 【变更】恢复操作按钮的图标设置逻辑
+        ops_icon = QIcon.fromTheme("preferences-system")
+        if not ops_icon.isNull():
+            self.ops_button.setIcon(ops_icon)
+            self.ops_button.setIconSize(QSize(16, 16))
+        else:
+            self.ops_button.setText("⚙️ 操作 ▾")
+        
         ops_menu = QMenu(self)
-        history_action = ops_menu.addAction("查看历史记录...")
-        stats_action = ops_menu.addAction("打开统计分析...")
+        # 【变更】恢复菜单项的图标
+        history_action = QAction(QIcon.fromTheme("document-open-recent"), "查看历史记录...", self)
+        stats_action = QAction(QIcon.fromTheme("utilities-system-monitor"), "打开统计分析...", self)
+        clear_db_action = QAction(QIcon.fromTheme("edit-delete"), "清空历史记录...", self)
+        
+        ops_menu.addAction(history_action)
+        ops_menu.addAction(stats_action)
         ops_menu.addSeparator()
-        clear_db_action = ops_menu.addAction("清空历史记录...")
+        ops_menu.addAction(clear_db_action)
+        
         font = clear_db_action.font()
         font.setBold(True)
         clear_db_action.setFont(font)

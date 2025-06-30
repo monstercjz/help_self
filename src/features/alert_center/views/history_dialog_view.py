@@ -4,7 +4,6 @@ from PySide6.QtWidgets import (QDialog, QVBoxLayout, QLabel, QTableWidget, QTabl
                                QHeaderView, QHBoxLayout, QDateEdit, QLineEdit, QPushButton, 
                                QComboBox, QRadioButton, QButtonGroup, QMenu, QApplication, 
                                QMessageBox, QFileDialog)
-# 从QtCore导入Signal
 from PySide6.QtCore import Qt, QDate, QCoreApplication, Signal, QPoint, Slot
 from PySide6.QtGui import QColor
 
@@ -21,7 +20,6 @@ class HistoryDialogView(QDialog):
     export_requested = Signal(dict)
     delete_alerts_requested = Signal(list)
     page_size_changed = Signal(int)
-    # 定义当严重等级筛选变化时发出的信号
     severity_filter_changed = Signal()
     
     def __init__(self, parent=None):
@@ -98,6 +96,13 @@ class HistoryDialogView(QDialog):
         self.table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         self.table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         self.table.setSelectionMode(QTableWidget.SelectionMode.ExtendedSelection)
+        # 【新增】统一选中项样式
+        self.table.setStyleSheet("""
+            QTableWidget::item:selected {
+                background-color: #cce8ff;
+                color: black;
+            }
+        """)
         main_layout.addWidget(self.table)
         
         pagination_layout = QHBoxLayout()
@@ -120,16 +125,12 @@ class HistoryDialogView(QDialog):
             pagination_layout.addWidget(btn)
         main_layout.addLayout(pagination_layout)
 
-        # Connect internal UI signals that don't need a controller
         self.table.doubleClicked.connect(self._show_full_message)
         self.table.customContextMenuRequested.connect(self._show_context_menu)
-        
-        # 【变更】使用lambda函数作为适配器，忽略buttonClicked信号发出的参数
         self.severity_buttons.buttonClicked.connect(lambda: self.severity_filter_changed.emit())
 
     @Slot(list)
     def update_table(self, data: list):
-        """[SLOT] 用查询结果更新表格。"""
         self.table.setRowCount(0)
         for row_idx, record in enumerate(data):
             self.table.insertRow(row_idx)
@@ -150,7 +151,6 @@ class HistoryDialogView(QDialog):
 
     @Slot(int, int, int)
     def update_pagination_ui(self, current_page: int, total_pages: int, total_records: int):
-        """[SLOT] 更新分页UI的状态。"""
         self.status_label.setText(f"共找到 {total_records} 条记录，当前显示第 {current_page}/{total_pages} 页")
         self.page_number_edit.setText(str(current_page))
         is_not_first_page = current_page > 1
@@ -167,7 +167,6 @@ class HistoryDialogView(QDialog):
 
     @Slot(str, str)
     def update_sort_indicator(self, column_name: str, direction: str):
-        """[SLOT] 更新表格列头的排序指示器。"""
         header = self.table.horizontalHeader()
         column_map = {'id': 0, 'timestamp': 1, 'severity': 2, 'type': 3, 'source_ip': 4, 'message': 5}
         logical_index = column_map.get(column_name)
@@ -179,11 +178,10 @@ class HistoryDialogView(QDialog):
             header.setSortIndicatorShown(False)
 
     def get_selected_alert_ids(self) -> list:
-        """获取表格中所有选中行的ID。"""
         selected_rows = self.table.selectionModel().selectedRows()
         alert_ids = []
         for index in selected_rows:
-            item = self.table.item(index.row(), 0) # ID在第0列
+            item = self.table.item(index.row(), 0)
             if item:
                 try:
                     alert_ids.append(int(item.text()))
@@ -192,7 +190,6 @@ class HistoryDialogView(QDialog):
         return alert_ids
 
     def get_filter_parameters(self) -> dict:
-        """获取当前所有过滤条件的值。"""
         severities = []
         if self.severity_info.isChecked(): severities.append("INFO")
         if self.severity_warning.isChecked(): severities.append("WARNING")
@@ -209,7 +206,6 @@ class HistoryDialogView(QDialog):
         }
 
     def _show_full_message(self):
-        """双击表格行时显示完整消息内容。"""
         row = self.table.currentRow()
         if row >= 0:
             item = self.table.item(row, 5)
@@ -217,7 +213,6 @@ class HistoryDialogView(QDialog):
                 QMessageBox.information(self, "详细内容", item.text())
 
     def _show_context_menu(self, pos: QPoint):
-        """显示表格右键菜单。"""
         index = self.table.indexAt(pos)
         if not index.isValid(): return
 

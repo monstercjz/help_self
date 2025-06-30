@@ -15,11 +15,11 @@ class StatisticsDialogView(QDialog):
     """
     # --- Signals to Controller ---
     tab_changed = Signal(int)
-    query_requested = Signal(str) # "ip_activity_tab", "hourly_stats_tab", "multidim_stats_tab", "type_stats_tab"
+    query_requested = Signal(str)
     hourly_ip_changed = Signal()
     multidim_ip_changed = Signal()
     hourly_sort_requested = Signal(int)
-    date_shortcut_requested = Signal(str, str) # tab_name, period
+    date_shortcut_requested = Signal(str, str)
 
 
     def __init__(self, parent=None):
@@ -120,6 +120,8 @@ class StatisticsDialogView(QDialog):
         table.setColumnCount(2)
         table.setHorizontalHeaderLabels(["来源IP", "数量"])
         table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+        # 【新增】统一选中项样式
+        table.setStyleSheet("QTableWidget::item:selected { background-color: #cce8ff; color: black; }")
         return table
 
     def _create_hourly_stats_table(self):
@@ -130,6 +132,8 @@ class StatisticsDialogView(QDialog):
         header = table.horizontalHeader()
         header.setSectionsClickable(True)
         header.sectionClicked.connect(self.hourly_sort_requested.emit)
+        # 【新增】统一选中项样式
+        table.setStyleSheet("QTableWidget::item:selected { background-color: #cce8ff; color: black; }")
         return table
 
     def _create_multidim_stats_tree(self):
@@ -138,13 +142,7 @@ class StatisticsDialogView(QDialog):
         tree.setHeaderLabels(["分析维度", "告警数量"])
         tree.header().setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
         tree.setSortingEnabled(True)
-        # 【新增】恢复自定义选中项样式
-        tree.setStyleSheet("""
-            QTreeView::item:selected {
-                background-color: #cce8ff;
-                color: black;
-            }
-        """)
+        tree.setStyleSheet("QTreeView::item:selected { background-color: #cce8ff; color: black; }")
         return tree
 
     def _create_type_stats_table(self):
@@ -152,6 +150,8 @@ class StatisticsDialogView(QDialog):
         table.setColumnCount(2)
         table.setHorizontalHeaderLabels(["告警类型", "数量"])
         table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+        # 【新增】统一选中项样式
+        table.setStyleSheet("QTableWidget::item:selected { background-color: #cce8ff; color: black; }")
         return table
 
     @Slot(list)
@@ -186,7 +186,6 @@ class StatisticsDialogView(QDialog):
         tree.setSortingEnabled(False)
         bold_font = QFont()
         bold_font.setBold(True)
-        # 【新增】恢复颜色定义
         hour_color = QColor("#003366")
         severity_color = QColor("#8B4513")
         
@@ -195,13 +194,11 @@ class StatisticsDialogView(QDialog):
             hour_item = QTreeWidgetItem(tree, [f"{hour:02d}:00 - {hour:02d}:59", str(hour_total)])
             hour_item.setFont(0, bold_font)
             hour_item.setFont(1, bold_font)
-            # 【新增】恢复小时节点颜色设置
             hour_item.setForeground(0, hour_color)
             hour_item.setForeground(1, hour_color)
             for severity, types in severities.items():
                 severity_total = sum(types.values())
                 severity_item = QTreeWidgetItem(hour_item, [f"  - {severity}", str(severity_total)])
-                # 【新增】恢复严重等级节点颜色设置
                 severity_item.setForeground(0, severity_color)
                 for type_name, count in types.items():
                     QTreeWidgetItem(severity_item, [f"    - {type_name}", str(count)])
