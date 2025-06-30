@@ -10,7 +10,6 @@ class ArrangerPageView(QWidget):
     """
     桌面窗口排列功能的主UI页面。
     """
-    # 【修改】新增信号，用于请求打开设置对话框
     detect_windows_requested = Signal()
     open_settings_requested = Signal()
     arrange_grid_requested = Signal()
@@ -24,27 +23,23 @@ class ArrangerPageView(QWidget):
         main_layout.setContentsMargins(20, 20, 20, 20)
         main_layout.setSpacing(15)
         
-        # --- 标题和设置按钮行 ---
         header_layout = QHBoxLayout()
         title_label = QLabel("桌面窗口排列")
         title_label.setStyleSheet("font-size: 22px; font-weight: bold; color: #333;")
         header_layout.addWidget(title_label)
         header_layout.addStretch()
         
-        # 【新增】设置按钮
         self.settings_button = QPushButton("排列设置")
-        # 尝试使用系统主题中的设置图标
         try:
             settings_icon = self.style().standardIcon(self.style().StandardPixmap.SP_FileDialogDetailedView)
             self.settings_button.setIcon(settings_icon)
-        except: # 如果获取图标失败，则只显示文本
+        except:
             pass
         self.settings_button.setMinimumHeight(30)
         self.settings_button.clicked.connect(self.open_settings_requested.emit)
         header_layout.addWidget(self.settings_button)
         main_layout.addLayout(header_layout)
         
-        # 窗口过滤组
         filter_group = QGroupBox("窗口过滤")
         filter_group.setStyleSheet("""
             QGroupBox { font-size: 16px; font-weight: bold; color: #333; margin-top: 10px; }
@@ -54,21 +49,24 @@ class ArrangerPageView(QWidget):
         filter_layout.setSpacing(12)
         filter_layout.setContentsMargins(20, 30, 20, 20)
         
-        self.filter_keyword_input = QLineEdit("完全控制")
+        # 【修改】移除构造函数中的默认文本
+        self.filter_keyword_input = QLineEdit()
         self.filter_keyword_input.setPlaceholderText("输入标题关键词, 用逗号分隔多个")
         filter_layout.addRow("标题关键词:", self.filter_keyword_input)
 
+        # 【修改】移除构造函数中的默认文本
         self.process_name_input = QLineEdit()
         self.process_name_input.setPlaceholderText("输入进程名, 用逗号分隔多个")
         filter_layout.addRow("进程名称:", self.process_name_input)
         
-        self.exclude_title_input = QLineEdit("Radmin Viewer")
+        # 【修改】移除构造函数中的默认文本
+        self.exclude_title_input = QLineEdit()
         self.exclude_title_input.setPlaceholderText("输入要排除的标题关键词，用逗号分隔")
         filter_layout.addRow("排除标题包含:", self.exclude_title_input)
         
         main_layout.addWidget(filter_group)
 
-        # 检测到的窗口列表组
+        # ... (其余部分无变化)
         windows_list_group = QGroupBox("检测到的窗口")
         windows_list_group.setStyleSheet("""
             QGroupBox { font-size: 16px; font-weight: bold; color: #333; margin-top: 10px; }
@@ -78,7 +76,7 @@ class ArrangerPageView(QWidget):
         windows_list_layout.setContentsMargins(20, 30, 20, 20)
 
         self.detected_windows_list_widget = QListWidget()
-        self.detected_windows_list_widget.setMinimumHeight(200) # 增加列表高度
+        self.detected_windows_list_widget.setMinimumHeight(200)
         self.detected_windows_list_widget.setSelectionMode(QAbstractItemView.ExtendedSelection)
         self.detected_windows_list_widget.setStyleSheet("""
             QListWidget { border: 1px solid #ddd; border-radius: 5px; padding: 5px; }
@@ -98,7 +96,6 @@ class ArrangerPageView(QWidget):
         windows_list_layout.addWidget(detect_button)
         main_layout.addWidget(windows_list_group)
         
-        # 动作按钮
         action_buttons_layout = QHBoxLayout()
         self.arrange_grid_button = QPushButton("网格排列")
         self.arrange_grid_button.setMinimumHeight(35)
@@ -123,7 +120,6 @@ class ArrangerPageView(QWidget):
 
         main_layout.addStretch(1)
 
-    # 【修改】arrange_cascade_requested 信号无参数，控制器从配置读取
     def _emit_arrange_cascade(self):
         self.arrange_cascade_requested.emit()
 
@@ -158,5 +154,3 @@ class ArrangerPageView(QWidget):
     
     def get_exclude_keywords(self) -> str:
         return self.exclude_title_input.text().strip()
-
-    # 【移除】所有获取排列参数的方法，如 get_grid_params, get_cascade_params, 等。

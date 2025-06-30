@@ -6,8 +6,9 @@ import psutil
 import win32process
 from src.core.context import ApplicationContext
 from src.features.window_arranger.views.arranger_page_view import ArrangerPageView
-from src.features.window_arranger.views.settings_dialog_view import SettingsDialog # 【新增】导入设置对话框
+from src.features.window_arranger.views.settings_dialog_view import SettingsDialog
 from src.features.window_arranger.models.window_info import WindowInfo
+from src.features.window_arranger.controllers.sorting_strategy_manager import SortingStrategyManager
 from PySide6.QtGui import QScreen
 
 class ArrangerController:
@@ -18,20 +19,30 @@ class ArrangerController:
         self.context = context
         self.view = view
         self.detected_windows: list[WindowInfo] = []
-        
-        # 连接主视图的信号
+        self.strategy_manager = SortingStrategyManager()
+
         self.view.detect_windows_requested.connect(self.detect_windows)
-        self.view.open_settings_requested.connect(self.open_settings_dialog) # 【新增】
+        self.view.open_settings_requested.connect(self.open_settings_dialog)
         self.view.arrange_grid_requested.connect(self.arrange_windows_grid)
         self.view.arrange_cascade_requested.connect(self.arrange_windows_cascade)
         
-        self._save_settings_from_view() # 保存UI上的过滤设置
+        # 【修改】在初始化时只加载设置，不保存
+        self._load_filter_settings()
 
-    # 【新增】打开设置对话框的方法
     def open_settings_dialog(self):
-        dialog = SettingsDialog(self.context, self.view)
-        dialog.exec() # 以模态方式执行对话框
+        """打开设置对话框。"""
+        dialog = SettingsDialog(self.context, self.strategy_manager, self.view)
+        dialog.exec()
         logging.info("[WindowArranger] 设置对话框已关闭。")
+
+    # 【新增】专门用于加载过滤设置到主视图的方法
+    def _load_filter_settings(self):
+        """从配置加载过滤相关的设置并更新主视图UI。"""
+        config = self.context.config_service
+        self.view.filter_keyword_input.setText(config.get_value("WindowArranger", "filter_keyword", "完全控制"))
+        self.view.process_name_input.setText(config.get_value("WindowArranger", "process_name_filter", ""))
+        self.view.exclude_title_input.setText(config.get_value("WindowArranger", "exclude_title_keywords", "Radmin Viewer"))
+        logging.info("[WindowArranger] 过滤设置已加载到主视图。")
 
     def _save_settings_from_view(self):
         """仅保存主视图上的过滤相关设置。"""
@@ -47,13 +58,15 @@ class ArrangerController:
         logging.info("[WindowArranger] 过滤设置已保存。")
     
     def detect_windows(self):
+        """检测并使用选定的策略对窗口进行排序。"""
         logging.info("[WindowArranger] 正在检测窗口...")
-        self._save_settings_from_view() # 保存最新的过滤条件
-
-        # ... (detect_windows 的核心逻辑不变，只是现在它只关心过滤条件)
-        title_keyword_str = self.context.config_service.get_value("WindowArranger", "filter_keyword", "")
-        process_keyword_str = self.context.config_service.get_value("WindowArranger", "process_name_filter", "")
-        exclude_keywords_str = self.context.config_service.get_value("WindowArranger", "exclude_title_keywords", "")
+        # 【修改】在执行任何操作前，先保存UI上的当前值
+        self._save_settings_from_view()
+        
+        config = self.context.config_service
+        title_keyword_str = config.get_value("WindowArranger", "filter_keyword", "")
+        process_keyword_str = config.get_value("WindowArranger", "process_name_filter", "")
+        exclude_keywords_str = config.get_value("WindowArranger", "exclude_title_keywords", "")
         
         title_keywords = [kw.strip().lower() for kw in title_keyword_str.split(',') if kw.strip()]
         process_keywords = [kw.strip().lower() for kw in process_keyword_str.split(',') if kw.strip()]
@@ -65,15 +78,19 @@ class ArrangerController:
             return
 
         all_windows = gw.getAllWindows()
-        self.detected_windows = []
+        unfiltered_windows = []
         app_main_window_id = self.context.main_window.winId()
         
         for win in all_windows:
-            current_window_title = win.title if win.title else "[无标题]"
-            if not (win.title and win.visible and not win.isMinimized and win._hWnd != app_main_window_id): continue
-            if exclude_keywords_list and any(ex_kw in current_window_title.lower() for ex_kw in exclude_keywords_list): continue
+            if not (win.title and win.visible and not win.isMinimized and win._hWnd != app_main_window_id):
+                continue
             
-            is_title_match = not title_keywords or any(kw in win.title.lower() for kw in title_keywords)
+            current_window_title = win.title
+            if exclude_keywords_list and any(ex_kw in current_window_title.lower() for ex_kw in exclude_keywords_list):
+                continue
+            
+            is_title_match = not title_keywords or any(kw in current_window_title.lower() for kw in title_keywords)
+            
             current_process_name = "[未知进程]"
             is_process_match = not process_keywords
             if process_keywords:
@@ -84,26 +101,48 @@ class ArrangerController:
                         current_process_name = process.name()
                         if any(kw in current_process_name.lower() for kw in process_keywords):
                             is_process_match = True
-                        else: is_process_match = False
-                except Exception: is_process_match = False
+                        else:
+                            is_process_match = False
+                except Exception:
+                    is_process_match = False
             
-            should_add = (process_keywords and is_process_match and (is_title_match or not title_keywords)) or \
-                         (title_keywords and not process_keywords and is_title_match)
+            should_add = False
+            if process_keywords and title_keywords:
+                should_add = is_process_match and is_title_match
+            elif process_keywords:
+                should_add = is_process_match
+            elif title_keywords:
+                should_add = is_title_match
             
             if should_add:
-                self.detected_windows.append(WindowInfo(
+                unfiltered_windows.append(WindowInfo(
                     title=win.title, left=win.left, top=win.top,
                     width=win.width, height=win.height,
                     process_name=current_process_name, pygw_window_obj=win
                 ))
+
+        strategy_name = config.get_value("WindowArranger", "sorting_strategy", "默认排序 (按标题)")
+        strategy = self.strategy_manager.get_strategy(strategy_name)
+        if not strategy:
+            logging.error(f"未找到排序策略 '{strategy_name}'，将使用默认策略。")
+            default_strategy = self.strategy_manager.get_strategy("默认排序 (按标题)")
+            if default_strategy:
+                strategy = default_strategy
+            else:
+                self.detected_windows = unfiltered_windows
+                self.view.update_detected_windows_list(self.detected_windows)
+                self.context.notification_service.show(title="排序失败", message="无法加载任何排序策略。")
+                return
+
+        self.detected_windows = strategy.sort(unfiltered_windows)
         
-        self.detected_windows = sorted(self.detected_windows, key=lambda w: (w.title, w.process_name))
         self.view.update_detected_windows_list(self.detected_windows)
         self.context.notification_service.show(title="窗口检测完成", message=f"已检测到 {len(self.detected_windows)} 个符合条件的窗口。")
 
+    # ... (arrange_windows_grid and arrange_windows_cascade are unchanged)
     def arrange_windows_grid(self):
-        # 【修改】从 ConfigService 读取所有排列参数
         config = self.context.config_service
+        # ... (rest of the method unchanged)
         rows = int(config.get_value("WindowArranger", "grid_rows", "2"))
         cols = int(config.get_value("WindowArranger", "grid_cols", "3"))
         margin_top = int(config.get_value("WindowArranger", "grid_margin_top", "0"))
@@ -127,7 +166,6 @@ class ArrangerController:
             self.context.notification_service.show(title="排列失败", message="配置中目标屏幕索引无效。")
             return
             
-        # ... (后续排列算法不变)
         target_screen = screens[target_screen_index]
         screen_geometry = target_screen.geometry()
         screen_x_offset = screen_geometry.x()
@@ -135,6 +173,11 @@ class ArrangerController:
         usable_screen_width = screen_geometry.width()
         usable_screen_height = screen_geometry.height()
 
+        num_windows = len(windows_to_arrange)
+        if num_windows > rows * cols:
+            logging.warning(f"窗口数量({num_windows})超过网格槽位({rows*cols})，部分窗口可能无法排列。")
+            self.context.notification_service.show(title="警告", message=f"窗口数量({num_windows})超过网格槽位，部分窗口可能无法排列。")
+        
         available_width_for_grid = usable_screen_width - margin_left - margin_right
         available_height_for_grid = usable_screen_height - margin_top - margin_bottom
 
@@ -149,10 +192,14 @@ class ArrangerController:
 
         arranged_count = 0
         for i, window_info in enumerate(windows_to_arrange):
-            if i >= len(windows_to_arrange) or i >= rows * cols: break 
+            if i >= len(windows_to_arrange) or i >= rows * cols:
+                break
+                
             row, col = (i // cols, i % cols) if grid_direction == "row-major" else (i % rows, i // rows)
+            
             x_relative = int(margin_left + col * (avg_window_width + spacing_h))
             y_relative = int(margin_top + row * (avg_window_height + spacing_v))
+            
             x_absolute = screen_x_offset + x_relative
             y_absolute = screen_y_offset + y_relative
 
@@ -167,14 +214,14 @@ class ArrangerController:
         self.context.notification_service.show(title="网格排列完成", message=f"已成功排列 {arranged_count} 个窗口。")
 
     def arrange_windows_cascade(self):
-        # 【修改】从 ConfigService 读取所有排列参数
         config = self.context.config_service
+        # ... (rest of the method unchanged)
         x_offset = int(config.get_value("WindowArranger", "cascade_x_offset", "30"))
         y_offset = int(config.get_value("WindowArranger", "cascade_y_offset", "30"))
         
-        # ... (后续逻辑与 arrange_windows_grid 类似)
         logging.info(f"[WindowArranger] 正在按级联排列...")
         windows_to_arrange = self.view.get_selected_window_infos()
+        
         if not windows_to_arrange:
             self.context.notification_service.show(title="窗口排列失败", message="没有选择可排列的窗口。")
             return
@@ -186,7 +233,6 @@ class ArrangerController:
             return
 
         target_screen = screens[target_screen_index]
-        # ... (后续排列算法不变)
         screen_geometry = target_screen.geometry()
         screen_x_offset = screen_geometry.x()
         screen_y_offset = screen_geometry.y()
