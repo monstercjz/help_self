@@ -15,7 +15,13 @@ class StatisticsDialogView(QDialog):
     """
     # --- Signals to Controller ---
     tab_changed = Signal(int)
-    query_requested = Signal(str) # "ip_activity", "hourly", "multidim", "type"
+    query_requested = Signal(str) # "ip_activity_tab", "hourly_stats_tab", "multidim_stats_tab", "type_stats_tab"
+    hourly_ip_changed = Signal()
+    multidim_ip_changed = Signal()
+    hourly_sort_requested = Signal(int)
+    # 【新增】定义快捷日期请求信号
+    date_shortcut_requested = Signal(str, str) # tab_name, period
+
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -29,10 +35,15 @@ class StatisticsDialogView(QDialog):
         self.tab_widget = QTabWidget()
         main_layout.addWidget(self.tab_widget)
 
-        self.ip_activity_tab = self._setup_tab("ip_activity_tab", self._create_ip_activity_table())
-        self.hourly_stats_tab = self._setup_tab("hourly_stats_tab", self._create_hourly_stats_table(), has_ip_combo=True)
-        self.multidim_stats_tab = self._setup_tab("multidim_stats_tab", self._create_multidim_stats_tree(), has_ip_combo=True, has_expand_buttons=True)
-        self.type_stats_tab = self._setup_tab("type_stats_tab", self._create_type_stats_table())
+        self.ip_activity_tab_content = self._create_ip_activity_table()
+        self.hourly_stats_tab_content = self._create_hourly_stats_table()
+        self.multidim_stats_tab_content = self._create_multidim_stats_tree()
+        self.type_stats_tab_content = self._create_type_stats_table()
+
+        self.ip_activity_tab = self._setup_tab("ip_activity_tab", self.ip_activity_tab_content)
+        self.hourly_stats_tab = self._setup_tab("hourly_stats_tab", self.hourly_stats_tab_content, has_ip_combo=True)
+        self.multidim_stats_tab = self._setup_tab("multidim_stats_tab", self.multidim_stats_tab_content, has_ip_combo=True, has_expand_buttons=True)
+        self.type_stats_tab = self._setup_tab("type_stats_tab", self.type_stats_tab_content)
 
         self.tab_widget.addTab(self.ip_activity_tab, "按IP活跃度排行榜")
         self.tab_widget.addTab(self.hourly_stats_tab, "按小时分析")
@@ -44,6 +55,24 @@ class StatisticsDialogView(QDialog):
         tab.setObjectName(name)
         layout = QVBoxLayout(tab)
         
+        # 【变更】为每个选项卡添加快捷日期按钮
+        date_shortcut_layout = QHBoxLayout()
+        date_shortcut_layout.addWidget(QLabel("快捷日期:"))
+        btn_today = QPushButton("今天")
+        btn_yesterday = QPushButton("昨天")
+        btn_last_7_days = QPushButton("近7天")
+        date_shortcut_layout.addWidget(btn_today)
+        date_shortcut_layout.addWidget(btn_yesterday)
+        date_shortcut_layout.addWidget(btn_last_7_days)
+        date_shortcut_layout.addStretch()
+        
+        # 连接信号，发射带参数的自定义信号
+        btn_today.clicked.connect(lambda: self.date_shortcut_requested.emit(name, "today"))
+        btn_yesterday.clicked.connect(lambda: self.date_shortcut_requested.emit(name, "yesterday"))
+        btn_last_7_days.clicked.connect(lambda: self.date_shortcut_requested.emit(name, "last7days"))
+
+        layout.addLayout(date_shortcut_layout)
+        
         filter_layout = QHBoxLayout()
         if has_ip_combo:
             filter_layout.addWidget(QLabel("IP地址:"))
@@ -53,6 +82,10 @@ class StatisticsDialogView(QDialog):
             combo.setMinimumWidth(150)
             filter_layout.addWidget(combo)
             setattr(self, f"{name}_ip_combo", combo)
+            if name == "hourly_stats_tab":
+                combo.currentIndexChanged.connect(lambda: self.hourly_ip_changed.emit())
+            elif name == "multidim_stats_tab":
+                combo.currentIndexChanged.connect(lambda: self.multidim_ip_changed.emit())
 
         filter_layout.addWidget(QLabel("日期范围:"))
         start_date = QDateEdit(calendarPopup=True)
@@ -83,7 +116,6 @@ class StatisticsDialogView(QDialog):
 
         layout.addLayout(filter_layout)
         layout.addWidget(content_widget)
-        setattr(self, f"{name}_content", content_widget)
         return tab
 
     def _create_ip_activity_table(self):
@@ -98,7 +130,9 @@ class StatisticsDialogView(QDialog):
         table.setColumnCount(2)
         table.setHorizontalHeaderLabels(["小时", "数量"])
         table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
-        table.horizontalHeader().setSectionsClickable(True)
+        header = table.horizontalHeader()
+        header.setSectionsClickable(True)
+        header.sectionClicked.connect(self.hourly_sort_requested.emit)
         return table
 
     def _create_multidim_stats_tree(self):
@@ -134,8 +168,11 @@ class StatisticsDialogView(QDialog):
         for row_idx, record in enumerate(data):
             table.insertRow(row_idx)
             for col_idx, key in enumerate(keys):
-                table.setItem(row_idx, col_idx, QTableWidgetItem(str(record.get(key, 'N/A'))))
-        table.setSortingEnabled(True)
+                item = QTableWidgetItem(str(record.get(key, 'N/A')))
+                if isinstance(record.get(key), (int, float)):
+                     item.setData(Qt.ItemDataRole.UserRole, record.get(key))
+                table.setItem(row_idx, col_idx, item)
+        table.setSortingEnabled(True) 
         table.resizeColumnsToContents()
 
     @Slot(dict)
@@ -161,16 +198,18 @@ class StatisticsDialogView(QDialog):
     @Slot(list)
     def update_ip_combo_box(self, combo: QComboBox, ip_list: list):
         current_text = combo.currentText()
+        combo.blockSignals(True)
         combo.clear()
         combo.addItem(ALL_IPS_OPTION)
         if ip_list:
             combo.addItems(ip_list)
         if current_text in [ALL_IPS_OPTION] + ip_list:
             combo.setCurrentText(current_text)
-        elif current_text:
+        elif current_text: 
             combo.setEditText(current_text)
         else:
             combo.setCurrentIndex(0)
+        combo.blockSignals(False)
             
     def get_filter_parameters(self, name: str) -> dict:
         start_date_edit = getattr(self, f"{name}_start_date")
@@ -182,5 +221,12 @@ class StatisticsDialogView(QDialog):
         if hasattr(self, f"{name}_ip_combo"):
             combo = getattr(self, f"{name}_ip_combo")
             ip_address = combo.currentText().strip()
-            params["ip_address"] = None if ip_address == ALL_IPS_OPTION else ip_address
+            params["ip_address"] = None if ip_address == ALL_IPS_OPTION or not ip_address else ip_address
         return params
+
+    @Slot(int, str)
+    def update_hourly_sort_indicator(self, column_index: int, direction: str):
+        """[SLOT] 更新小时分析表格的排序指示器。"""
+        header = self.hourly_stats_tab_content.horizontalHeader()
+        sort_order = Qt.SortOrder.AscendingOrder if direction == 'ASC' else Qt.SortOrder.DescendingOrder
+        header.setSortIndicator(column_index, sort_order)
