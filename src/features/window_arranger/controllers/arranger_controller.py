@@ -33,7 +33,6 @@ class ArrangerController(QObject):
         self.view.open_settings_requested.connect(self.open_settings_dialog)
         self.view.toggle_monitoring_requested.connect(self.toggle_monitoring)
         self.view.arrange_grid_requested.connect(self.arrange_windows_grid)
-        # 【修复】将视图的信号连接到控制器中对应的处理方法
         self.view.arrange_cascade_requested.connect(self.arrange_windows_cascade)
         
         # 连接后台服务的信号
@@ -54,13 +53,15 @@ class ArrangerController(QObject):
         
         if checked:
             if not self.detected_windows:
-                self._show_notification_if_enabled("无法启动监控", "请先至少成功检测一次窗口，以确定监控目标。")
+                # 【移除】不再在此处显示通知，由MonitorService统一处理
+                # self._show_notification_if_enabled("无法启动监控", "请先至少成功检测一次窗口，以确定监控目标。")
+                logging.warning("[WindowArranger] 未检测到窗口，无法启动监控。")
                 self.view.set_monitoring_status(False)
                 return
             
             if not self.monitor_service.isRunning():
                 mode = self.context.config_service.get_value("WindowArranger", "monitor_mode", "template")
-                position_map: Dict[int, Tuple[QRect, int]] = {}
+                position_map: Dict[int, Tuple[QRect, int, str]] = {} # 【修改】包含标题
                 
                 # 获取当前选定的排序函数
                 sorting_func = self._get_current_sorting_strategy().sort
@@ -70,7 +71,7 @@ class ArrangerController(QObject):
                     for win_info in self.detected_windows:
                         hwnd = win_info.pygw_window_obj._hWnd
                         rect = QRect(win_info.left, win_info.top, win_info.width, win_info.height)
-                        position_map[hwnd] = (rect, win_info.pid)
+                        position_map[hwnd] = (rect, win_info.pid, win_info.title) # 【修改】包含标题
                 else: # template mode
                     # 模板模式：根据排序规则和布局算法计算理想位置
                     sorted_windows = sorting_func(self.detected_windows)
@@ -79,7 +80,7 @@ class ArrangerController(QObject):
                         if i < len(calculated_positions):
                             hwnd = win_info.pygw_window_obj._hWnd
                             x, y, w, h = calculated_positions[i]
-                            position_map[hwnd] = (QRect(x, y, w, h), win_info.pid)
+                            position_map[hwnd] = (QRect(x, y, w, h), win_info.pid, win_info.title) # 【修改】包含标题
 
                 baseline_hwnds = set(position_map.keys())
                 
@@ -89,7 +90,7 @@ class ArrangerController(QObject):
                     baseline_hwnds=baseline_hwnds,
                     find_windows_func=self._find_and_filter_windows,
                     rearrange_logic_func=self._calculate_grid_positions,
-                    sorting_func=sorting_func # 注入排序函数
+                    sorting_func=sorting_func
                 )
         else:
             if self.monitor_service.isRunning():
@@ -98,7 +99,7 @@ class ArrangerController(QObject):
         self.view.set_monitoring_status(self.monitor_service.isRunning())
 
     def _get_current_sorting_strategy(self) -> 'ISortStrategy':
-        """【新增】辅助方法：根据配置获取当前的排序策略实例。"""
+        """辅助方法：根据配置获取当前的排序策略实例。"""
         strategy_name = self.context.config_service.get_value("WindowArranger", "sorting_strategy", "默认排序 (按标题)")
         strategy = self.strategy_manager.get_strategy(strategy_name)
         if not strategy:
@@ -134,7 +135,11 @@ class ArrangerController(QObject):
         config.save_config()
         
     def _show_notification_if_enabled(self, title: str, message: str):
-        """如果配置允许，则显示通知。"""
+        """
+        【移除】此方法不再直接被调用，通知和推送由MonitorService统一管理。
+        保留函数体，以防未来其他部分仍需调用，但功能上已废弃。
+        """
+        logging.warning(f"[_show_notification_if_enabled] 此方法已废弃，通知和推送由MonitorService统一管理。尝试通知: {title} - {message}")
         if self.context.config_service.get_value("WindowArranger", "enable_notifications", "true").lower() == 'true':
             self.context.notification_service.show(title=title, message=message)
     
@@ -159,7 +164,8 @@ class ArrangerController(QObject):
         self.view.summary_label.setText(summary_text)
         
         self.view.update_detected_windows_list(self.detected_windows)
-        self._show_notification_if_enabled(title="窗口检测完成", message=f"已检测到 {num_detected} 个符合条件的窗口。")
+        # 【移除】不再在此处显示通知，由MonitorService统一处理
+        # self._show_notification_if_enabled(title="窗口检测完成", message=f"已检测到 {num_detected} 个符合条件的窗口。")
         self.view.status_label.setText("检测完成，准备排列。")
 
     def _find_and_filter_windows(self) -> List[WindowInfo]:
@@ -173,7 +179,8 @@ class ArrangerController(QObject):
         if not title_kws and not proc_kws:
             # 只有在view存在时才显示通知和更新UI
             if self.view and hasattr(self.view, 'update_detected_windows_list'):
-                self._show_notification_if_enabled(title="检测失败", message="请输入窗口标题关键词或进程名称进行过滤。")
+                # 【移除】不再在此处显示通知，由MonitorService统一处理
+                # self._show_notification_if_enabled(title="检测失败", message="请输入窗口标题关键词或进程名称进行过滤。")
                 self.view.update_detected_windows_list([])
                 self.view.summary_label.setText("无有效过滤条件，请重新输入。")
             return []
@@ -228,7 +235,9 @@ class ArrangerController(QObject):
         delay_ms = int(self.context.config_service.get_value("WindowArranger", "animation_delay", "50"))
         windows_to_arrange = self.view.get_selected_window_infos()
         if not windows_to_arrange:
-            self._show_notification_if_enabled(title="窗口排列失败", message="没有选择可排列的窗口。")
+            # 【移除】不再在此处显示通知，由MonitorService统一处理
+            # self._show_notification_if_enabled(title="窗口排列失败", message="没有选择可排列的窗口。")
+            logging.warning("[WindowArranger] 未选择可排列的窗口。")
             return 0
         
         arranged_count = arrangement_logic(windows_to_arrange, delay_ms / 1000.0)
@@ -237,7 +246,8 @@ class ArrangerController(QObject):
         self.view.status_label.setText(f"上次排列于 {timestamp} 完成 ({arranged_count} 个窗口)")
         if self.monitor_service.isRunning():
             self.view.monitor_toggle_button.setChecked(False)
-            self._show_notification_if_enabled("监控已停止", "手动排列后，请重新启动自动监控以应用新布局。")
+            # 【移除】不再在此处显示通知，由MonitorService统一处理
+            # self._show_notification_if_enabled("监控已停止", "手动排列后，请重新启动自动监控以应用新布局。")
         
         return arranged_count
 
@@ -245,15 +255,17 @@ class ArrangerController(QObject):
         """将选定的窗口按网格布局排列。"""
         logging.info("[WindowArranger] 正在按网格排列...")
         count = self._arrange_windows(self._execute_grid_arrangement)
-        if count > 0:
-            self._show_notification_if_enabled(title="网格排列完成", message=f"已成功排列 {count} 个窗口。")
+        # 【移除】不再在此处显示通知，由MonitorService统一处理
+        # if count > 0:
+        #     self._show_notification_if_enabled(title="网格排列完成", message=f"已成功排列 {count} 个窗口。")
 
     def arrange_windows_cascade(self):
         """将选定的窗口按级联布局排列。"""
         logging.info("[WindowArranger] 正在按级联排列...")
         count = self._arrange_windows(self._execute_cascade_arrangement)
-        if count > 0:
-            self._show_notification_if_enabled(title="级联排列完成", message=f"已成功排列 {count} 个窗口。")
+        # 【移除】不再在此处显示通知，由MonitorService统一处理
+        # if count > 0:
+        #     self._show_notification_if_enabled(title="级联排列完成", message=f"已成功排列 {count} 个窗口。")
     
     def _get_target_screen_geometry(self) -> QRect:
         """辅助方法，获取并返回目标屏幕的几何信息。"""
