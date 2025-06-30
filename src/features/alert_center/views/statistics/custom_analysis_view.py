@@ -4,6 +4,7 @@ from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QListWidget, Q
                                QLabel, QGroupBox, QSpacerItem, QSizePolicy)
 from PySide6.QtCore import Signal, Slot, QEvent, Qt
 from PySide6.QtGui import QFont, QColor
+# 【变更】添加缺失的DateFilterWidget导入
 from ...widgets.date_filter_widget import DateFilterWidget
 
 class CustomAnalysisView(QWidget):
@@ -47,7 +48,6 @@ class CustomAnalysisView(QWidget):
         dimension_main_layout.addLayout(available_layout)
 
         button_layout = QVBoxLayout()
-        # 【变更】使用addStretch()替换有问题的Expanding Spacers，以实现居中对齐而不抢占空间
         button_layout.addStretch()
         self.add_button = QPushButton(">>")
         self.remove_button = QPushButton("<<")
@@ -81,6 +81,8 @@ class CustomAnalysisView(QWidget):
         self.tree.setColumnCount(2)
         self.tree.setHeaderLabels(["钻取路径", "告警数量"])
         self.tree.setStyleSheet("QTreeView::item:selected { background-color: #cce8ff; color: black; }")
+        self.tree.setSortingEnabled(True)
+        self.tree.sortByColumn(1, Qt.SortOrder.DescendingOrder)
         results_layout.addWidget(self.tree)
         
         tree_control_layout = QHBoxLayout()
@@ -92,7 +94,6 @@ class CustomAnalysisView(QWidget):
         results_layout.addLayout(tree_control_layout)
 
         main_layout.addWidget(results_group)
-        # 【关键】确保结果区域（索引为3的控件）占据所有可用的额外垂直空间
         main_layout.setStretch(3, 1)
 
         self._connect_signals()
@@ -154,8 +155,11 @@ class CustomAnalysisView(QWidget):
 
     @Slot(dict, list)
     def update_tree(self, tree_data: dict, dimensions: list):
+        self.tree.setSortingEnabled(False)
         self.tree.clear()
-        if not tree_data: return
+        if not tree_data: 
+            self.tree.setSortingEnabled(True)
+            return
 
         level_colors = [
             QColor("#003366"),
@@ -179,7 +183,12 @@ class CustomAnalysisView(QWidget):
                 
                 display_key = f"{int(key):02d}:00" if dimensions[level] == 'dim_hour' and str(key).isdigit() else str(key)
                 
-                item = QTreeWidgetItem(parent_item, [display_key, str(count)])
+                item = QTreeWidgetItem(parent_item)
+                item.setText(0, display_key)
+                
+                item.setText(1, str(count))
+                item.setData(1, Qt.ItemDataRole.UserRole, count)
+                
                 item.setForeground(0, color)
                 item.setForeground(1, color)
                 if level == 0:
@@ -191,3 +200,4 @@ class CustomAnalysisView(QWidget):
         
         build_ui_tree(self.tree, tree_data, 0)
         self.tree.expandToDepth(0)
+        self.tree.setSortingEnabled(True)
