@@ -19,7 +19,6 @@ class StatisticsDialogView(QDialog):
     hourly_ip_changed = Signal()
     multidim_ip_changed = Signal()
     hourly_sort_requested = Signal(int)
-    # 【新增】定义快捷日期请求信号
     date_shortcut_requested = Signal(str, str) # tab_name, period
 
 
@@ -55,7 +54,6 @@ class StatisticsDialogView(QDialog):
         tab.setObjectName(name)
         layout = QVBoxLayout(tab)
         
-        # 【变更】为每个选项卡添加快捷日期按钮
         date_shortcut_layout = QHBoxLayout()
         date_shortcut_layout.addWidget(QLabel("快捷日期:"))
         btn_today = QPushButton("今天")
@@ -66,7 +64,6 @@ class StatisticsDialogView(QDialog):
         date_shortcut_layout.addWidget(btn_last_7_days)
         date_shortcut_layout.addStretch()
         
-        # 连接信号，发射带参数的自定义信号
         btn_today.clicked.connect(lambda: self.date_shortcut_requested.emit(name, "today"))
         btn_yesterday.clicked.connect(lambda: self.date_shortcut_requested.emit(name, "yesterday"))
         btn_last_7_days.clicked.connect(lambda: self.date_shortcut_requested.emit(name, "last7days"))
@@ -141,6 +138,13 @@ class StatisticsDialogView(QDialog):
         tree.setHeaderLabels(["分析维度", "告警数量"])
         tree.header().setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
         tree.setSortingEnabled(True)
+        # 【新增】恢复自定义选中项样式
+        tree.setStyleSheet("""
+            QTreeView::item:selected {
+                background-color: #cce8ff;
+                color: black;
+            }
+        """)
         return tree
 
     def _create_type_stats_table(self):
@@ -182,15 +186,23 @@ class StatisticsDialogView(QDialog):
         tree.setSortingEnabled(False)
         bold_font = QFont()
         bold_font.setBold(True)
+        # 【新增】恢复颜色定义
+        hour_color = QColor("#003366")
+        severity_color = QColor("#8B4513")
         
         for hour, severities in tree_data.items():
             hour_total = sum(sum(types.values()) for types in severities.values())
             hour_item = QTreeWidgetItem(tree, [f"{hour:02d}:00 - {hour:02d}:59", str(hour_total)])
             hour_item.setFont(0, bold_font)
             hour_item.setFont(1, bold_font)
+            # 【新增】恢复小时节点颜色设置
+            hour_item.setForeground(0, hour_color)
+            hour_item.setForeground(1, hour_color)
             for severity, types in severities.items():
                 severity_total = sum(types.values())
                 severity_item = QTreeWidgetItem(hour_item, [f"  - {severity}", str(severity_total)])
+                # 【新增】恢复严重等级节点颜色设置
+                severity_item.setForeground(0, severity_color)
                 for type_name, count in types.items():
                     QTreeWidgetItem(severity_item, [f"    - {type_name}", str(count)])
         tree.setSortingEnabled(True)
