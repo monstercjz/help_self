@@ -4,6 +4,7 @@ import math
 import pygetwindow as gw
 import psutil
 import win32process
+from PySide6.QtWidgets import QDialog # 【新增】导入 QDialog
 from src.core.context import ApplicationContext
 from src.features.window_arranger.views.arranger_page_view import ArrangerPageView
 from src.features.window_arranger.views.settings_dialog_view import SettingsDialog
@@ -21,21 +22,25 @@ class ArrangerController:
         self.detected_windows: list[WindowInfo] = []
         self.strategy_manager = SortingStrategyManager()
 
+        # 连接主视图的信号
         self.view.detect_windows_requested.connect(self.detect_windows)
         self.view.open_settings_requested.connect(self.open_settings_dialog)
         self.view.arrange_grid_requested.connect(self.arrange_windows_grid)
         self.view.arrange_cascade_requested.connect(self.arrange_windows_cascade)
         
-        # 【修改】在初始化时只加载设置，不保存
         self._load_filter_settings()
 
     def open_settings_dialog(self):
-        """打开设置对话框。"""
+        """打开设置对话框，并在保存后自动重新检测窗口。"""
         dialog = SettingsDialog(self.context, self.strategy_manager, self.view)
-        dialog.exec()
-        logging.info("[WindowArranger] 设置对话框已关闭。")
+        
+        # 【修改】检查对话框的返回结果
+        if dialog.exec() == QDialog.Accepted:
+            logging.info("[WindowArranger] 设置已保存，将自动重新检测窗口以应用新设置...")
+            self.detect_windows()
+        else:
+            logging.info("[WindowArranger] 设置对话框已取消，未做任何更改。")
 
-    # 【新增】专门用于加载过滤设置到主视图的方法
     def _load_filter_settings(self):
         """从配置加载过滤相关的设置并更新主视图UI。"""
         config = self.context.config_service
@@ -60,7 +65,6 @@ class ArrangerController:
     def detect_windows(self):
         """检测并使用选定的策略对窗口进行排序。"""
         logging.info("[WindowArranger] 正在检测窗口...")
-        # 【修改】在执行任何操作前，先保存UI上的当前值
         self._save_settings_from_view()
         
         config = self.context.config_service
@@ -139,10 +143,9 @@ class ArrangerController:
         self.view.update_detected_windows_list(self.detected_windows)
         self.context.notification_service.show(title="窗口检测完成", message=f"已检测到 {len(self.detected_windows)} 个符合条件的窗口。")
 
-    # ... (arrange_windows_grid and arrange_windows_cascade are unchanged)
     def arrange_windows_grid(self):
+        """将选定的窗口按网格布局排列。"""
         config = self.context.config_service
-        # ... (rest of the method unchanged)
         rows = int(config.get_value("WindowArranger", "grid_rows", "2"))
         cols = int(config.get_value("WindowArranger", "grid_cols", "3"))
         margin_top = int(config.get_value("WindowArranger", "grid_margin_top", "0"))
@@ -214,8 +217,8 @@ class ArrangerController:
         self.context.notification_service.show(title="网格排列完成", message=f"已成功排列 {arranged_count} 个窗口。")
 
     def arrange_windows_cascade(self):
+        """将选定的窗口按级联布局排列。"""
         config = self.context.config_service
-        # ... (rest of the method unchanged)
         x_offset = int(config.get_value("WindowArranger", "cascade_x_offset", "30"))
         y_offset = int(config.get_value("WindowArranger", "cascade_y_offset", "30"))
         
