@@ -12,6 +12,7 @@ import ctypes # 【新增】导入 ctypes 用于Windows AppUserModelID
 from src.services.config_service import ConfigService
 from src.services.database_service import DatabaseService
 from src.services.notification_service import NotificationService
+from src.services.webhook_service import WebhookService 
 from src.ui.main_window import MainWindow
 from src.ui.settings_page import SettingsPageWidget
 from src.ui.action_manager import ActionManager
@@ -126,7 +127,9 @@ class ApplicationOrchestrator:
             app_icon=self.ico_icon_path,
             config_service=self.config_service
         )
-        logging.info("  - 核心后台服务 (Config, Database, Notification) 初始化完成。")
+        # 【新增】实例化 WebhookService 具体配置参数应该在插件平台设置
+        self.webhook_service = WebhookService()
+        logging.info("  - 核心后台服务 (Config, Database, Notification, Webhook) 初始化完成。") # 【修改】更新日志
 
         # --- 1.4 初始化核心UI组件 ---
         # 这些是平台级的UI元素，所有插件都可能与之交互
@@ -146,7 +149,8 @@ class ApplicationOrchestrator:
             db_service=self.db_service,
             tray_manager=self.tray_manager,
             action_manager=self.action_manager,
-            notification_service=self.notification_service
+            notification_service=self.notification_service,
+            webhook_service=self.webhook_service
         )
         logging.info("  - 共享的 ApplicationContext 创建完成。")
 
@@ -217,10 +221,15 @@ class ApplicationOrchestrator:
         logging.info("  - [6.2] 关闭所有插件...")
         self.plugin_manager.shutdown_plugins()
         
-        logging.info("  - [6.3] 关闭数据库服务...")
+        # 【新增】安全地关闭 WebhookService 线程池
+        logging.info("  - [6.3] 清理 Webhook 服务线程池...")
+        self.webhook_service.thread_pool.clear()
+        self.webhook_service.thread_pool.waitForDone()
+
+        logging.info("  - [6.4] 关闭数据库服务...")
         self.db_service.close()
         
-        logging.info("[STEP 6.4] 应用程序关闭流程结束。")
+        logging.info("[STEP 6.5] 应用程序关闭流程结束。")
 
 
 if __name__ == '__main__':

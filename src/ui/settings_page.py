@@ -11,11 +11,17 @@ from src.services.config_service import ConfigService
 SETTING_METADATA = {
     "General": {
         "app_name": {"widget": "lineedit", "label": "应用程序名称", "default": "Desktop Control & Monitoring Center"},
-        "start_minimized": {"widget": "combobox", "label": "启动时最小化", "items": ["禁用", "启用"], "map": {"启用": "true", "禁用": "false"}, "default": "false"}
+        "start_minimized": {"widget": "combobox", "label": "启动时最小化", "items": ["禁用", "启用"], "map": {"启用": "true", "禁用": "false"}, "default": "false"},
+        "show_startup_notification": {"widget": "combobox", "label": "显示启动通知", "items": ["禁用", "启用"], "map": {"启用": "true", "禁用": "false"}, "default": "true"}
     },
-    # 【新增】日志设置的元数据
+    # 【新增】日志设置的元数据，上面的notification也是本次新添加的
     "Logging": {
         "level": {"widget": "combobox", "label": "日志级别", "items": ["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"], "default": "INFO"}
+    },
+    # 【新增】Webhook 默认设置的元数据
+    "WebhookDefaults": {
+        "default_host": {"widget": "lineedit", "label": "默认推送主机", "default": "127.0.0.1"},
+        "default_port": {"widget": "spinbox", "label": "默认推送端口", "min": 1, "max": 65535, "default": 5000}
     },
     "InfoService": {
         "host": {"widget": "lineedit", "label": "监听地址", "col": 0, "default": "0.0.0.0"},
@@ -73,8 +79,8 @@ class SettingsPageWidget(QWidget):
 
     def _create_setting_cards(self):
         """根据元数据动态创建所有设置卡片。"""
-        # 【修改】确保卡片按预定顺序创建
-        ordered_sections = ["General", "Logging", "InfoService"]
+        # 【修改】确保新卡片按预定顺序创建
+        ordered_sections = ["General", "Logging", "WebhookDefaults", "InfoService"]
         for section in ordered_sections:
             if section in SETTING_METADATA:
                 options_meta = SETTING_METADATA[section]
@@ -171,7 +177,6 @@ class SettingsPageWidget(QWidget):
                             widget.setCurrentText(current_value)
                         else:
                             widget.setCurrentText(str(default_value))
-
 
     def eventFilter(self, obj, event: QEvent) -> bool:
         if obj is self and event.type() == QEvent.Type.Show:

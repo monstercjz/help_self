@@ -8,7 +8,7 @@ if TYPE_CHECKING:
     from src.services.config_service import ConfigService
     from src.services.database_service import DatabaseService
     from src.services.notification_service import NotificationService
-    from src.ui.main_window import MainWindow
+    from src.services.webhook_service import WebhookService
     from src.utils.tray_manager import TrayManager
     from src.ui.action_manager import ActionManager
 
@@ -22,3 +22,4 @@ class ApplicationContext:
     tray_manager: 'TrayManager'
     action_manager: 'ActionManager'
     notification_service: 'NotificationService'
+    webhook_service: 'WebhookService'
