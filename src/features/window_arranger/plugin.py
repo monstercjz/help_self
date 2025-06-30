@@ -22,23 +22,17 @@ class WindowArrangerPlugin(IFeaturePlugin):
     def load_priority(self) -> int:
         """
         返回插件的加载优先级。
-        此插件不依赖于其他特定插件，但需要基础UI和配置服务，
-        因此优先级设定为110，高于通用独立功能插件的默认值100。
         """
         return 110
 
     def initialize(self, context: ApplicationContext):
         """
         初始化窗口排列插件。
-        创建视图和控制器，并建立它们之间的连接。
         """
-        super().initialize(context) # 调用父类方法保存 context 引用
-
+        super().initialize(context)
         logging.info(f"  - 插件 '{self.name()}': 正在初始化视图和控制器...")
-        # 实例化视图和控制器
         self.page_widget = ArrangerPageView()
         self.controller = ArrangerController(self.context, self.page_widget)
-        
         logging.info(f"  - 插件 '{self.name()}' 初始化完成。")
 
     def get_background_services(self) -> list:

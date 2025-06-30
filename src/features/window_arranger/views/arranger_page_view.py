@@ -132,7 +132,8 @@ class ArrangerPageView(QWidget):
             self.detected_windows_list_widget.addItem("未检测到符合条件的窗口。")
         else:
             for win_info in window_infos:
-                display_text = f"{win_info.title} (进程: {win_info.process_name if win_info.process_name not in ['[未知进程]', '[PID获取失败]', '[进程不存在]', '[权限不足]', '[获取进程名失败]'] else 'N/A'})"
+                # 【重构】使用模型中的新属性来获取显示文本，将显示逻辑从视图中剥离
+                display_text = f"{win_info.title} (进程: {win_info.display_process_name})"
                 item = QListWidgetItem(display_text)
                 item.setFlags(item.flags() | Qt.ItemIsUserCheckable)
                 item.setCheckState(Qt.Checked)
