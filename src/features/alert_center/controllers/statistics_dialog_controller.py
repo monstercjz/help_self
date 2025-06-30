@@ -9,6 +9,8 @@ from .statistics.ip_activity_controller import IPActivityController
 from .statistics.hourly_stats_controller import HourlyStatsController
 from .statistics.multidim_analysis_controller import MultidimAnalysisController
 from .statistics.type_stats_controller import TypeStatsController
+# 【变更】导入新的自定义分析控制器
+from .statistics.custom_analysis_controller import CustomAnalysisController
 
 class StatisticsDialogController(QObject):
     """
@@ -30,9 +32,13 @@ class StatisticsDialogController(QObject):
         hourly_controller = HourlyStatsController(self.context, self.view)
         multidim_controller = MultidimAnalysisController(self.context, self.view)
         type_controller = TypeStatsController(self.context, self.view)
+        # 【变更】实例化新的自定义分析控制器
+        custom_controller = CustomAnalysisController(self.context, self.view)
         
         # 将子视图添加到主对话框的TabWidget中
         self.view.add_tab(ip_controller.get_view(), "按IP活跃度排行榜")
         self.view.add_tab(hourly_controller.get_view(), "按小时分析")
         self.view.add_tab(multidim_controller.get_view(), "多维分析")
         self.view.add_tab(type_controller.get_view(), "告警类型排行榜")
+        # 【变更】添加新的选项卡
+        self.view.add_tab(custom_controller.get_view(), "自定义分析")

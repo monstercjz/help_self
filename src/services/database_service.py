@@ -3,8 +3,11 @@ import sqlite3
 import logging
 from typing import List, Dict, Any, Tuple
 from datetime import datetime
+# 【变更】导入插件的数据库扩展
+from src.features.alert_center.database_extensions import AlertCenterDatabaseExtensions
 
-class DatabaseService:
+# 【变更】让DatabaseService继承扩展类，从而获得插件专属方法
+class DatabaseService(AlertCenterDatabaseExtensions):
     """
     负责所有与SQLite数据库交互的服务。
     包括初始化、插入、查询和删除告警记录。
@@ -20,6 +23,7 @@ class DatabaseService:
             logging.error(f"数据库连接失败: {e}", exc_info=True)
             raise
 
+    # ... (init_db, add_alert, get_recent_alerts, etc. 所有通用方法保持不变) ...
     def init_db(self):
         """
         初始化数据库，如果表不存在，则创建它。
@@ -173,12 +177,10 @@ class DatabaseService:
 
         valid_order_by_fields = ['id', 'timestamp', 'severity', 'type', 'source_ip']
         if order_by not in valid_order_by_fields:
-            logging.warning(f"无效的排序字段: {order_by}，将使用默认timestamp。")
             order_by = 'timestamp'
         
         valid_order_directions = ['ASC', 'DESC']
         if order_direction.upper() not in valid_order_directions:
-            logging.warning(f"无效的排序方向: {order_direction}，将使用默认DESC。")
             order_direction = 'DESC'
 
         sql_parts.append(f"ORDER BY {order_by} {order_direction}")
@@ -207,181 +209,73 @@ class DatabaseService:
             return [], 0
 
     def get_stats_by_type(self, start_date: str = None, end_date: str = None) -> List[Dict[str, Any]]:
-        """
-        统计指定日期范围内各告警类型的数量。
-        """
         sql_parts = ["SELECT type, COUNT(*) AS count FROM alerts WHERE 1=1"]
         params = []
-
         if start_date:
-            sql_parts.append("AND timestamp >= ?")
-            params.append(start_date + " 00:00:00")
+            sql_parts.append("AND timestamp >= ?"); params.append(start_date + " 00:00:00")
         if end_date:
-            sql_parts.append("AND timestamp <= ?")
-            params.append(end_date + " 23:59:59")
-
+            sql_parts.append("AND timestamp <= ?"); params.append(end_date + " 23:59:59")
         sql_parts.append("GROUP BY type ORDER BY count DESC")
-        full_sql = " ".join(sql_parts)
-
         try:
-            cursor = self.conn.cursor()
-            cursor.execute(full_sql, params)
-            rows = cursor.fetchall()
-            return [dict(row) for row in rows]
+            cursor = self.conn.cursor(); cursor.execute(" ".join(sql_parts), params)
+            return [dict(row) for row in cursor.fetchall()]
         except sqlite3.Error as e:
-            logging.error(f"按类型统计查询失败: {e}", exc_info=True)
-            return []
+            logging.error(f"按类型统计查询失败: {e}", exc_info=True); return []
 
     def get_stats_by_ip_activity(self, start_date: str = None, end_date: str = None) -> List[Dict[str, Any]]:
-        """
-        统计指定日期范围内各IP的告警数量。
-        """
         sql_parts = ["SELECT source_ip, COUNT(*) AS count FROM alerts WHERE 1=1"]
         params = []
-
         if start_date:
-            sql_parts.append("AND timestamp >= ?")
-            params.append(start_date + " 00:00:00")
+            sql_parts.append("AND timestamp >= ?"); params.append(start_date + " 00:00:00")
         if end_date:
-            sql_parts.append("AND timestamp <= ?")
-            params.append(end_date + " 23:59:59")
-
+            sql_parts.append("AND timestamp <= ?"); params.append(end_date + " 23:59:59")
         sql_parts.append("GROUP BY source_ip ORDER BY count DESC")
-        full_sql = " ".join(sql_parts)
-
         try:
-            cursor = self.conn.cursor()
-            cursor.execute(full_sql, params)
-            rows = cursor.fetchall()
-            return [dict(row) for row in rows]
+            cursor = self.conn.cursor(); cursor.execute(" ".join(sql_parts), params)
+            return [dict(row) for row in cursor.fetchall()]
         except sqlite3.Error as e:
-            logging.error(f"按IP活跃度统计查询失败: {e}", exc_info=True)
-            return []
+            logging.error(f"按IP活跃度统计查询失败: {e}", exc_info=True); return []
     
-    # 【核心修正】恢复被误删的方法 get_stats_by_hour
     def get_stats_by_hour(self, start_date: str, end_date: str) -> List[Dict[str, Any]]:
-        """
-        统计指定日期范围内每小时的告警数量 (全局)。
-        """
-        sql = """
-            SELECT
-                CAST(strftime('%H', timestamp) AS INTEGER) AS hour,
-                COUNT(*) AS count
-            FROM
-                alerts
-            WHERE
-                timestamp >= ? AND timestamp <= ?
-            GROUP BY
-                hour
-            ORDER BY
-                hour ASC
-        """
+        sql = "SELECT CAST(strftime('%H', timestamp) AS INTEGER) AS hour, COUNT(*) AS count FROM alerts WHERE timestamp >= ? AND timestamp <= ? GROUP BY hour ORDER BY hour ASC"
         try:
-            cursor = self.conn.cursor()
-            cursor.execute(sql, (start_date + " 00:00:00", end_date + " 23:59:59"))
-            rows = cursor.fetchall()
-            
-            hourly_counts = {row['hour']: row['count'] for row in rows}
-            full_24_hours_results = []
-            for h in range(24):
-                full_24_hours_results.append({'hour': h, 'count': hourly_counts.get(h, 0)})
-            
-            return full_24_hours_results
+            cursor = self.conn.cursor(); cursor.execute(sql, (start_date + " 00:00:00", end_date + " 23:59:59"))
+            hourly_counts = {row['hour']: row['count'] for row in cursor.fetchall()}
+            return [{'hour': h, 'count': hourly_counts.get(h, 0)} for h in range(24)]
         except sqlite3.Error as e:
-            logging.error(f"全局按小时统计查询失败: {e}", exc_info=True)
-            return []
+            logging.error(f"全局按小时统计查询失败: {e}", exc_info=True); return []
             
-    # 【核心修正】恢复被误删的方法 get_stats_by_ip_and_hour
     def get_stats_by_ip_and_hour(self, ip_address: str, start_date: str, end_date: str) -> List[Dict[str, Any]]:
-        """
-        统计指定IP在指定日期范围内每小时的告警数量。
-        """
-        sql = """
-            SELECT
-                CAST(strftime('%H', timestamp) AS INTEGER) AS hour,
-                COUNT(*) AS count
-            FROM
-                alerts
-            WHERE
-                source_ip = ? AND timestamp >= ? AND timestamp <= ?
-            GROUP BY
-                hour
-            ORDER BY
-                hour ASC
-        """
+        sql = "SELECT CAST(strftime('%H', timestamp) AS INTEGER) AS hour, COUNT(*) AS count FROM alerts WHERE source_ip = ? AND timestamp >= ? AND timestamp <= ? GROUP BY hour ORDER BY hour ASC"
         try:
-            cursor = self.conn.cursor()
-            cursor.execute(sql, (ip_address, start_date + " 00:00:00", end_date + " 23:59:59"))
-            rows = cursor.fetchall()
-            
-            hourly_counts = {row['hour']: row['count'] for row in rows}
-            full_24_hours_stats = []
-            for hour in range(24):
-                full_24_hours_stats.append({'hour': hour, 'count': hourly_counts.get(hour, 0)})
-            
-            return full_24_hours_stats
+            cursor = self.conn.cursor(); cursor.execute(sql, (ip_address, start_date + " 00:00:00", end_date + " 23:59:59"))
+            hourly_counts = {row['hour']: row['count'] for row in cursor.fetchall()}
+            return [{'hour': h, 'count': hourly_counts.get(hour, 0)} for hour in range(24)]
         except sqlite3.Error as e:
-            logging.error(f"按IP按小时统计查询失败: {e}", exc_info=True)
-            return []
+            logging.error(f"按IP按小时统计查询失败: {e}", exc_info=True); return []
 
-    # 【新增】获取详细的、按小时、级别和类型分组的统计数据
     def get_detailed_hourly_stats(self, start_date: str, end_date: str, ip_address: str = None) -> List[Dict[str, Any]]:
-        """
-        获取指定日期范围内按小时、严重等级和类型分组的详细告警统计。
-        """
-        sql_parts = [
-            "SELECT",
-            "    CAST(strftime('%H', timestamp) AS INTEGER) AS hour,",
-            "    severity,",
-            "    type,",
-            "    COUNT(*) AS count",
-            "FROM alerts",
-            "WHERE timestamp >= ? AND timestamp <= ?"
-        ]
+        sql_parts = ["SELECT CAST(strftime('%H', timestamp) AS INTEGER) AS hour, severity, type, COUNT(*) AS count FROM alerts WHERE timestamp >= ? AND timestamp <= ?"]
         params = [start_date + " 00:00:00", end_date + " 23:59:59"]
-
         if ip_address:
-            sql_parts.append("AND source_ip = ?")
-            params.append(ip_address)
-
-        sql_parts.extend([
-            "GROUP BY hour, severity, type",
-            "ORDER BY hour ASC, severity ASC, type ASC"
-        ])
-        
-        full_sql = " ".join(sql_parts)
-
+            sql_parts.append("AND source_ip = ?"); params.append(ip_address)
+        sql_parts.extend(["GROUP BY hour, severity, type", "ORDER BY hour ASC, severity ASC, type ASC"])
         try:
-            cursor = self.conn.cursor()
-            cursor.execute(full_sql, params)
-            rows = cursor.fetchall()
-            return [dict(row) for row in rows]
+            cursor = self.conn.cursor(); cursor.execute(" ".join(sql_parts), params)
+            return [dict(row) for row in cursor.fetchall()]
         except sqlite3.Error as e:
-            logging.error(f"获取详细按小时统计失败: {e}", exc_info=True)
-            return []
+            logging.error(f"获取详细按小时统计失败: {e}", exc_info=True); return []
 
     def get_distinct_source_ips(self, start_date: str = None, end_date: str = None) -> List[str]:
-        """
-        获取指定日期范围内所有不重复的来源IP地址列表，按活跃度降序排列。
-        """
         sql_parts = ["SELECT source_ip, COUNT(*) as count FROM alerts WHERE source_ip IS NOT NULL AND source_ip != 'N/A'"]
         params = []
-
         if start_date:
-            sql_parts.append("AND timestamp >= ?")
-            params.append(start_date + " 00:00:00")
+            sql_parts.append("AND timestamp >= ?"); params.append(start_date + " 00:00:00")
         if end_date:
-            sql_parts.append("AND timestamp <= ?")
-            params.append(end_date + " 23:59:59")
-
+            sql_parts.append("AND timestamp <= ?"); params.append(end_date + " 23:59:59")
         sql_parts.append("GROUP BY source_ip ORDER BY count DESC")
-        full_sql = " ".join(sql_parts)
-
         try:
-            cursor = self.conn.cursor()
-            cursor.execute(full_sql, params)
-            rows = cursor.fetchall()
-            return [row['source_ip'] for row in rows]
+            cursor = self.conn.cursor(); cursor.execute(" ".join(sql_parts), params)
+            return [row['source_ip'] for row in cursor.fetchall()]
         except sqlite3.Error as e:
-            logging.error(f"获取不重复IP列表失败: {e}", exc_info=True)
-            return []
+            logging.error(f"获取不重复IP列表失败: {e}", exc_info=True); return []
