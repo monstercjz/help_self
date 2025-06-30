@@ -17,9 +17,11 @@ class MultidimAnalysisView(QWidget):
     def _init_ui(self):
         layout = QVBoxLayout(self)
         
-        filter_layout = QHBoxLayout()
+        # 【变更】将 QHBoxLayout 改为 QVBoxLayout，实现垂直排列
+        filter_layout = QVBoxLayout()
         self.date_filter = DateFilterWidget()
         self.ip_filter = IPFilterWidget()
+        # 依次添加，实现上下排列
         filter_layout.addWidget(self.date_filter)
         filter_layout.addWidget(self.ip_filter)
         layout.addLayout(filter_layout)
