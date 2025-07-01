@@ -6,6 +6,7 @@ import configparser
 from PySide6.QtWidgets import QApplication, QMessageBox
 from PySide6.QtGui import QIcon 
 import ctypes # 【新增】导入 ctypes 用于Windows AppUserModelID
+import logging.handlers
 
 # --- 1. 导入项目核心模块 ---
 # 遵循先导入服务、再导入UI、最后导入管理器的逻辑顺序
@@ -58,12 +59,21 @@ def setup_logging():
     log_level = getattr(logging, log_level_str, logging.INFO)
 
     # 步骤3: 配置日志系统
+    file_handler = logging.handlers.RotatingFileHandler(
+        LOG_FILE, 
+        maxBytes=2 * 1024 * 1024,
+        backupCount=5,
+        encoding='utf-8',
+        mode='a'
+    )
+    stream_handler = logging.StreamHandler(sys.stdout)
+
     logging.basicConfig(
         level=log_level,
         format='%(asctime)s - %(levelname)s - [%(threadName)s] - %(message)s',
         handlers=[
-            logging.FileHandler(LOG_FILE, encoding='utf-8', mode='a'),
-            logging.StreamHandler(sys.stdout)
+            file_handler,    # 使用配置好的轮转文件处理器
+            stream_handler
         ]
     )
     # 打印启动横幅
