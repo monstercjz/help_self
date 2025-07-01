@@ -6,11 +6,15 @@ from PySide6.QtCore import Slot
 
 class AddProgramDialog(QDialog):
     """
-    一个专用的对话框，用于添加新程序。
+    一个专用的对话框，用于添加新程序或编辑现有程序。
     """
-    def __init__(self, groups: list, default_group_id: str = None, parent=None):
+    # 【核心修复】增加 default_group_id 参数以支持快捷添加模式
+    def __init__(self, groups: list, program_to_edit: dict = None, default_group_id: str = None, parent=None):
         super().__init__(parent)
-        self.setWindowTitle("添加新程序")
+        self.is_edit_mode = program_to_edit is not None
+
+        title = "编辑程序" if self.is_edit_mode else "添加新程序"
+        self.setWindowTitle(title)
         self.setMinimumWidth(450)
 
         # -- UI 组件 --
@@ -21,11 +25,6 @@ class AddProgramDialog(QDialog):
         self.group_combo = QComboBox()
         for group in groups:
             self.group_combo.addItem(group['name'], group['id'])
-        
-        if default_group_id:
-            index = self.group_combo.findData(default_group_id)
-            if index != -1:
-                self.group_combo.setCurrentIndex(index)
         
         # 程序名称
         self.name_edit = QLineEdit()
@@ -43,7 +42,23 @@ class AddProgramDialog(QDialog):
         # 对话框按钮
         self.button_box = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
         self.ok_button = self.button_box.button(QDialogButtonBox.StandardButton.Ok)
-        self.ok_button.setEnabled(False) # 默认禁用OK按钮
+        
+        # 【核心修复】重构预设值逻辑
+        group_id_to_select = None
+        if self.is_edit_mode:
+            self.name_edit.setText(program_to_edit.get('name', ''))
+            self.path_edit.setText(program_to_edit.get('path', ''))
+            group_id_to_select = program_to_edit.get('group_id')
+        elif default_group_id:
+            group_id_to_select = default_group_id
+        
+        if group_id_to_select:
+            index = self.group_combo.findData(group_id_to_select)
+            if index != -1:
+                self.group_combo.setCurrentIndex(index)
+        
+        self.ok_button.setEnabled(False)
+        self.validate_input()
 
         layout.addRow(QLabel("所属分组:"), self.group_combo)
         layout.addRow(QLabel("程序名称:"), self.name_edit)
@@ -68,8 +83,7 @@ class AddProgramDialog(QDialog):
         )
         if file_path:
             self.path_edit.setText(file_path)
-            # 自动填充程序名称 (如果名称为空)
-            if not self.name_edit.text():
+            if not self.name_edit.text() and not self.is_edit_mode:
                 program_name = os.path.splitext(os.path.basename(file_path))[0]
                 self.name_edit.setText(program_name.replace('_', ' ').title())
 
@@ -81,10 +95,7 @@ class AddProgramDialog(QDialog):
         self.ok_button.setEnabled(name_ok and path_ok)
 
     def get_program_details(self) -> tuple[str, str, str]:
-        """
-        【修改】获取用户输入的程序详情。
-        此方法假定在对话框被接受(Accepted)后调用。
-        """
+        """获取用户输入的程序详情。"""
         group_id = self.group_combo.currentData()
         program_name = self.name_edit.text().strip()
         file_path = self.path_edit.text().strip()

@@ -5,47 +5,49 @@
             "name": "56"
         },
         {
-            "id": "60a2dfa2-cbda-40ed-9530-1c05d3ca642a",
-            "name": "22"
-        },
-        {
-            "id": "dc7e92af-a86f-44ba-a735-5f027e3bc304",
-            "name": "44"
-        },
-        {
-            "id": "aefdec4b-4491-449c-af50-1c37adebdf25",
-            "name": "12"
-        },
-        {
             "id": "df5987a1-7c2d-450c-b062-8236b5514ee7",
             "name": "Weixin"
         },
         {
-            "id": "a1c31aed-6cc8-40a5-8e8e-67513124ef80",
-            "name": "5"
+            "id": "ff5f4b4a-16e3-4fc0-8703-58c3fe01b201",
+            "name": "7"
         }
     ],
     "programs": {
-        "dfb4d832-33ff-4dc0-b14c-8150cf0aa0e5": {
-            "id": "dfb4d832-33ff-4dc0-b14c-8150cf0aa0e5",
-            "group_id": "aefdec4b-4491-449c-af50-1c37adebdf25",
-            "name": "QQ",
-            "path": "C:/Program Files/Tencent/QQNT/QQ.exe",
-            "order": 0
-        },
-        "07606ebb-16f3-4332-b377-72ea9fc633f1": {
-            "id": "07606ebb-16f3-4332-b377-72ea9fc633f1",
-            "group_id": "aefdec4b-4491-449c-af50-1c37adebdf25",
-            "name": "ev",
-            "path": "C:/Program Files/Everything/Everything.exe",
-            "order": 1
-        },
         "63fbd625-ec80-498b-a44a-815d5796e28a": {
             "id": "63fbd625-ec80-498b-a44a-815d5796e28a",
             "group_id": "562f0a8e-a94a-44e7-9cd1-1617696b97a1",
             "name": "Calc",
             "path": "C:/Windows/System32/calc.exe",
             "order": 0
+        },
+        "e83694ba-7fe3-4317-9f02-3c9ee9a0e007": {
+            "id": "e83694ba-7fe3-4317-9f02-3c9ee9a0e007",
+            "group_id": "562f0a8e-a94a-44e7-9cd1-1617696b97a1",
+            "name": "Aria2",
+            "path": "D:/software/cmder/Cmder.exe",
+            "order": 1
+        },
+        "dfb4d832-33ff-4dc0-b14c-8150cf0aa0e5": {
+            "id": "dfb4d832-33ff-4dc0-b14c-8150cf0aa0e5",
+            "group_id": "df5987a1-7c2d-450c-b062-8236b5514ee7",
+            "name": "QQ",
+            "path": "C:/Program Files/Tencent/QQNT/QQ.exe",
+            "order": 0
+        },
+        "07606ebb-16f3-4332-b377-72ea9fc633f1": {
+            "id": "07606ebb-16f3-4332-b377-72ea9fc633f1",
+            "group_id": "ff5f4b4a-16e3-4fc0-8703-58c3fe01b201",
+            "name": "ev",
+            "path": "C:/Program Files/Everything/Everything.exe",
+            "order": 0
+        },
+        "54d84f6e-3d02-4254-a875-e14c9b4d47ed": {
+            "id": "54d84f6e-3d02-4254-a875-e14c9b4d47ed",
+            "group_id": "ff5f4b4a-16e3-4fc0-8703-58c3fe01b201",
+            "name": "Cpuz X64",
+            "path": "D:/software/cpu-z_2.01-cn/cpuz_x64.exe",
+            "order": 1
         }
     }
 }

@@ -31,7 +31,6 @@ class LauncherController(QObject):
         self.view.delete_item_requested.connect(self.delete_item)
         self.view.search_text_changed.connect(self.filter_view)
         self.view.change_data_path_requested.connect(self.change_data_path)
-        # 【修改】连接到视图顶层的items_moved信号
         self.view.items_moved.connect(self.handle_items_moved)
         self.model.data_changed.connect(self.refresh_view)
 
@@ -47,7 +46,6 @@ class LauncherController(QObject):
         logging.debug(f"[CONTROLLER] Structure from view to be updated: {new_structure}")
         self.model.update_full_structure(new_structure)
 
-    # ... 其他方法保持不变 ...
     @Slot()
     def add_group(self):
         dialog = GroupDialog(self.view)
@@ -64,7 +62,10 @@ class LauncherController(QObject):
                                             QMessageBox.StandardButton.Ok | QMessageBox.StandardButton.Cancel)
             if reply == QMessageBox.StandardButton.Ok: self.add_group()
             return
+            
+        # 【无需修改】此处的调用现在是正确的
         dialog = AddProgramDialog(all_groups, default_group_id=group_id, parent=self.view)
+        
         if dialog.exec() == QDialog.DialogCode.Accepted:
             details = dialog.get_program_details()
             if details:
@@ -94,9 +95,18 @@ class LauncherController(QObject):
             if dialog.exec():
                 new_name = dialog.get_group_name()
                 if new_name and new_name != group['name']: self.model.edit_group(item_id, new_name)
+        
         elif item_type == 'program':
-            QMessageBox.information(self.view, "提示", "要移动程序，请直接将其拖拽到目标分组。要编辑名称和路径，请删除后重新添加。")
-
+            program_to_edit = self.model.get_program_by_id(item_id)
+            if not program_to_edit:
+                logging.warning(f"Attempted to edit non-existent program with ID: {item_id}")
+                return
+            all_groups = self.model.get_all_data().get('groups', [])
+            dialog = AddProgramDialog(all_groups, program_to_edit=program_to_edit, parent=self.view)
+            if dialog.exec() == QDialog.DialogCode.Accepted:
+                new_group_id, new_name, new_path = dialog.get_program_details()
+                self.model.edit_program(item_id, new_group_id, new_name, new_path)
+    
     @Slot(str, str)
     def delete_item(self, item_id: str, item_type: str):
         if item_type == 'group': self._handle_delete_group(item_id)
@@ -149,5 +159,5 @@ class LauncherController(QObject):
                 )
             except Exception as e:
                 QMessageBox.critical(
-                    self.view, "操作失败", f"无法切换数据源到: {new_path}\n\n错误: {e}\n\n设置未更改。"
+                    self.view, "操作失败", f"无法切换数据源到: {new_path}\n\n设置未更改。"
                 )
