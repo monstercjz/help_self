@@ -30,14 +30,19 @@ class ArrangerPageView(QWidget):
         header_layout.addWidget(title_label)
         header_layout.addStretch()
 
-        self.monitor_toggle_button = QPushButton("启动自动监控")
+        self.monitor_toggle_button = QPushButton(" 启动自动监控 ")
+        # try:
+        #     monitor_toggle_button_icon = self.style().standardIcon(self.style().StandardPixmap.SP_MediaPlay)
+        #     self.monitor_toggle_button.setIcon(monitor_toggle_button_icon)
+        # except:
+        #     pass
         self.monitor_toggle_button.setCheckable(True)
         self.monitor_toggle_button.setMinimumHeight(30)
         self.monitor_toggle_button.toggled.connect(self.toggle_monitoring_requested.emit)
         self.set_monitoring_status(False)
         header_layout.addWidget(self.monitor_toggle_button)
         
-        self.settings_button = QPushButton("排列设置")
+        self.settings_button = QPushButton(" 排列设置 ")
         try:
             settings_icon = self.style().standardIcon(self.style().StandardPixmap.SP_FileDialogDetailedView)
             self.settings_button.setIcon(settings_icon)
@@ -48,19 +53,20 @@ class ArrangerPageView(QWidget):
         header_layout.addWidget(self.settings_button)
         main_layout.addLayout(header_layout)
         
-        filter_group = QGroupBox("窗口过滤")
+        filter_group = QGroupBox("设置窗口进程名字及过滤条件")
         filter_group.setStyleSheet("QGroupBox { font-size: 16px; font-weight: bold; color: #333; margin-top: 10px; } QGroupBox::title { subcontrol-origin: margin; subcontrol-position: top left; padding: 0 10px; left: 10px; }")
         filter_layout = QFormLayout(filter_group)
         filter_layout.setSpacing(12)
         filter_layout.setContentsMargins(20, 30, 20, 20)
         
-        self.filter_keyword_input = QLineEdit()
-        self.filter_keyword_input.setPlaceholderText("输入标题关键词, 用逗号分隔多个")
-        filter_layout.addRow("标题关键词:", self.filter_keyword_input)
-
         self.process_name_input = QLineEdit()
         self.process_name_input.setPlaceholderText("输入进程名, 用逗号分隔多个")
         filter_layout.addRow("进程名称:", self.process_name_input)
+
+        self.filter_keyword_input = QLineEdit()
+        self.filter_keyword_input.setPlaceholderText("输入标题关键词, 用逗号分隔多个")
+        filter_layout.addRow("标题关键词:", self.filter_keyword_input)
+        
         
         self.exclude_title_input = QLineEdit()
         self.exclude_title_input.setPlaceholderText("输入要排除的标题关键词，用逗号分隔")
@@ -73,12 +79,12 @@ class ArrangerPageView(QWidget):
         windows_list_layout = QVBoxLayout(self.windows_list_group)
         windows_list_layout.setContentsMargins(15, 15, 15, 15)
 
-        self.summary_label = QLabel("请先检测窗口")
+        self.summary_label = QLabel("请先点击检测窗口")
         self.summary_label.setStyleSheet("font-size: 16px; font-weight: bold; margin-bottom: 5px;")
         windows_list_layout.addWidget(self.summary_label)
 
         self.detected_windows_list_widget = QListWidget()
-        self.detected_windows_list_widget.setMinimumHeight(200)
+        self.detected_windows_list_widget.setMinimumHeight(250)
         self.detected_windows_list_widget.setSelectionMode(QAbstractItemView.ExtendedSelection)
         self.detected_windows_list_widget.setStyleSheet("QListWidget { border: 1px solid #ddd; border-radius: 5px; padding: 5px; } QListWidget::item { padding: 5px; } QListWidget::indicator { width: 16px; height: 16px; }")
         windows_list_layout.addWidget(self.detected_windows_list_widget)
@@ -89,20 +95,20 @@ class ArrangerPageView(QWidget):
         detect_button.clicked.connect(self.detect_windows_requested.emit)
         windows_list_layout.addWidget(detect_button)
         main_layout.addWidget(self.windows_list_group)
-        
-        action_buttons_layout = QHBoxLayout()
-        self.arrange_grid_button = QPushButton("网格排列")
-        self.arrange_grid_button.setMinimumHeight(35)
-        self.arrange_grid_button.setStyleSheet("QPushButton { font-size: 14px; font-weight: bold; background-color: #007bff; color: white; border: none; border-radius: 5px; padding: 0 20px; } QPushButton:hover { background-color: #0056b3; } QPushButton:pressed { background-color: #004085; }")
-        self.arrange_grid_button.clicked.connect(self.arrange_grid_requested.emit)
-        action_buttons_layout.addWidget(self.arrange_grid_button)
 
+        action_buttons_layout = QHBoxLayout()
         self.arrange_cascade_button = QPushButton("级联排列")
         self.arrange_cascade_button.setMinimumHeight(35)
         self.arrange_cascade_button.setStyleSheet("QPushButton { font-size: 14px; font-weight: bold; background-color: #17a2b8; color: white; border: none; border-radius: 5px; padding: 0 20px; } QPushButton:hover { background-color: #138496; } QPushButton:pressed { background-color: #117a8b; }")
         self.arrange_cascade_button.clicked.connect(self.arrange_cascade_requested.emit)
         action_buttons_layout.addWidget(self.arrange_cascade_button)
         main_layout.addLayout(action_buttons_layout)
+
+        self.arrange_grid_button = QPushButton("网格排列")
+        self.arrange_grid_button.setMinimumHeight(35)
+        self.arrange_grid_button.setStyleSheet("QPushButton { font-size: 14px; font-weight: bold; background-color: #007bff; color: white; border: none; border-radius: 5px; padding: 0 20px; } QPushButton:hover { background-color: #0056b3; } QPushButton:pressed { background-color: #004085; }")
+        self.arrange_grid_button.clicked.connect(self.arrange_grid_requested.emit)
+        action_buttons_layout.addWidget(self.arrange_grid_button)
         
         self.status_label = QLabel("准备就绪")
         self.status_label.setStyleSheet("color: #666; font-style: italic; margin-top: 5px;")
@@ -120,9 +126,19 @@ class ArrangerPageView(QWidget):
 
         if is_monitoring:
             self.monitor_toggle_button.setText("停止自动监控")
-            self.monitor_toggle_button.setStyleSheet("background-color: #d9534f; color: white; font-weight: bold;")
+            try:
+                monitor_toggle_button_icon = self.style().standardIcon(self.style().StandardPixmap.SP_MediaStop)
+                self.monitor_toggle_button.setIcon(monitor_toggle_button_icon)
+            except:
+                pass
+            self.monitor_toggle_button.setStyleSheet("background-color: transparent; color: red; font-weight: bold;")
         else:
             self.monitor_toggle_button.setText("启动自动监控")
+            try:
+                monitor_toggle_button_icon = self.style().standardIcon(self.style().StandardPixmap.SP_MediaPlay)
+                self.monitor_toggle_button.setIcon(monitor_toggle_button_icon)
+            except:
+                pass
             self.monitor_toggle_button.setStyleSheet("") # 恢复默认样式
     
     def update_detected_windows_list(self, window_infos: list[object]):
