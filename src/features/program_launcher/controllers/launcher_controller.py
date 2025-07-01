@@ -36,7 +36,7 @@ class LauncherController(QObject):
         self.view.search_text_changed.connect(self.filter_view)
         self.view.group_order_changed.connect(self.model.reorder_groups)
         self.view.program_order_changed.connect(self.model.reorder_programs)
-        self.view.change_data_path_requested.connect(self.change_data_path) # 【新增】连接设置路径信号
+        self.view.change_data_path_requested.connect(self.change_data_path)
 
         # --- Model -> Controller ---
         self.model.data_changed.connect(self.refresh_view)
@@ -174,27 +174,32 @@ class LauncherController(QObject):
         self.view.filter_items(text)
 
     def change_data_path(self):
-        """【新增】处理更改数据文件路径的请求。"""
+        """【修改】处理切换数据文件源的请求。"""
         current_path = self.model.data_file
-        new_path, _ = QFileDialog.getSaveFileName(
+        
+        # 【修改】使用 getOpenFileName 并设置引导性标题
+        new_path, _ = QFileDialog.getOpenFileName(
             self.view,
-            "选择新的数据文件位置",
-            current_path,
+            "选择或指定程序启动器数据文件", # 引导性标题
+            os.path.dirname(current_path), # 对话框打开时所在的目录
             "JSON 文件 (*.json);;所有文件 (*)"
         )
 
         if new_path and new_path != current_path:
             try:
+                # 模型的 set_data_path 现在只负责切换源和重新加载
                 self.model.set_data_path(new_path)
+                # 【修改】更新成功提示信息
                 QMessageBox.information(
                     self.view,
                     "成功",
-                    f"数据文件路径已更新。\n旧数据已成功迁移到:\n{new_path}"
+                    f"数据源已成功切换到:\n{new_path}\n\n界面已刷新。"
                 )
             except Exception as e:
-                logging.error(f"迁移数据到 {new_path} 失败: {e}", exc_info=True)
+                # 这个异常捕获现在主要处理可能的JSON解析错误等
+                logging.error(f"切换数据源到 {new_path} 失败: {e}", exc_info=True)
                 QMessageBox.critical(
                     self.view,
-                    "迁移失败",
-                    f"无法将数据迁移到新位置: {new_path}\n\n错误: {e}\n\n设置未更改。"
+                    "操作失败",
+                    f"无法切换数据源到: {new_path}\n\n错误: {e}\n\n设置未更改。"
                 )
