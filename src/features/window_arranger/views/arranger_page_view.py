@@ -295,7 +295,6 @@ class ArrangerPageView(QWidget):
                 font-weight: bold;
                 color: #eea00f; /* 这是组内文本颜色 */
                 margin-top: 10px;
-
                 /* --- 以下是新增的边框设置 --- */
                 border: 2px solid #E0E0E0; /* 设置2px实线边框，颜色为#eea00f */
                 border-radius: 5px; /* 可选：设置圆角 */
@@ -321,21 +320,23 @@ class ArrangerPageView(QWidget):
         self.detected_windows_list_widget = QListWidget()
         self.detected_windows_list_widget.setMinimumHeight(250)
         self.detected_windows_list_widget.setSelectionMode(QAbstractItemView.ExtendedSelection)
-        self.detected_windows_list_widget.setStyleSheet("QListWidget { border: 1px solid #E0E0E0; border-radius: 5px; padding: 5px; } QListWidget::item { padding: 5px; } QListWidget::indicator { width: 16px; height: 16px; }")
-        # self.detected_windows_list_widget.setStyleSheet(
-        #     "QListWidget {"
-        #     "   border: 2px solid #E0E0E0;"
-        #     "   border-radius: 5px;"
-        #     "   padding: 5px;"
-        #     "}"
-        #     "QListWidget::item {"
-        #     "   padding: 5px;"
-        #     "}"
-        #     "QListWidget::indicator {"
-        #     "   width: 16px;"
-        #     "   height: 16px;"
-        #     "}"
-        # )
+        # self.detected_windows_list_widget.setStyleSheet("QListWidget { border: 1px solid #E0E0E0; border-radius: 5px; padding: 5px; } QListWidget::item { padding: 5px; } QListWidget::indicator { width: 16px; height: 16px; }")
+        self.detected_windows_list_widget.setStyleSheet(
+            "QListWidget {"
+            "   border: 2px solid #E0E0E0;"
+            "   border-radius: 5px;"
+            "   padding: 5px;"
+            #"   background-color: #444444;"
+            #"   color: #ffffff;"
+            "}"
+            "QListWidget::item {"
+            "   padding: 5px;"
+            "}"
+            "QListWidget::indicator {"
+            "   width: 16px;"
+            "   height: 16px;"
+            "}"
+        )
         windows_list_layout.addWidget(self.detected_windows_list_widget)
         
         detect_button = QPushButton("检测桌面窗口")
