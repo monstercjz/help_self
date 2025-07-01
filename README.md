@@ -1,4 +1,5 @@
 ## 项目新架构
+pip freeze > requirements.txt
 desktop_center/
 ├── app.py                     # 【平台核心】精简的应用协调器
 ├── config.ini
