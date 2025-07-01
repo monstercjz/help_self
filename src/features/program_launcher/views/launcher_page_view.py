@@ -4,14 +4,14 @@ import sys
 import os
 from PySide6.QtWidgets import (QWidget, QVBoxLayout, QPushButton, QTreeWidget,
                                QTreeWidgetItem, QHBoxLayout, QLineEdit, QMenu,
-                               QAbstractItemView, QSpacerItem, QSizePolicy)
-from PySide6.QtCore import Signal, Qt, QMimeData
+                               QAbstractItemView, QSpacerItem, QSizePolicy, QFileIconProvider) # 【修改】导入 QFileIconProvider
+from PySide6.QtCore import Signal, Qt, QMimeData, QFileInfo # 【修改】导入 QFileInfo
 from PySide6.QtGui import QIcon, QAction, QPixmap, QDrag, QDropEvent
 
-from ..services.win_icon_extractor import WinIconExtractor
+# 【修改】移除对 WinIconExtractor 的依赖
+# from ..services.win_icon_extractor import WinIconExtractor
 
 class LauncherTreeWidget(QTreeWidget):
-    # ... 此类保持不变 ...
     items_moved = Signal()
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -46,7 +46,7 @@ class LauncherTreeWidget(QTreeWidget):
 
 
 class LauncherPageView(QWidget):
-    # ... 此类大部分保持不变 ...
+    # ... 信号定义保持不变 ...
     add_group_requested = Signal()
     add_program_requested = Signal()
     add_program_to_group_requested = Signal(str)
@@ -60,7 +60,8 @@ class LauncherPageView(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.icon_cache = {}
-        self.icon_extractor = WinIconExtractor() if sys.platform == "win32" else None
+        # 【核心修复】使用 QFileIconProvider 代替自定义服务
+        self.icon_provider = QFileIconProvider()
         self._init_ui()
 
     def _init_ui(self):
@@ -160,17 +161,23 @@ class LauncherPageView(QWidget):
         return {"groups": new_groups, "programs": new_programs}
 
     def _get_program_icon(self, path: str) -> QIcon:
-        # ... 此方法保持不变 ...
-        if path in self.icon_cache: return self.icon_cache[path]
-        if self.icon_extractor and path and os.path.exists(path):
-            pixmap = self.icon_extractor.get_icon_pixmap(path)
-            if pixmap:
-                icon = QIcon(pixmap)
-                self.icon_cache[path] = icon
-                return icon
-        default_icon = QIcon.fromTheme("application-x-executable")
-        self.icon_cache[path] = default_icon
-        return default_icon
+        """【核心修复】使用 QFileIconProvider 获取并缓存程序图标。"""
+        if not path:
+            return QIcon.fromTheme("application-x-executable")
+
+        if path in self.icon_cache:
+            return self.icon_cache[path]
+
+        file_info = QFileInfo(path)
+        icon = self.icon_provider.icon(file_info)
+
+        if icon.isNull():
+            # 如果系统无法提供图标，则使用通用后备图标
+            logging.warning(f"QFileIconProvider could not find an icon for: {path}. Using fallback.")
+            icon = QIcon.fromTheme("application-x-executable")
+        
+        self.icon_cache[path] = icon
+        return icon
 
     def _on_item_double_clicked(self, item: QTreeWidgetItem):
         # ... 此方法保持不变 ...
@@ -178,6 +185,7 @@ class LauncherPageView(QWidget):
         if data and data.get('type') == 'program': self.item_double_clicked.emit(data['id'])
             
     def _on_context_menu(self, pos):
+        # ... 此方法保持不变 ...
         item = self.tree.itemAt(pos)
         if not item: return
         data = item.data(0, Qt.ItemDataRole.UserRole)
@@ -192,11 +200,9 @@ class LauncherPageView(QWidget):
             delete_action.triggered.connect(lambda: self.delete_item_requested.emit(data['id'], 'group'))
         elif data.get('type') == 'program':
             launch_action = menu.addAction("启动")
-            # 【修改】在此处添加“编辑”菜单项
             edit_action = menu.addAction("编辑...")
             delete_action = menu.addAction("删除")
             menu.addSeparator()
-            
             launch_action.triggered.connect(lambda: self.item_double_clicked.emit(data['id']))
             edit_action.triggered.connect(lambda: self.edit_item_requested.emit(data['id'], 'program'))
             delete_action.triggered.connect(lambda: self.delete_item_requested.emit(data['id'], 'program'))
