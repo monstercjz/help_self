@@ -1,9 +1,10 @@
 # desktop_center/src/features/program_launcher/views/launcher_page_view.py
 import logging
 import sys
+import os
 from PySide6.QtWidgets import (QWidget, QVBoxLayout, QPushButton, QTreeWidget,
                                QTreeWidgetItem, QHBoxLayout, QLineEdit, QMenu,
-                               QAbstractItemView)
+                               QAbstractItemView, QSpacerItem, QSizePolicy) # 【修改】导入QSizePolicy
 from PySide6.QtCore import Signal, Qt, QMimeData
 from PySide6.QtGui import QIcon, QAction, QPixmap, QDrag
 
@@ -21,6 +22,7 @@ class LauncherPageView(QWidget):
     search_text_changed = Signal(str)
     group_order_changed = Signal(list) # list of group_ids
     program_order_changed = Signal(str, list) # group_id, list of program_ids
+    change_data_path_requested = Signal() # 【新增】定义新信号
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -42,9 +44,16 @@ class LauncherPageView(QWidget):
         self.search_bar = QLineEdit()
         self.search_bar.setPlaceholderText("搜索程序...")
         
+        # 【新增】设置按钮
+        self.settings_btn = QPushButton()
+        self.settings_btn.setIcon(QIcon.fromTheme("emblem-system")) # 使用一个常见的设置图标
+        self.settings_btn.setToolTip("设置数据文件路径")
+        
         toolbar_layout.addWidget(self.add_group_btn)
         toolbar_layout.addWidget(self.add_program_btn)
+        toolbar_layout.addSpacerItem(QSpacerItem(40, 20, QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)) # 【修改】增加弹簧
         toolbar_layout.addWidget(self.search_bar)
+        toolbar_layout.addWidget(self.settings_btn) # 【新增】将设置按钮添加到布局
         layout.addLayout(toolbar_layout)
 
         # 树状视图
@@ -62,6 +71,7 @@ class LauncherPageView(QWidget):
         # 连接信号
         self.add_group_btn.clicked.connect(self.add_group_requested)
         self.add_program_btn.clicked.connect(self._on_add_program_clicked)
+        self.settings_btn.clicked.connect(self.change_data_path_requested) # 【新增】连接信号
         self.tree.itemDoubleClicked.connect(self._on_item_double_clicked)
         self.tree.customContextMenuRequested.connect(self._on_context_menu)
         self.search_bar.textChanged.connect(self.search_text_changed)

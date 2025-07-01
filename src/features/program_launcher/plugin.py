@@ -32,12 +32,9 @@ class ProgramLauncherPlugin(IFeaturePlugin):
         super().initialize(context)
         logging.info(f"[{self.name()}]-> 插件初始化开始...")
 
-        # 1. 创建模型，并传入插件自己的数据文件路径
-        # 插件应将自己的数据存储在自己的目录中
-        import os
-        plugin_dir = os.path.dirname(__file__)
-        data_file = os.path.join(plugin_dir, "launcher_data.json")
-        self.model = LauncherModel(data_file)
+        # 1. 创建模型，并将ConfigService注入，以实现路径配置化
+        # 【修改】将 context.config_service 传递给模型
+        self.model = LauncherModel(config_service=context.config_service)
 
         # 2. 创建视图
         self.view = LauncherPageView()

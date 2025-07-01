@@ -36,6 +36,7 @@ class LauncherController(QObject):
         self.view.search_text_changed.connect(self.filter_view)
         self.view.group_order_changed.connect(self.model.reorder_groups)
         self.view.program_order_changed.connect(self.model.reorder_programs)
+        self.view.change_data_path_requested.connect(self.change_data_path) # 【新增】连接设置路径信号
 
         # --- Model -> Controller ---
         self.model.data_changed.connect(self.refresh_view)
@@ -171,3 +172,29 @@ class LauncherController(QObject):
     def filter_view(self, text: str):
         """根据搜索文本过滤视图中的项目。"""
         self.view.filter_items(text)
+
+    def change_data_path(self):
+        """【新增】处理更改数据文件路径的请求。"""
+        current_path = self.model.data_file
+        new_path, _ = QFileDialog.getSaveFileName(
+            self.view,
+            "选择新的数据文件位置",
+            current_path,
+            "JSON 文件 (*.json);;所有文件 (*)"
+        )
+
+        if new_path and new_path != current_path:
+            try:
+                self.model.set_data_path(new_path)
+                QMessageBox.information(
+                    self.view,
+                    "成功",
+                    f"数据文件路径已更新。\n旧数据已成功迁移到:\n{new_path}"
+                )
+            except Exception as e:
+                logging.error(f"迁移数据到 {new_path} 失败: {e}", exc_info=True)
+                QMessageBox.critical(
+                    self.view,
+                    "迁移失败",
+                    f"无法将数据迁移到新位置: {new_path}\n\n错误: {e}\n\n设置未更改。"
+                )

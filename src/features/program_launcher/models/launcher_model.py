@@ -3,17 +3,29 @@ import json
 import logging
 import os
 import uuid
+import shutil
 from PySide6.QtCore import QObject, Signal
+
+from src.services.config_service import ConfigService
+
+# 【新增】定义插件在config.ini中的配置段名称
+CONFIG_SECTION = "ProgramLauncher"
 
 class LauncherModel(QObject):
     """
     模型层，负责处理程序启动器的数据，包括从JSON文件加载和保存。
+    【修改】现在通过ConfigService来管理数据文件路径。
     """
     data_changed = Signal()
 
-    def __init__(self, data_file_path: str, parent=None):
+    def __init__(self, config_service: ConfigService, parent=None):
         super().__init__(parent)
-        self.data_file = data_file_path
+        self.config_service = config_service
+        
+        # 【修改】从配置服务获取数据路径，若无则使用根目录下的默认值
+        default_path = "launcher_data.json"
+        self.data_file = self.config_service.get_value(CONFIG_SECTION, "data_file_path", default_path)
+        
         self.data = {"groups": [], "programs": {}}
         self.load_data()
 
@@ -28,8 +40,8 @@ class LauncherModel(QObject):
                     if "programs" not in self.data: self.data["programs"] = {}
                 logging.info(f"已从 {self.data_file} 加载启动器数据。")
             else:
-                logging.warning(f"启动器数据文件 {self.data_file} 不存在，将创建新文件。")
-                self.save_data() # 创建一个空文件
+                logging.warning(f"启动器数据文件 {self.data_file} 不存在，将在首次保存时创建。")
+                self.data = {"groups": [], "programs": {}}
         except (json.JSONDecodeError, IOError) as e:
             logging.error(f"加载启动器数据文件 {self.data_file} 失败: {e}")
             self.data = {"groups": [], "programs": {}}
@@ -39,9 +51,41 @@ class LauncherModel(QObject):
         try:
             with open(self.data_file, 'w', encoding='utf-8') as f:
                 json.dump(self.data, f, indent=4, ensure_ascii=False)
-            logging.info(f"启动器数据已保存到 {self.data_file}。")
         except IOError as e:
             logging.error(f"保存启动器数据到 {self.data_file} 失败: {e}")
+            
+    def set_data_path(self, new_path: str):
+        """
+        【新增】设置新的数据文件路径，并将现有数据迁移过去。
+        """
+        old_path = self.data_file
+        if new_path == old_path:
+            return
+
+        # 确保当前数据已保存到旧文件，以便迁移
+        self.save_data()
+
+        try:
+            # 如果旧文件存在，则迁移；否则只是创建一个空的新文件
+            if os.path.exists(old_path):
+                shutil.move(old_path, new_path)
+                logging.info(f"已将数据文件从 {old_path} 迁移到 {new_path}")
+            
+            self.data_file = new_path
+            # 更新配置并保存
+            self.config_service.set_option(CONFIG_SECTION, "data_file_path", new_path)
+            self.config_service.save_config()
+            logging.info(f"启动器数据路径已在配置中更新为: {new_path}")
+            
+            # 重新加载数据以确保一致性（虽然move之后内容一样，但这是个好习惯）
+            self.load_data()
+            self.data_changed.emit()
+
+        except (IOError, OSError) as e:
+            logging.error(f"迁移数据文件从 {old_path} 到 {new_path} 失败: {e}")
+            # 如果迁移失败，回滚到旧路径以保持程序稳定
+            self.data_file = old_path
+            raise e # 向上抛出异常，让控制器处理UI通知
 
     def get_all_data(self):
         """获取所有分组及其包含的程序。"""

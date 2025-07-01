@@ -4,3 +4,4 @@
 *.pyc
 history.db
 launcher_apps.json
+*.json
