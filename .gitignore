@@ -1,4 +1,5 @@
 /desktop_center.log
 /app.log
+/app.log.*
 *.pyc
 history.db
