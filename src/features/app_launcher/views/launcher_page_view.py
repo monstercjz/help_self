@@ -3,6 +3,11 @@ from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QPushButton,
                                QListWidget, QAbstractItemView, QListWidgetItem,
                                QLabel, QFileDialog, QLineEdit, QDialog, QDialogButtonBox)
 from PySide6.QtCore import Signal, Qt
+
+# 【新增】导入 os 和 sys 模块以修复 NameError
+import os
+import sys
+
 from typing import List, Dict
 
 class AddAppDialog(QDialog):

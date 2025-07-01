@@ -3,3 +3,4 @@
 /app.log.*
 *.pyc
 history.db
+launcher_apps.json
