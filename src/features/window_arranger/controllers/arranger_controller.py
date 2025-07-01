@@ -169,8 +169,8 @@ class ArrangerController(QObject):
         self.detected_windows = strategy.sort(unfiltered_windows)
         
         num_detected = len(self.detected_windows)
-        color_a, color_b, color_c = "#333", "#005a9e", "#5cb85c"
-        summary_text = f"<span style='color: {color_a};'>检测结果 (</span><span style='color: {color_b}; font-weight: bold;'>{num_detected}</span><span style='color: {color_a};'> 个) | 排序: </span><span style='color: {color_c};'>{strategy.name}</span>"
+        color_a, color_b, color_c = "#c509eb", "#f5eeef", "#5cb85c"
+        summary_text = f"<span style='color: {color_c};'>进程总个数： </span><span style='color: {color_a}; font-weight: bold;'>{num_detected}</span> <span style='color: {color_b};'>>>>>>>>>>>>>>>>>>>>>> </span> <span style='color: {color_c};'>排序规则： </span> <span style='color: {color_a};'>{strategy.name}</span>"
         self.view.summary_label.setText(summary_text)
         
         self.view.update_detected_windows_list(self.detected_windows)

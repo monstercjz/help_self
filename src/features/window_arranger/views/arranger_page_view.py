@@ -21,12 +21,21 @@ class ArrangerPageView(QWidget):
         self.setWindowTitle("窗口排列器")
 
         main_layout = QVBoxLayout(self)
-        main_layout.setContentsMargins(20, 20, 20, 20)
-        main_layout.setSpacing(15)
+        main_layout.setContentsMargins(15, 0, 15, 15)
+        main_layout.setSpacing(10)
         
-        header_layout = QHBoxLayout()
+        toolbar_container = QWidget()
+        toolbar_container.setObjectName("ToolbarContainer")
+        toolbar_container.setStyleSheet("#ToolbarContainer { background-color: #F8F8F8; border-top: 1px solid #E0E0E0; border-bottom: 1px solid #E0E0E0; }")
+        toolbar_container.setContentsMargins(15, 10, 15, 10)
+        toolbar_container.setFixedHeight(60)
+
+        header_layout = QHBoxLayout(toolbar_container)
+        header_layout.setContentsMargins(0, 0, 0, 0)
+
+        # header_layout = QHBoxLayout()
         title_label = QLabel("桌面窗口排列")
-        title_label.setStyleSheet("font-size: 22px; font-weight: bold; color: #333;")
+        title_label.setStyleSheet("font-size: 20px; font-weight: bold; ")
         header_layout.addWidget(title_label)
         header_layout.addStretch()
 
@@ -51,42 +60,282 @@ class ArrangerPageView(QWidget):
         self.settings_button.setMinimumHeight(30)
         self.settings_button.clicked.connect(self.open_settings_requested.emit)
         header_layout.addWidget(self.settings_button)
-        main_layout.addLayout(header_layout)
+        main_layout.addWidget(toolbar_container)
         
         filter_group = QGroupBox("设置窗口进程名字及过滤条件")
-        filter_group.setStyleSheet("QGroupBox { font-size: 16px; font-weight: bold; color: #333; margin-top: 10px; } QGroupBox::title { subcontrol-origin: margin; subcontrol-position: top left; padding: 0 10px; left: 10px; }")
+        filter_group.setStyleSheet("""
+            QGroupBox {
+                font-size: 16px;
+                font-weight: bold;
+                color: #CE13F3; /* 这是组内文本颜色 */
+                margin-top: 10px;
+
+                /* --- 以下是新增的边框设置 --- */
+                border: 2px solid #E0E0E0; /* 设置2px实线边框，颜色为#eea00f */
+                border-radius: 5px; /* 可选：设置圆角 */
+            }
+
+            QGroupBox::title {
+                subcontrol-origin: margin;
+                subcontrol-position: top left;
+                padding: 0 10px;
+                left: 10px;
+                /* 如果您想让标题背景也与边框颜色一致，可以给title设置background-color */
+                /* background-color: #eea00f; */
+            }
+        """)
         filter_layout = QFormLayout(filter_group)
-        filter_layout.setSpacing(12)
+        filter_layout.setSpacing(0)
+        filter_layout.setVerticalSpacing(2)
         filter_layout.setContentsMargins(20, 30, 20, 20)
-        
+        target_height = 30
+        fixed_label_width = 100
         self.process_name_input = QLineEdit()
         self.process_name_input.setPlaceholderText("输入进程名, 用逗号分隔多个")
-        filter_layout.addRow("进程名称:", self.process_name_input)
+        self.process_name_input.setFixedHeight(target_height)
+        placeholder_color = "#CE13F3"
+
+        self.process_name_input.setStyleSheet(f"""
+            QLineEdit {{
+                color: #ffffff;
+                background-color: #3498db;
+                /* 移除或将所有边框设置为none */
+                border: none;
+                /* 或者具体设置每个边的边框为none */
+                /* border-top: none; */
+                /* border-left: none; */
+                /* border-right: none; */
+
+                /* 只设置底部边框 */
+                /* border-bottom: 0.5px solid #ffffff;  边框样式 */
+                
+                padding: 1px; /* 内边距，让文本不贴着边框 */
+                selection-background-color: #aaddff;
+                selection-color: #000000;
+                border-top-left-radius: 0px;    /* 左上角圆角 */
+                border-bottom-left-radius: 0px; /* 左下角圆角 */
+                border-top-right-radius: 5px;   /* 右上角直角 */
+                border-bottom-right-radius: 5px;/* 右下角直角 */
+            }}
+            /* PlaceholderText 样式 (注意，这个伪元素在旧版本Qt上可能不支持或支持不全) */
+            QLineEdit::placeholder {{
+                color: {placeholder_color};
+            }}
+        """)
+
+        process_name_label = QLabel("进程名称: ")
+        
+        process_name_label.setFixedWidth(fixed_label_width)
+        process_name_label.setFixedHeight(target_height)
+        process_name_label.setStyleSheet("""
+            QLabel {
+                color: #ffffff;
+                /* 移除或将所有边框设置为none */
+                border: none;
+                /* 或者具体设置每个边的边框为none */
+                /* border-top: none; */
+                /* border-left: none; */
+                /* border-right: none; */
+
+                /* 只设置底部边框 */
+                /* border-bottom: 0.5px solid #ffffff;  边框样式 */
+                font-weight: bold;
+                font-style: normal;
+                font-family: "Microsoft YaHei UI";
+                text-decoration: none;
+                background-color: #3498db;
+                padding: 4px 8px;
+                border-top-left-radius: 5px;    /* 左上角圆角 */
+                border-bottom-left-radius: 5px; /* 左下角圆角 */
+                border-top-right-radius: 0px;   /* 右上角直角 */
+                border-bottom-right-radius: 0px;/* 右下角直角 */
+            }
+        """)
+
+        # 将样式化后的 QLabel 添加到 QFormLayout
+        filter_layout.addRow(process_name_label, self.process_name_input)
+
+        # filter_layout.addRow("进程名称:", self.process_name_input)
 
         self.filter_keyword_input = QLineEdit()
         self.filter_keyword_input.setPlaceholderText("输入标题关键词, 用逗号分隔多个")
-        filter_layout.addRow("标题关键词:", self.filter_keyword_input)
+        self.filter_keyword_input.setFixedHeight(target_height)
+        self.filter_keyword_input.setStyleSheet(f"""
+            QLineEdit {{
+                
+                color: #ffffff;
+                background-color: #3b5998;
+                /* 移除或将所有边框设置为none */
+                border: none;
+                /* 或者具体设置每个边的边框为none */
+                /* border-top: none; */
+                /* border-left: none; */
+                /* border-right: none; */
+
+                /* 只设置底部边框 */
+                /* border-bottom: 0.5px solid #ffffff;  边框样式 */
+                
+                padding: 1px; /* 内边距，让文本不贴着边框 */
+                selection-background-color: #aaddff;
+                selection-color: #000000;
+                border-top-left-radius: 0px;    /* 左上角圆角 */
+                border-bottom-left-radius: 0px; /* 左下角圆角 */
+                border-top-right-radius: 5px;   /* 右上角直角 */
+                border-bottom-right-radius: 5px;/* 右下角直角 */
+            }}
+            /* PlaceholderText 样式 (注意，这个伪元素在旧版本Qt上可能不支持或支持不全) */
+            QLineEdit::placeholder {{
+                color: {placeholder_color};
+            }}
+        """)
+
+        filter_keyword_label = QLabel("标题关键词:")
+        filter_keyword_label.setFixedWidth(fixed_label_width)
+        filter_keyword_label.setFixedHeight(target_height)
+        filter_keyword_label.setStyleSheet("""
+            QLabel {
+                color: #ffffff;
+                /* 移除或将所有边框设置为none */
+                border: none;
+                /* 或者具体设置每个边的边框为none */
+                /* border-top: none; */
+                /* border-left: none; */
+                /* border-right: none; */
+
+                /* 只设置底部边框 */
+                /* border-bottom: 0.5px solid #ffffff;  边框样式 */
+                font-weight: bold;
+                font-style: normal;
+                font-family: "Microsoft YaHei UI";
+                text-decoration: none;
+                background-color: #3b5998;
+                padding: 4px 8px;
+                border-top-left-radius: 5px;    /* 左上角圆角 */
+                border-bottom-left-radius: 5px; /* 左下角圆角 */
+                border-top-right-radius: 0px;   /* 右上角直角 */
+                border-bottom-right-radius: 0px;/* 右下角直角 */
+            }
+        """)
+
+        # 将样式化后的 QLabel 添加到 QFormLayout
+        filter_layout.addRow(filter_keyword_label, self.filter_keyword_input)
+        # filter_layout.addRow("标题关键词:", self.filter_keyword_input)
         
         
         self.exclude_title_input = QLineEdit()
         self.exclude_title_input.setPlaceholderText("输入要排除的标题关键词，用逗号分隔")
-        filter_layout.addRow("排除标题包含:", self.exclude_title_input)
+        self.exclude_title_input.setFixedHeight(target_height)
+        self.exclude_title_input.setStyleSheet(f"""
+            QLineEdit {{
+                
+                color: #ffffff;
+                background-color: #e74c3c;
+                /* 移除或将所有边框设置为none */
+                border: none;
+                /* 或者具体设置每个边的边框为none */
+                /* border-top: none; */
+                /* border-left: none; */
+                /* border-right: none; */
+
+                /* 只设置底部边框 */
+                /* border-bottom: 0.5px solid #ffffff;  边框样式 */
+                
+                padding: 1px; /* 内边距，让文本不贴着边框 */
+                selection-background-color: #aaddff;
+                selection-color: #000000;
+                border-top-left-radius: 0px;    /* 左上角圆角 */
+                border-bottom-left-radius: 0px; /* 左下角圆角 */
+                border-top-right-radius: 5px;   /* 右上角直角 */
+                border-bottom-right-radius: 5px;/* 右下角直角 */                               
+            }}
+            /* PlaceholderText 样式 (注意，这个伪元素在旧版本Qt上可能不支持或支持不全) */
+            QLineEdit::placeholder {{
+                color: {placeholder_color};
+            }}
+        """)
+        exclude_title_label = QLabel("排除标题包含: ")
+        exclude_title_label.setFixedWidth(fixed_label_width)
+        exclude_title_label.setFixedHeight(target_height)
+        exclude_title_label.setStyleSheet("""
+            QLabel {
+                color: #ffffff;
+                /* 移除或将所有边框设置为none */
+                border: none;
+                /* 或者具体设置每个边的边框为none */
+                /* border-top: none; */
+                /* border-left: none; */
+                /* border-right: none; */
+
+                /* 只设置底部边框 */
+                /* border-bottom: 0.5px solid #ffffff;  边框样式 */                      
+                font-weight: bold;
+                font-style: normal;
+                font-family: "Microsoft YaHei UI";
+                text-decoration: none;
+                background-color: #e74c3c;
+                padding: 4px 8px;
+                border-top-left-radius: 5px;    /* 左上角圆角 */
+                border-bottom-left-radius: 5px; /* 左下角圆角 */
+                border-top-right-radius: 0px;   /* 右上角直角 */
+                border-bottom-right-radius: 0px;/* 右下角直角 */
+            }
+        """)
+
+        # 将样式化后的 QLabel 添加到 QFormLayout
+        filter_layout.addRow(exclude_title_label, self.exclude_title_input)
+
+        # filter_layout.addRow("排除标题包含:", self.exclude_title_input)
         
         main_layout.addWidget(filter_group)
 
         self.windows_list_group = QGroupBox()
-        self.windows_list_group.setStyleSheet("QGroupBox { margin-top: 10px; }")
+        self.windows_list_group.setStyleSheet("""
+            QGroupBox {
+                font-size: 16px;
+                font-weight: bold;
+                color: #eea00f; /* 这是组内文本颜色 */
+                margin-top: 10px;
+
+                /* --- 以下是新增的边框设置 --- */
+                border: 2px solid #E0E0E0; /* 设置2px实线边框，颜色为#eea00f */
+                border-radius: 5px; /* 可选：设置圆角 */
+            }
+
+            QGroupBox::title {
+                subcontrol-origin: margin;
+                subcontrol-position: top left;
+                padding: 0 10px;
+                left: 10px;
+                /* 如果您想让标题背景也与边框颜色一致，可以给title设置background-color */
+                /* background-color: #eea00f; */
+            }
+        """)
+        # self.windows_list_group.setStyleSheet("QGroupBox { margin-top: 10px; }")
         windows_list_layout = QVBoxLayout(self.windows_list_group)
         windows_list_layout.setContentsMargins(15, 15, 15, 15)
 
         self.summary_label = QLabel("请先点击检测窗口")
-        self.summary_label.setStyleSheet("font-size: 16px; font-weight: bold; margin-bottom: 5px;")
+        self.summary_label.setStyleSheet("font-size: 16px; font-weight: bold; color: #f50f6f; margin-bottom: 5px;")
         windows_list_layout.addWidget(self.summary_label)
 
         self.detected_windows_list_widget = QListWidget()
         self.detected_windows_list_widget.setMinimumHeight(250)
         self.detected_windows_list_widget.setSelectionMode(QAbstractItemView.ExtendedSelection)
-        self.detected_windows_list_widget.setStyleSheet("QListWidget { border: 1px solid #ddd; border-radius: 5px; padding: 5px; } QListWidget::item { padding: 5px; } QListWidget::indicator { width: 16px; height: 16px; }")
+        self.detected_windows_list_widget.setStyleSheet("QListWidget { border: 1px solid #E0E0E0; border-radius: 5px; padding: 5px; } QListWidget::item { padding: 5px; } QListWidget::indicator { width: 16px; height: 16px; }")
+        # self.detected_windows_list_widget.setStyleSheet(
+        #     "QListWidget {"
+        #     "   border: 2px solid #E0E0E0;"
+        #     "   border-radius: 5px;"
+        #     "   padding: 5px;"
+        #     "}"
+        #     "QListWidget::item {"
+        #     "   padding: 5px;"
+        #     "}"
+        #     "QListWidget::indicator {"
+        #     "   width: 16px;"
+        #     "   height: 16px;"
+        #     "}"
+        # )
         windows_list_layout.addWidget(self.detected_windows_list_widget)
         
         detect_button = QPushButton("检测桌面窗口")
