@@ -17,7 +17,7 @@ class SettingsDialog(QDialog):
         super().__init__(parent)
         self.context = context
         self.strategy_manager = strategy_manager
-        self.setWindowTitle("排列设置")
+        self.setWindowTitle("设置")
         self.setMinimumWidth(600)
 
         main_layout = QVBoxLayout(self)
@@ -27,17 +27,90 @@ class SettingsDialog(QDialog):
         columns_layout = QHBoxLayout()
         columns_layout.setSpacing(20)
 
-        # --- 左列：网格与监控设置 ---
-        grid_group = QGroupBox("网格与监控设置")
-        grid_group.setStyleSheet("QGroupBox { font-size: 14px; font-weight: bold; }")
-        grid_form_layout = QFormLayout(grid_group)
-        grid_form_layout.setSpacing(12)
+        # --- 左列：布局与排列设置 (已重构) ---
+        layout_group = QGroupBox("布局与排列设置")
+        layout_group.setStyleSheet("QGroupBox { font-size: 14px; font-weight: bold; }")
+        layout_form_layout = QFormLayout(layout_group)
+        layout_form_layout.setSpacing(12)
         
-        self.sorting_strategy_combobox = QComboBox()
-        self.sorting_strategy_combobox.setMaximumWidth(200)
-        grid_form_layout.addRow("排序方案:", self.sorting_strategy_combobox)
+        self.screen_selection_combobox = QComboBox()
+        self.screen_selection_combobox.setMinimumWidth(220)
+        layout_form_layout.addRow("目标屏幕:", self.screen_selection_combobox)
 
-        # 【新增】监控模式选择
+        self.grid_direction_combobox = QComboBox()
+        self.grid_direction_combobox.addItems(["先排满行 (→)", "先排满列 (↓)"])
+        # self.grid_direction_combobox.setMaximumWidth(220)
+        self.grid_direction_combobox.setMinimumWidth(220)
+        layout_form_layout.addRow("排列方向:", self.grid_direction_combobox)
+
+        self.sorting_strategy_combobox = QComboBox()
+        self.sorting_strategy_combobox.setMinimumWidth(220)
+        layout_form_layout.addRow("排序方案:", self.sorting_strategy_combobox)
+
+        self.animation_delay_spinbox = QSpinBox()
+        self.animation_delay_spinbox.setRange(0, 500)
+        self.animation_delay_spinbox.setSuffix(" ms")
+        self.animation_delay_spinbox.setMinimumWidth(220)
+        layout_form_layout.addRow("排列动画延时:", self.animation_delay_spinbox)
+
+        # 行数和列数
+        rows_cols_layout = QHBoxLayout()
+        self.rows_spinbox = QSpinBox(); self.rows_spinbox.setRange(1, 20); self.rows_spinbox.setMaximumWidth(90)
+        self.cols_spinbox = QSpinBox(); self.cols_spinbox.setRange(1, 20); self.cols_spinbox.setMaximumWidth(90)
+        rows_cols_layout.addWidget(QLabel("行数:")); rows_cols_layout.addWidget(self.rows_spinbox)
+        rows_cols_layout.addWidget(QLabel("列数:")); rows_cols_layout.addWidget(self.cols_spinbox)
+        rows_cols_layout.addStretch()
+        layout_form_layout.addRow("网格行列数:", rows_cols_layout)
+
+        # 窗口间距
+        spacing_layout = QHBoxLayout()
+        self.spacing_horizontal_spinbox = QSpinBox(); self.spacing_horizontal_spinbox.setRange(-100, 100); self.spacing_horizontal_spinbox.setMaximumWidth(72)
+        self.spacing_vertical_spinbox = QSpinBox(); self.spacing_vertical_spinbox.setRange(-100, 100); self.spacing_vertical_spinbox.setMaximumWidth(72)
+        spacing_layout.addWidget(QLabel("水平:")); spacing_layout.addWidget(self.spacing_horizontal_spinbox)
+        spacing_layout.addWidget(QLabel("垂直:")); spacing_layout.addWidget(self.spacing_vertical_spinbox)
+        spacing_layout.addStretch()
+        layout_form_layout.addRow("窗口间距 (px):", spacing_layout)
+
+        # 上下边距
+        margin_tb_layout = QHBoxLayout()
+        self.margin_top_spinbox = QSpinBox(); self.margin_top_spinbox.setRange(-500, 500); self.margin_top_spinbox.setMaximumWidth(72)
+        self.margin_bottom_spinbox = QSpinBox(); self.margin_bottom_spinbox.setRange(-500, 500); self.margin_bottom_spinbox.setMaximumWidth(72)
+        margin_tb_layout.addWidget(QLabel("距上:")); margin_tb_layout.addWidget(self.margin_top_spinbox)
+        margin_tb_layout.addWidget(QLabel("距下:")); margin_tb_layout.addWidget(self.margin_bottom_spinbox)
+        margin_tb_layout.addStretch()
+        layout_form_layout.addRow("屏幕边距 (垂直):", margin_tb_layout)
+
+        # 左右边距
+        margin_lr_layout = QHBoxLayout()
+        self.margin_left_spinbox = QSpinBox(); self.margin_left_spinbox.setRange(-500, 500); self.margin_left_spinbox.setMaximumWidth(72)
+        self.margin_right_spinbox = QSpinBox(); self.margin_right_spinbox.setRange(-500, 500); self.margin_right_spinbox.setMaximumWidth(72)
+        margin_lr_layout.addWidget(QLabel("距左:")); margin_lr_layout.addWidget(self.margin_left_spinbox)
+        margin_lr_layout.addWidget(QLabel("距右:")); margin_lr_layout.addWidget(self.margin_right_spinbox)
+        margin_lr_layout.addStretch()
+        layout_form_layout.addRow("屏幕边距 (水平):", margin_lr_layout)
+
+        layout_form_layout.addRow(QLabel("---"))
+        
+        self.cascade_x_offset_spinbox = QSpinBox(); self.cascade_x_offset_spinbox.setRange(0, 100); self.cascade_x_offset_spinbox.setMaximumWidth(200)
+        self.cascade_y_offset_spinbox = QSpinBox(); self.cascade_y_offset_spinbox.setRange(0, 100); self.cascade_y_offset_spinbox.setMaximumWidth(200)
+        layout_form_layout.addRow("级联X偏移 (px):", self.cascade_x_offset_spinbox)
+        layout_form_layout.addRow("级联Y偏移 (px):", self.cascade_y_offset_spinbox)
+
+        columns_layout.addWidget(layout_group)
+
+        # --- 右列：监控与推送设置 (已重构) ---
+        monitor_push_group = QGroupBox("监控与推送设置")
+        monitor_push_group.setStyleSheet("QGroupBox { font-size: 14px; font-weight: bold; }")
+        
+        monitor_push_v_layout = QVBoxLayout(monitor_push_group)
+        monitor_push_form_layout = QFormLayout()
+        monitor_push_form_layout.setSpacing(12)
+        
+        self.enable_notifications_combobox = QComboBox()
+        self.enable_notifications_combobox.addItems(["启用", "禁用"])
+        self.enable_notifications_combobox.setMaximumWidth(200)
+        monitor_push_form_layout.addRow("桌面操作通知:", self.enable_notifications_combobox)
+
         self.monitor_mode_combobox = QComboBox()
         self.monitor_mode_combobox.addItems(["模板化自动排列", "快照式位置锁定"])
         self.monitor_mode_combobox.setToolTip(
@@ -45,104 +118,35 @@ class SettingsDialog(QDialog):
             "快照式：仅恢复窗口到上次手动排列的位置，忽略新增窗口。"
         )
         self.monitor_mode_combobox.setMaximumWidth(200)
-        grid_form_layout.addRow("监控模式:", self.monitor_mode_combobox)
+        monitor_push_form_layout.addRow("监控模式:", self.monitor_mode_combobox)
 
         self.monitor_interval_spinbox = QSpinBox()
         self.monitor_interval_spinbox.setRange(1, 300)
         self.monitor_interval_spinbox.setSuffix(" 秒")
         self.monitor_interval_spinbox.setMaximumWidth(200)
-        grid_form_layout.addRow("自动监测间隔:", self.monitor_interval_spinbox)
+        monitor_push_form_layout.addRow("自动监测间隔:", self.monitor_interval_spinbox)
         
-        grid_form_layout.addRow(QLabel("---"))
-
-        self.screen_selection_combobox = QComboBox()
-        self.screen_selection_combobox.setMaximumWidth(200)
-        grid_form_layout.addRow("目标屏幕:", self.screen_selection_combobox)
-
-        self.grid_direction_combobox = QComboBox()
-        self.grid_direction_combobox.addItems(["先排满行 (→)", "先排满列 (↓)"])
-        self.grid_direction_combobox.setMaximumWidth(200)
-        grid_form_layout.addRow("排列方向:", self.grid_direction_combobox)
-
-        self.rows_spinbox = QSpinBox()
-        self.rows_spinbox.setRange(1, 20)
-        self.rows_spinbox.setMaximumWidth(200)
-        grid_form_layout.addRow("行数:", self.rows_spinbox)
-
-        self.cols_spinbox = QSpinBox()
-        self.cols_spinbox.setRange(1, 20)
-        self.cols_spinbox.setMaximumWidth(200)
-        grid_form_layout.addRow("列数:", self.cols_spinbox)
-        
-        margin_layout = QHBoxLayout()
-        self.margin_top_spinbox = QSpinBox(); self.margin_top_spinbox.setRange(-500, 500); self.margin_top_spinbox.setMaximumWidth(60)
-        self.margin_bottom_spinbox = QSpinBox(); self.margin_bottom_spinbox.setRange(-500, 500); self.margin_bottom_spinbox.setMaximumWidth(60)
-        self.margin_left_spinbox = QSpinBox(); self.margin_left_spinbox.setRange(-500, 500); self.margin_left_spinbox.setMaximumWidth(60)
-        self.margin_right_spinbox = QSpinBox(); self.margin_right_spinbox.setRange(-500, 500); self.margin_right_spinbox.setMaximumWidth(60)
-        margin_layout.addWidget(QLabel("上:")); margin_layout.addWidget(self.margin_top_spinbox)
-        margin_layout.addWidget(QLabel("下:")); margin_layout.addWidget(self.margin_bottom_spinbox)
-        margin_layout.addWidget(QLabel("左:")); margin_layout.addWidget(self.margin_left_spinbox)
-        margin_layout.addWidget(QLabel("右:")); margin_layout.addWidget(self.margin_right_spinbox)
-        margin_layout.addStretch()
-        grid_form_layout.addRow("屏幕边距 (px):", margin_layout)
-
-        spacing_layout = QHBoxLayout()
-        self.spacing_horizontal_spinbox = QSpinBox(); self.spacing_horizontal_spinbox.setRange(-100, 100); self.spacing_horizontal_spinbox.setMaximumWidth(80)
-        self.spacing_vertical_spinbox = QSpinBox(); self.spacing_vertical_spinbox.setRange(-100, 100); self.spacing_vertical_spinbox.setMaximumWidth(80)
-        spacing_layout.addWidget(QLabel("水平:")); spacing_layout.addWidget(self.spacing_horizontal_spinbox)
-        spacing_layout.addWidget(QLabel("垂直:")); spacing_layout.addWidget(self.spacing_vertical_spinbox)
-        spacing_layout.addStretch()
-        grid_form_layout.addRow("窗口间距 (px):", spacing_layout)
-
-        self.animation_delay_spinbox = QSpinBox()
-        self.animation_delay_spinbox.setRange(0, 500)
-        self.animation_delay_spinbox.setSuffix(" ms")
-        self.animation_delay_spinbox.setMaximumWidth(200)
-        grid_form_layout.addRow("排列动画延时:", self.animation_delay_spinbox)
-        
-        columns_layout.addWidget(grid_group)
-
-        # --- 右列：其他与推送设置 ---
-        other_group = QGroupBox("其他与推送设置")
-        other_group.setStyleSheet("QGroupBox { font-size: 14px; font-weight: bold; }")
-        
-        other_v_layout = QVBoxLayout(other_group)
-        other_form_layout = QFormLayout()
-        other_form_layout.setSpacing(12)
-        
-        self.cascade_x_offset_spinbox = QSpinBox(); self.cascade_x_offset_spinbox.setRange(0, 100); self.cascade_x_offset_spinbox.setMaximumWidth(200)
-        self.cascade_y_offset_spinbox = QSpinBox(); self.cascade_y_offset_spinbox.setRange(0, 100); self.cascade_y_offset_spinbox.setMaximumWidth(200)
-        other_form_layout.addRow("级联X偏移 (px):", self.cascade_x_offset_spinbox)
-        other_form_layout.addRow("级联Y偏移 (px):", self.cascade_y_offset_spinbox)
-        
-        other_form_layout.addRow(QLabel("---"))
-
-        self.enable_notifications_combobox = QComboBox()
-        self.enable_notifications_combobox.addItems(["启用", "禁用"])
-        self.enable_notifications_combobox.setMaximumWidth(200)
-        other_form_layout.addRow("桌面操作通知:", self.enable_notifications_combobox)
-
         self.enable_push_combobox = QComboBox()
         self.enable_push_combobox.addItems(["启用", "禁用"])
         self.enable_push_combobox.setMaximumWidth(200)
-        other_form_layout.addRow("Webhook推送:", self.enable_push_combobox)
+        monitor_push_form_layout.addRow("Webhook推送:", self.enable_push_combobox)
 
         self.push_host_input = QLineEdit()
         self.push_host_input.setMaximumWidth(200)
-        other_form_layout.addRow("推送主机:", self.push_host_input)
+        monitor_push_form_layout.addRow("推送主机:", self.push_host_input)
 
         self.push_port_input = QSpinBox()
         self.push_port_input.setRange(1, 65535)
         self.push_port_input.setMaximumWidth(200)
-        other_form_layout.addRow("推送端口:", self.push_port_input)
+        monitor_push_form_layout.addRow("推送端口:", self.push_port_input)
 
         self.push_path_input = QLineEdit()
         self.push_path_input.setMaximumWidth(200)
-        other_form_layout.addRow("推送路径:", self.push_path_input)
+        monitor_push_form_layout.addRow("推送路径:", self.push_path_input)
         
-        other_v_layout.addLayout(other_form_layout)
-        other_v_layout.addStretch()
-        columns_layout.addWidget(other_group, 1)
+        monitor_push_v_layout.addLayout(monitor_push_form_layout)
+        monitor_push_v_layout.addStretch()
+        columns_layout.addWidget(monitor_push_group, 1)
 
         main_layout.addLayout(columns_layout)
 
