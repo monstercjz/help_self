@@ -1,0 +1,17 @@
+{
+    "groups": [
+        {
+            "id": "aefdec4b-4491-449c-af50-1c37adebdf25",
+            "name": "12"
+        }
+    ],
+    "programs": {
+        "dfb4d832-33ff-4dc0-b14c-8150cf0aa0e5": {
+            "id": "dfb4d832-33ff-4dc0-b14c-8150cf0aa0e5",
+            "group_id": "aefdec4b-4491-449c-af50-1c37adebdf25",
+            "name": "QQ",
+            "path": "C:/Program Files/Tencent/QQNT/QQ.exe",
+            "order": 0
+        }
+    }
+}
