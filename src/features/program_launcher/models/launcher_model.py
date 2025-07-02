@@ -84,6 +84,25 @@ class LauncherModel(QObject):
                 self.data_changed.emit()
                 return
 
+    def reorder_groups(self, group_ids: list[str]):
+        """【核心修复】恢复被误删的方法，用于处理分组排序。"""
+        if not group_ids: return
+        
+        group_map = {g['id']: g for g in self.data['groups']}
+        
+        # 过滤掉可能不存在的ID，并按新顺序重组
+        new_groups_order = [group_map[gid] for gid in group_ids if gid in group_map]
+        
+        # 如果新旧列表长度不一致，说明有ID丢失，为安全起见不更新
+        if len(new_groups_order) == len(self.data['groups']):
+            self.data['groups'] = new_groups_order
+            self.save_data()
+            self.data_changed.emit()
+            logging.info("Group order has been updated.")
+        else:
+            logging.warning("Group reorder failed due to ID mismatch.")
+
+
     def delete_group(self, group_id: str, delete_programs: bool = False):
         self.data["groups"] = [g for g in self.data["groups"] if g["id"] != group_id]
         if delete_programs:
@@ -146,8 +165,6 @@ class LauncherModel(QObject):
         for program in self.data["programs"].values():
             if program["group_id"] == old_group_id:
                 program["group_id"] = new_group_id
-        # Note: This is a bulk move, order is not preserved perfectly, should be re-ordered.
-        # A full refresh is better.
 
     def move_program(self, program_id: str, target_group_id: str, target_index: int):
         """移动一个程序到新的位置（组内或跨组）。"""
@@ -158,10 +175,8 @@ class LauncherModel(QObject):
         
         # 从源数据中分离出所有相关程序
         source_group_progs = self.get_programs_in_group(source_group_id)
-        # 如果是跨组移动，还需要目标分组的程序列表
         target_group_progs = self.get_programs_in_group(target_group_id) if source_group_id != target_group_id else source_group_progs
         
-        # 从源列表中找到并移除被移动的程序
         moved_program = None
         for p in source_group_progs:
             if p['id'] == program_id:
@@ -170,16 +185,13 @@ class LauncherModel(QObject):
         if moved_program:
             source_group_progs.remove(moved_program)
         
-        # 更新其 group_id
         moved_program['group_id'] = target_group_id
 
-        # 插入到目标列表的指定位置
         if source_group_id != target_group_id:
              target_group_progs.insert(target_index, moved_program)
-        else: # 组内移动，source_group_progs 就是 target_group_progs
+        else:
              source_group_progs.insert(target_index, moved_program)
         
-        # 重新计算两个受影响分组的 order
         for i, p in enumerate(source_group_progs):
             self.data['programs'][p['id']]['order'] = i
             

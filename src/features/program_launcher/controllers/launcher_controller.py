@@ -24,9 +24,7 @@ class LauncherController(QObject):
 
     def _connect_signals(self):
         self.view.add_group_requested.connect(self.add_group)
-        # 【核心修复】分别连接两个不同的信号到同一个灵活的槽函数
         self.view.add_program_requested.connect(self.handle_add_program_request)
-        self.view.add_program_to_group_requested.connect(self.handle_add_program_request)
         self.view.item_double_clicked.connect(self.launch_program)
         self.view.edit_item_requested.connect(self.edit_item)
         self.view.delete_item_requested.connect(self.delete_item)
@@ -34,31 +32,28 @@ class LauncherController(QObject):
         self.view.change_data_path_requested.connect(self.change_data_path)
         self.view.items_moved.connect(self.handle_items_moved)
         self.view.program_dropped.connect(self.handle_program_drop)
+        self.view.group_order_changed.connect(self.model.reorder_groups) # 【新增】连接新信号
         self.model.data_changed.connect(self.refresh_view)
 
+    # ... 其他方法基本保持不变 ...
     def refresh_view(self):
         logging.info("[CONTROLLER] Refreshing view from model data.")
         self.view.rebuild_ui(self.model.get_all_data())
-    
     @Slot()
     def handle_items_moved(self):
         logging.info("[CONTROLLER] Slot 'handle_items_moved' was called. Synchronizing model.")
         new_structure = self.view.get_current_structure()
         self.model.update_full_structure(new_structure)
-
     @Slot(str, str, int)
     def handle_program_drop(self, program_id: str, target_group_id: str, target_index: int):
         logging.info(f"[CONTROLLER] Handling program drop: prog_id={program_id}, group_id={target_group_id}, index={target_index}")
         self.model.move_program(program_id, target_group_id, target_index)
-
     @Slot()
     def add_group(self):
         dialog = GroupDialog(self.view)
         if dialog.exec():
             group_name = dialog.get_group_name()
             if group_name: self.model.add_group(group_name)
-
-    @Slot()
     @Slot(str)
     def handle_add_program_request(self, group_id: str = None):
         all_groups = self.model.get_all_data().get('groups', [])
@@ -73,7 +68,6 @@ class LauncherController(QObject):
             if details:
                 gid, name, path = details
                 self.model.add_program(gid, name, path)
-
     @Slot(str)
     def launch_program(self, program_id: str):
         program = self.model.get_program_by_id(program_id)
@@ -87,7 +81,6 @@ class LauncherController(QObject):
                 QMessageBox.critical(self.view, "启动失败", f"无法启动程序：\n{program['path']}\n\n错误: {e}")
         else:
             QMessageBox.warning(self.view, "启动失败", "程序路径不存在或已被移动，请编辑或删除此条目。")
-    
     @Slot(str, str)
     def edit_item(self, item_id: str, item_type: str):
         if item_type == 'group':
@@ -105,7 +98,6 @@ class LauncherController(QObject):
             if dialog.exec() == QDialog.DialogCode.Accepted:
                 new_group_id, new_name, new_path = dialog.get_program_details()
                 self.model.edit_program(item_id, new_group_id, new_name, new_path)
-    
     @Slot(str, str)
     def delete_item(self, item_id: str, item_type: str):
         if item_type == 'group': self._handle_delete_group(item_id)
@@ -116,7 +108,6 @@ class LauncherController(QObject):
                                          QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
                                          QMessageBox.StandardButton.No)
             if reply == QMessageBox.StandardButton.Yes: self.model.delete_program(item_id)
-
     def _handle_delete_group(self, group_id: str):
         group = self.model.get_group_by_id(group_id)
         if not group: return
@@ -138,12 +129,9 @@ class LauncherController(QObject):
                 self.model.delete_group(group_id)
             elif choice == 'delete_all':
                 self.model.delete_group(group_id, delete_programs=True)
-
     @Slot(str)
     def filter_view(self, text: str):
-        if hasattr(self.view, 'filter_items'):
-             self.view.filter_items(text)
-
+        if hasattr(self.view, 'filter_items'): self.view.filter_items(text)
     @Slot()
     def change_data_path(self):
         current_path = self.model.data_file
@@ -155,9 +143,9 @@ class LauncherController(QObject):
             try:
                 self.model.set_data_path(new_path)
                 QMessageBox.information(
-                    self.view, "成功", f"数据源已成功切换到:\n{new_path}\n\n设置未更改。"
+                    self.view, "成功", f"数据源已成功切换到:\n{new_path}\n\n界面已刷新。"
                 )
             except Exception as e:
                 QMessageBox.critical(
-                    self.view, "操作失败", f"无法切换数据源到: {new_path}\n\n错误: {e}"
+                    self.view, "操作失败", f"无法切换数据源到: {new_path}\n\n设置未更改。"
                 )
