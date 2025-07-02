@@ -53,7 +53,9 @@ class LauncherController(QObject):
         dialog = GroupDialog(self.view)
         if dialog.exec():
             group_name = dialog.get_group_name()
-            if group_name: self.model.add_group(group_name)
+            if group_name:
+                self.model.add_group(group_name)
+                self.context.notification_service.show("成功", f"分组 '{group_name}' 已创建。")
     @Slot(str)
     def handle_add_program_request(self, group_id: str = None):
         all_groups = self.model.get_all_data().get('groups', [])
@@ -68,6 +70,7 @@ class LauncherController(QObject):
             if details:
                 gid, name, path = details
                 self.model.add_program(gid, name, path)
+                self.context.notification_service.show("成功", f"程序 '{name}' 已添加。")
     @Slot(str)
     def launch_program(self, program_id: str):
         program = self.model.get_program_by_id(program_id)
@@ -95,7 +98,9 @@ class LauncherController(QObject):
             dialog = GroupDialog(self.view, current_name=group['name'])
             if dialog.exec():
                 new_name = dialog.get_group_name()
-                if new_name and new_name != group['name']: self.model.edit_group(item_id, new_name)
+                if new_name and new_name != group['name']:
+                    self.model.edit_group(item_id, new_name)
+                    self.context.notification_service.show("成功", f"分组已重命名为 '{new_name}'。")
         elif item_type == 'program':
             program_to_edit = self.model.get_program_by_id(item_id)
             if not program_to_edit: return
@@ -104,6 +109,7 @@ class LauncherController(QObject):
             if dialog.exec() == QDialog.DialogCode.Accepted:
                 new_group_id, new_name, new_path = dialog.get_program_details()
                 self.model.edit_program(item_id, new_group_id, new_name, new_path)
+                self.context.notification_service.show("成功", f"程序 '{new_name}' 已更新。")
     @Slot(str, str)
     def delete_item(self, item_id: str, item_type: str):
         if item_type == 'group': self._handle_delete_group(item_id)
@@ -113,7 +119,9 @@ class LauncherController(QObject):
             reply = QMessageBox.question(self.view, "确认删除", f"您确定要删除程序 '{program['name']}' 吗？",
                                          QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
                                          QMessageBox.StandardButton.No)
-            if reply == QMessageBox.StandardButton.Yes: self.model.delete_program(item_id)
+            if reply == QMessageBox.StandardButton.Yes:
+                self.model.delete_program(item_id)
+                self.context.notification_service.show("成功", f"程序 '{program['name']}' 已删除。")
     def _handle_delete_group(self, group_id: str):
         group = self.model.get_group_by_id(group_id)
         if not group: return
@@ -123,7 +131,9 @@ class LauncherController(QObject):
             reply = QMessageBox.question(self.view, "确认删除", f"您确定要删除空分组 '{group['name']}' 吗？",
                                          QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
                                          QMessageBox.StandardButton.No)
-            if reply == QMessageBox.StandardButton.Yes: self.model.delete_group(group_id)
+            if reply == QMessageBox.StandardButton.Yes:
+                self.model.delete_group(group_id)
+                self.context.notification_service.show("成功", f"分组 '{group['name']}' 已删除。")
             return
         dialog = DeleteGroupDialog(group['name'], other_groups, self.view)
         if dialog.exec():
@@ -133,8 +143,10 @@ class LauncherController(QObject):
                     target_group_id = self.model.add_group("默认分组")
                 self.model.move_programs_to_group(group_id, target_group_id)
                 self.model.delete_group(group_id)
+                self.context.notification_service.show("成功", f"分组 '{group['name']}' 已删除，其下所有程序已移动。")
             elif choice == 'delete_all':
                 self.model.delete_group(group_id, delete_programs=True)
+                self.context.notification_service.show("成功", f"分组 '{group['name']}' 及其下所有程序已删除。")
     @Slot(str)
     def filter_view(self, text: str):
         """

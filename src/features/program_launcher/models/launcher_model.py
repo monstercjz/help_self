@@ -2,8 +2,11 @@
 import json
 import logging
 import os
+import sys
+import shutil
 import uuid
 from PySide6.QtCore import QObject, Signal
+from PySide6.QtWidgets import QMessageBox
 
 from src.services.config_service import ConfigService
 
@@ -25,8 +28,10 @@ class LauncherModel(QObject):
             if os.path.exists(self.data_file):
                 with open(self.data_file, 'r', encoding='utf-8') as f:
                     content = f.read()
-                    if not content: self.data = {"groups": [], "programs": {}}
-                    else: self.data = json.loads(content)
+                    if not content:
+                        self.data = {"groups": [], "programs": {}}
+                        return
+                    self.data = json.loads(content)
                     if "groups" not in self.data: self.data["groups"] = []
                     if "programs" not in self.data: self.data["programs"] = {}
                 logging.info(f"已从 {self.data_file} 加载启动器数据。")
@@ -35,8 +40,33 @@ class LauncherModel(QObject):
                 self.data = {"groups": [], "programs": {}}
         except (json.JSONDecodeError, IOError) as e:
             logging.error(f"加载启动器数据文件 {self.data_file} 失败: {e}")
+            
+            # 备份损坏的文件
+            backup_path = self.data_file + ".bak"
+            try:
+                shutil.copy(self.data_file, backup_path)
+                backup_msg = f"损坏的文件已为您备份到:\n{backup_path}"
+            except Exception as backup_e:
+                backup_msg = f"尝试备份文件失败: {backup_e}"
+
+            # 弹出错误对话框
+            msg_box = QMessageBox()
+            msg_box.setIcon(QMessageBox.Icon.Critical)
+            msg_box.setWindowTitle("数据文件损坏")
+            msg_box.setText(f"无法加载数据文件，它可能已损坏。\n{backup_msg}")
+            msg_box.setInformativeText("您可以选择以一个全新的空配置启动，或退出程序以手动检查文件。")
+            
+            reset_btn = msg_box.addButton("以空配置启动", QMessageBox.ButtonRole.AcceptRole)
+            exit_btn = msg_box.addButton("退出", QMessageBox.ButtonRole.RejectRole)
+            msg_box.setDefaultButton(reset_btn)
+            
+            msg_box.exec()
+
+            if msg_box.clickedButton() == exit_btn:
+                sys.exit(1) # 退出程序
+            
+            # 用户选择重置
             self.data = {"groups": [], "programs": {}}
-            raise e
 
     def save_data(self):
         try:

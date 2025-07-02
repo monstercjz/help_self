@@ -8,6 +8,8 @@ from PySide6.QtGui import QIcon
 from .modes.base_view import BaseViewMode
 from .modes.tree_view import TreeViewMode
 from .modes.icon_view import IconViewMode
+from ..widgets.empty_state_widget import EmptyStateWidget
+from ..widgets.no_results_widget import NoResultsWidget
 
 class LauncherPageView(QWidget):
     # ... 信号定义保持不变 ...
@@ -38,6 +40,8 @@ class LauncherPageView(QWidget):
         self.add_program_btn = QPushButton(QIcon.fromTheme("document-new"), " 添加程序")
         self.search_bar = QLineEdit()
         self.search_bar.setPlaceholderText("搜索程序...")
+        self.clear_action = self.search_bar.addAction(QIcon.fromTheme("edit-clear"), QLineEdit.ActionPosition.TrailingPosition)
+        self.clear_action.setVisible(False)
         self.settings_btn = QPushButton()
         self.settings_btn.setIcon(QIcon.fromTheme("emblem-system"))
         self.settings_btn.setToolTip("设置数据文件路径")
@@ -62,8 +66,12 @@ class LauncherPageView(QWidget):
         self.stacked_widget = QStackedWidget()
         self.tree_view = TreeViewMode()
         self.icon_view = IconViewMode()
+        self.empty_state_view = EmptyStateWidget()
+        self.no_results_view = NoResultsWidget()
         self.stacked_widget.addWidget(self.tree_view)
         self.stacked_widget.addWidget(self.icon_view)
+        self.stacked_widget.addWidget(self.empty_state_view)
+        self.stacked_widget.addWidget(self.no_results_view)
         layout.addWidget(self.stacked_widget)
         
         # 连接信号
@@ -71,8 +79,11 @@ class LauncherPageView(QWidget):
         self.add_program_btn.clicked.connect(lambda: self.add_program_requested.emit(None))
         self.settings_btn.clicked.connect(self.change_data_path_requested)
         self.search_bar.textChanged.connect(self.search_text_changed)
+        self.clear_action.triggered.connect(self.search_bar.clear)
+        self.search_bar.textChanged.connect(self._update_clear_button_visibility)
         self.view_mode_group.idClicked.connect(self.stacked_widget.setCurrentIndex)
         self.stacked_widget.currentChanged.connect(self.on_view_mode_changed)
+        self.empty_state_view.add_group_requested.connect(self.add_group_requested)
         self._connect_view_signals(self.tree_view)
         self._connect_view_signals(self.icon_view)
 
@@ -87,6 +98,32 @@ class LauncherPageView(QWidget):
 
     def rebuild_ui(self, data: dict):
         self.data_cache = data
+        
+        is_data_empty = not data.get("groups") and not data.get("programs")
+        is_searching = bool(self.search_bar.text())
+
+        # 根据数据是否为空以及是否在搜索，来决定显示哪个视图
+        if is_data_empty and not is_searching:
+            # 状态1: 真正的空状态
+            self.stacked_widget.setCurrentWidget(self.empty_state_view)
+            self.search_bar.setVisible(False)
+            self.tree_view_btn.setVisible(False)
+            self.icon_view_btn.setVisible(False)
+        elif is_data_empty and is_searching:
+            # 状态2: 搜索无结果
+            self.stacked_widget.setCurrentWidget(self.no_results_view)
+            self.search_bar.setVisible(True) # 保持搜索框可见
+            self.tree_view_btn.setVisible(False)
+            self.icon_view_btn.setVisible(False)
+        else:
+            # 状态3: 正常显示数据
+            current_id = self.view_mode_group.checkedId()
+            self.stacked_widget.setCurrentIndex(current_id)
+            self.search_bar.setVisible(True)
+            self.tree_view_btn.setVisible(True)
+            self.icon_view_btn.setVisible(True)
+
+        # 即使在显示占位符时，也更新后台视图的数据，以确保切换回来时内容是最新的
         self.tree_view.update_view(data)
         self.icon_view.update_view(data)
 
@@ -101,3 +138,6 @@ class LauncherPageView(QWidget):
         if hasattr(active_view, 'get_current_structure'):
             return active_view.get_current_structure()
         return self.data_cache
+
+    def _update_clear_button_visibility(self, text: str):
+        self.clear_action.setVisible(bool(text))
