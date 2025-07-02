@@ -23,9 +23,10 @@ class LauncherController(QObject):
         self.refresh_view()
 
     def _connect_signals(self):
+        # 控制器与顶层视图容器的连接保持不变
         self.view.add_group_requested.connect(self.add_group)
         self.view.add_program_requested.connect(self.handle_add_program_request)
-        self.view.add_program_to_group_requested.connect(self.handle_add_program_request)
+        # self.view.add_program_to_group_requested.connect(self.handle_add_program_request) # 这个信号现在被代理了
         self.view.item_double_clicked.connect(self.launch_program)
         self.view.edit_item_requested.connect(self.edit_item)
         self.view.delete_item_requested.connect(self.delete_item)
@@ -36,8 +37,8 @@ class LauncherController(QObject):
 
     def refresh_view(self):
         logging.info("[CONTROLLER] Refreshing view from model data.")
+        # 【修改】调用顶层视图容器的通用更新方法
         self.view.rebuild_ui(self.model.get_all_data())
-        self.filter_view(self.view.search_bar.text())
 
     @Slot()
     def handle_items_moved(self):
