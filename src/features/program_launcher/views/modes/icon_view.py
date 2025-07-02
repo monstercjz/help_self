@@ -1,41 +1,51 @@
 # desktop_center/src/features/program_launcher/views/modes/icon_view.py
 import logging
-from PySide6.QtWidgets import (QListWidget, QListWidgetItem, QMenu,
-                               QFileIconProvider, QVBoxLayout, QLabel, QWidget)
+from PySide6.QtWidgets import (QMenu, QFileIconProvider, QVBoxLayout, 
+                               QLabel, QWidget, QScrollArea)
 from PySide6.QtGui import QIcon
-from PySide6.QtCore import Qt, QFileInfo, QSize
+from PySide6.QtCore import Qt, QFileInfo
 
 from .base_view import BaseViewMode
+from ...widgets.card_widget import CardWidget
+from .flow_layout import FlowLayout # 【修改】导入FlowLayout
 
 class IconViewMode(BaseViewMode):
     """
     图标网格视图模式的实现。
+    【重构】使用QScrollArea和手动布局来精确控制UI。
     """
     def __init__(self, parent=None):
         super().__init__(parent)
         self.icon_cache = {}
         self.icon_provider = QFileIconProvider()
-
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(0, 0, 0, 0)
-
-        self.list_widget = QListWidget()
-        self.list_widget.setViewMode(QListWidget.ViewMode.IconMode)
-        self.list_widget.setFlow(QListWidget.Flow.LeftToRight)
-        self.list_widget.setWrapping(True)
-        self.list_widget.setResizeMode(QListWidget.ResizeMode.Adjust)
-        self.list_widget.setMovement(QListWidget.Movement.Static) # 暂不支持拖拽
-        self.list_widget.setSpacing(10)
-        self.list_widget.setIconSize(QSize(48, 48))
-        self.list_widget.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         
-        layout.addWidget(self.list_widget)
+        # 主布局是一个简单的垂直布局
+        main_layout = QVBoxLayout(self)
+        main_layout.setContentsMargins(0, 0, 0, 0)
+
+        # 创建一个滚动区域
+        scroll_area = QScrollArea()
+        scroll_area.setWidgetResizable(True)
+        scroll_area.setFrameShape(QScrollArea.Shape.NoFrame)
+        scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         
-        self.list_widget.itemDoubleClicked.connect(self._on_item_double_clicked)
-        self.list_widget.customContextMenuRequested.connect(self._on_context_menu)
+        # 滚动区域的内容是一个QWidget，它是我们所有卡片的容器
+        self.content_widget = QWidget()
+        scroll_area.setWidget(self.content_widget)
+
+        # 内容容器使用垂直布局，依次放置 "标题" 和 "卡片流"
+        self.content_layout = QVBoxLayout(self.content_widget)
+        self.content_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
+        
+        main_layout.addWidget(scroll_area)
 
     def update_view(self, data: dict):
-        self.list_widget.clear()
+        # 清空旧内容
+        while self.content_layout.count():
+            child = self.content_layout.takeAt(0)
+            if child.widget():
+                child.widget().deleteLater()
+
         groups = data.get("groups", [])
         programs = data.get("programs", {})
         
@@ -47,28 +57,33 @@ class IconViewMode(BaseViewMode):
         for group_id in programs_by_group:
             programs_by_group[group_id].sort(key=lambda p: p.get("order", 0))
 
-        for group_data in groups:
-            # 添加分组标题
-            group_label_item = QListWidgetItem()
-            group_label_item.setFlags(Qt.ItemFlag.NoItemFlags) # 不可交互
-            self.list_widget.addItem(group_label_item)
-            
-            label_widget = QLabel(f"<b>{group_data['name']}</b>")
-            label_widget.setStyleSheet("padding: 10px 5px 5px 5px; font-size: 14px;")
-            self.list_widget.setItemWidget(group_label_item, label_widget)
-            
-            # 添加该分组的程序
-            if not programs_by_group.get(group_data['id']):
-                empty_item = QListWidgetItem(" (空)")
-                empty_item.setFlags(Qt.ItemFlag.NoItemFlags)
-                empty_item.setForeground(Qt.GlobalColor.gray)
-                self.list_widget.addItem(empty_item)
+        if not groups:
+            self.content_layout.addWidget(QLabel("没有内容，请先添加分组和程序。"))
+            return
 
-            for prog_data in programs_by_group.get(group_data['id'], []):
-                item = QListWidgetItem(self._get_program_icon(prog_data['path']), prog_data['name'])
-                item.setData(Qt.ItemDataRole.UserRole, {"id": prog_data['id'], "type": "program", "group_id": group_data['id']})
-                item.setToolTip(prog_data['path'])
-                self.list_widget.addItem(item)
+        for group_data in groups:
+            # 1. 创建并添加分组标题
+            group_title = QLabel(f"<b>{group_data['name']}</b>")
+            group_title.setStyleSheet("padding: 15px 0 8px 5px; font-size: 14px; border-bottom: 1px solid #e0e0e0; margin-bottom: 5px;")
+            self.content_layout.addWidget(group_title)
+
+            # 2. 创建一个使用FlowLayout的容器来放卡片
+            card_container = QWidget()
+            flow_layout = FlowLayout(card_container, h_spacing=10, v_spacing=10)
+
+            programs_in_group = programs_by_group.get(group_data['id'], [])
+            if not programs_in_group:
+                flow_layout.addWidget(QLabel("(此分组为空)"))
+            else:
+                for prog_data in programs_in_group:
+                    icon = self._get_program_icon(prog_data['path'])
+                    card = CardWidget(prog_data, icon)
+                    card.doubleClicked.connect(self.item_double_clicked)
+                    card.customContextMenuRequested.connect(self._on_context_menu)
+                    flow_layout.addWidget(card)
+            
+            # 3. 将卡片容器添加到主垂直布局中
+            self.content_layout.addWidget(card_container)
     
     def _get_program_icon(self, path: str) -> QIcon:
         if not path or path in self.icon_cache: return self.icon_cache.get(path, QIcon.fromTheme("application-x-executable"))
@@ -77,20 +92,9 @@ class IconViewMode(BaseViewMode):
         self.icon_cache[path] = icon
         return icon
 
-    def _on_item_double_clicked(self, item: QListWidgetItem):
-        data = item.data(Qt.ItemDataRole.UserRole)
-        if data and data.get('type') == 'program':
-            self.item_double_clicked.emit(data['id'])
-
-    def _on_context_menu(self, pos):
-        item = self.list_widget.itemAt(pos)
-        # 右键在空白处，可以提供“添加程序”等全局操作
-        if not item or not item.data(Qt.ItemDataRole.UserRole): return
-
-        data = item.data(Qt.ItemDataRole.UserRole)
+    def _on_context_menu(self, program_id, event):
         menu = QMenu(self)
-        if data.get('type') == 'program':
-            menu.addAction("启动").triggered.connect(lambda: self.item_double_clicked.emit(data['id']))
-            menu.addAction("编辑...").triggered.connect(lambda: self.edit_item_requested.emit(data['id'], 'program'))
-            menu.addAction("删除").triggered.connect(lambda: self.delete_item_requested.emit(data['id'], 'program'))
-        menu.exec_(self.list_widget.mapToGlobal(pos))
+        menu.addAction("启动").triggered.connect(lambda: self.item_double_clicked.emit(program_id))
+        menu.addAction("编辑...").triggered.connect(lambda: self.edit_item_requested.emit(program_id, 'program'))
+        menu.addAction("删除").triggered.connect(lambda: self.delete_item_requested.emit(program_id, 'program'))
+        menu.exec_(event.globalPos())
