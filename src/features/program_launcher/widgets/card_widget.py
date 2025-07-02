@@ -12,6 +12,7 @@ class CardWidget(QWidget):
 
     def __init__(self, program_data: dict, icon: QIcon, parent=None):
         super().__init__(parent)
+        self.setObjectName("CardWidget") # 设置对象名称
         self.program_id = program_data.get('id')
         self.program_data = program_data
         self.setFixedSize(100, 100)
@@ -34,14 +35,6 @@ class CardWidget(QWidget):
         layout.addWidget(self.icon_label)
         layout.addWidget(self.name_label)
         layout.addStretch()
-        self._set_style()
-
-    def _set_style(self):
-        self.setAutoFillBackground(True)
-        self.setStyleSheet("""
-            CardWidget { background-color: #f8f9fa; border-radius: 8px; border: 1px solid #e9ecef; }
-            CardWidget:hover { background-color: #e9ecef; border: 1px solid #dee2e6; }
-        """)
 
     def mousePressEvent(self, event: QMouseEvent):
         if event.button() == Qt.MouseButton.LeftButton:

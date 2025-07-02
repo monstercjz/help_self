@@ -11,6 +11,7 @@ class GroupHeaderWidget(QWidget):
 
     def __init__(self, group_data: dict, parent=None):
         super().__init__(parent)
+        self.setObjectName("GroupHeaderWidget") # 设置对象名称
         self.group_id = group_data.get('id')
         self.drag_start_position = None
         
@@ -20,8 +21,7 @@ class GroupHeaderWidget(QWidget):
         layout.setContentsMargins(5, 0, 5, 0)
         
         self.title_label = QLabel(f"<b>{group_data.get('name', '')}</b>")
-        self.title_label.setStyleSheet("padding: 15px 0 8px 0; font-size: 14px; border-bottom: 1px solid #e0e0e0;")
-        
+        # 移除内联样式
         self.title_label.setTextInteractionFlags(Qt.TextInteractionFlag.NoTextInteraction)
         layout.addWidget(self.title_label)
         

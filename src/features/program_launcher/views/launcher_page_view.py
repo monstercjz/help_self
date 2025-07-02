@@ -1,8 +1,9 @@
 # desktop_center/src/features/program_launcher/views/launcher_page_view.py
 import logging
-from PySide6.QtWidgets import (QWidget, QVBoxLayout, QPushButton, QHBoxLayout, 
+import os
+from PySide6.QtWidgets import (QWidget, QVBoxLayout, QPushButton, QHBoxLayout,
                                QLineEdit, QSpacerItem, QSizePolicy, QStackedWidget, QButtonGroup)
-from PySide6.QtCore import Signal
+from PySide6.QtCore import Signal, QDir
 from PySide6.QtGui import QIcon
 
 from .modes.base_view import BaseViewMode
@@ -25,8 +26,10 @@ class LauncherPageView(QWidget):
 
     def __init__(self, parent=None):
         super().__init__(parent)
+        self.setObjectName("LauncherPageView") # 为顶层窗口设置对象名称
         self.data_cache = {}
         self._init_ui()
+        self._load_stylesheet()
         self.tree_view.update_view({})
 
     def _init_ui(self):
@@ -133,3 +136,17 @@ class LauncherPageView(QWidget):
 
     def _update_clear_button_visibility(self, text: str):
         self.clear_action.setVisible(bool(text))
+
+    def _load_stylesheet(self):
+        """加载外部QSS样式表。"""
+        # 使用相对路径定位样式文件
+        current_dir = os.path.dirname(os.path.abspath(__file__))
+        style_path = os.path.join(current_dir, '..', 'assets', 'style.qss')
+        
+        if os.path.exists(style_path):
+            with open(style_path, 'r', encoding='utf-8') as f:
+                style = f.read()
+                self.setStyleSheet(style)
+                logging.info(f"Stylesheet loaded from {style_path}")
+        else:
+            logging.warning(f"Stylesheet not found at {style_path}")

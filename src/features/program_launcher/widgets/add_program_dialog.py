@@ -107,7 +107,7 @@ class AddProgramDialog(QDialog):
             QMessageBox.warning(self, "路径无效", f"文件路径不存在：\n{file_path}")
             return
         
-        if not file_info.is_file():
+        if not file_info.isFile():
             QMessageBox.warning(self, "路径无效", f"指定的路径不是一个文件：\n{file_path}")
             return
 
