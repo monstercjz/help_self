@@ -12,9 +12,6 @@ class LauncherTreeWidget(QTreeWidget):
     """
     专用于树状视图的自定义QTreeWidget，以可靠地处理拖放事件。
     """
-    # 这个信号现在由BaseViewMode定义，但我们在这里重新引用以供内部连接
-    # items_moved = Signal() # No, it should be part of the parent view.
-
     def __init__(self, parent_view: BaseViewMode):
         super().__init__(parent_view)
         self.parent_view = parent_view
@@ -23,16 +20,32 @@ class LauncherTreeWidget(QTreeWidget):
         source_item = self.currentItem()
         if not source_item:
             event.ignore(); return
+
         target_item = self.itemAt(event.position().toPoint())
         drop_indicator = self.dropIndicatorPosition()
+
         source_data = source_item.data(0, Qt.ItemDataRole.UserRole)
         source_type = source_data.get('type')
+
+        # 【核心修复-BUG-1】
         if source_type == 'program':
-            if not (target_item and (target_item.data(0, Qt.ItemDataRole.UserRole).get('type') == 'group' or (target_item.parent() and target_item.parent().data(0, Qt.ItemDataRole.UserRole).get('type') == 'group'))):
+            # 规则：程序不能成为顶层项目
+            # 情况1: 拖到了空白处，目标项为空
+            if not target_item:
+                logging.warning("[LauncherTreeWidget] Illegal drop: Program cannot be dropped into top-level empty space.")
                 event.ignore(); return
+            
+            # 情况2: 拖到了一个分组的上方或下方，这将使其成为顶层项
+            if target_item.parent() is None and drop_indicator != QAbstractItemView.DropIndicatorPosition.OnItem:
+                 logging.warning("[LauncherTreeWidget] Illegal drop: Program cannot be dropped between groups.")
+                 event.ignore(); return
+
         if source_type == 'group':
-            if drop_indicator == QAbstractItemView.DropIndicatorPosition.OnItem or (target_item and target_item.parent()):
+            if drop_indicator == QAbstractItemView.DropIndicatorPosition.OnItem:
                 event.ignore(); return
+            if target_item and target_item.parent():
+                event.ignore(); return
+        
         super().dropEvent(event)
         self.parent_view.items_moved.emit()
 
@@ -60,11 +73,12 @@ class TreeViewMode(BaseViewMode):
         
         layout.addWidget(self.tree)
 
-        # 连接内部信号到公共接口信号
         self.tree.itemDoubleClicked.connect(self._on_item_double_clicked)
         self.tree.customContextMenuRequested.connect(self._on_context_menu)
 
     def update_view(self, data: dict):
+        current_search = self.parent().search_bar.text() if self.parent() and hasattr(self.parent(), 'search_bar') else ""
+        
         self.tree.blockSignals(True)
         try:
             self.tree.clear()
@@ -91,6 +105,9 @@ class TreeViewMode(BaseViewMode):
                 group_item.setExpanded(True)
         finally:
             self.tree.blockSignals(False)
+        
+        if current_search:
+            self.filter_items(current_search)
 
     def get_current_structure(self) -> dict:
         new_groups, new_programs = [], {}
@@ -136,3 +153,31 @@ class TreeViewMode(BaseViewMode):
             menu.addAction("编辑...").triggered.connect(lambda: self.edit_item_requested.emit(data['id'], 'program'))
             menu.addAction("删除").triggered.connect(lambda: self.delete_item_requested.emit(data['id'], 'program'))
         menu.exec_(self.tree.mapToGlobal(pos))
+        
+    def filter_items(self, text: str):
+        """【核心修复-BUG-2】为树状视图实现/验证搜索功能。"""
+        text = text.lower()
+        root = self.tree.invisibleRootItem()
+        for i in range(root.childCount()):
+            group_item = root.child(i)
+            group_data = group_item.data(0, Qt.ItemDataRole.UserRole)
+            group_name = group_data.get('name', '').lower()
+            
+            group_has_visible_child = False
+            for j in range(group_item.childCount()):
+                program_item = group_item.child(j)
+                program_data = program_item.data(0, Qt.ItemDataRole.UserRole)
+                program_name = program_data.get('name', '').lower()
+                
+                is_match = text in program_name
+                program_item.setHidden(not is_match)
+                if is_match:
+                    group_has_visible_child = True
+            
+            # 如果分组名匹配，或其下有匹配的程序，则显示该分组
+            group_is_match = text in group_name
+            group_item.setHidden(not (group_has_visible_child or group_is_match))
+            
+            # 如果在搜索，则展开匹配的分组
+            if text:
+                group_item.setExpanded(group_has_visible_child or group_is_match)

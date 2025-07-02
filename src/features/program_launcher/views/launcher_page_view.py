@@ -10,6 +10,7 @@ from .modes.tree_view import TreeViewMode
 from .modes.icon_view import IconViewMode
 
 class LauncherPageView(QWidget):
+    # ... 信号定义保持不变 ...
     add_group_requested = Signal()
     add_program_requested = Signal(str)
     item_double_clicked = Signal(str)
@@ -19,7 +20,7 @@ class LauncherPageView(QWidget):
     change_data_path_requested = Signal()
     items_moved = Signal()
     program_dropped = Signal(str, str, int)
-    group_order_changed = Signal(list) # 【新增】代理新信号
+    group_order_changed = Signal(list)
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -28,7 +29,7 @@ class LauncherPageView(QWidget):
         self.tree_view.update_view({})
 
     def _init_ui(self):
-        # ... 保持不变 ...
+        # ... UI创建部分保持不变 ...
         layout = QVBoxLayout(self)
         layout.setContentsMargins(10, 10, 10, 10)
         layout.setSpacing(10)
@@ -64,10 +65,13 @@ class LauncherPageView(QWidget):
         self.stacked_widget.addWidget(self.tree_view)
         self.stacked_widget.addWidget(self.icon_view)
         layout.addWidget(self.stacked_widget)
+        
+        # 连接信号
         self.add_group_btn.clicked.connect(self.add_group_requested)
-        self.add_program_btn.clicked.connect(lambda: self.add_program_requested.emit(None)) # 发射带None的信号
+        self.add_program_btn.clicked.connect(lambda: self.add_program_requested.emit(None))
         self.settings_btn.clicked.connect(self.change_data_path_requested)
-        self.search_bar.textChanged.connect(self.search_text_changed)
+        # 【修改】连接到自身的 filter_items 方法
+        self.search_bar.textChanged.connect(self.filter_items)
         self.view_mode_group.idClicked.connect(self.stacked_widget.setCurrentIndex)
         self.stacked_widget.currentChanged.connect(self.on_view_mode_changed)
         self._connect_view_signals(self.tree_view)
@@ -80,15 +84,20 @@ class LauncherPageView(QWidget):
         view.items_moved.connect(self.items_moved)
         view.program_dropped.connect(self.program_dropped)
         view.add_program_to_group_requested.connect(self.add_program_requested)
-        view.group_order_changed.connect(self.group_order_changed) # 【新增】代理新信号
+        view.group_order_changed.connect(self.group_order_changed)
 
     def rebuild_ui(self, data: dict):
         self.data_cache = data
-        active_view = self.stacked_widget.currentWidget()
-        if active_view: active_view.update_view(self.data_cache)
+        # 【修改】刷新时，同时更新两个视图的数据，并应用当前搜索
+        current_search = self.search_bar.text()
+        self.tree_view.update_view(data)
+        self.icon_view.update_view(data)
+        if current_search:
+            self.filter_items(current_search)
 
     def on_view_mode_changed(self, index: int):
-        self.rebuild_ui(self.data_cache)
+        # 切换视图时，数据已经是新的，只需要应用搜索即可
+        self.filter_items(self.search_bar.text())
 
     def get_current_structure(self) -> dict:
         active_view = self.stacked_widget.currentWidget()
@@ -97,4 +106,6 @@ class LauncherPageView(QWidget):
         return self.data_cache
 
     def filter_items(self, text: str):
-        if hasattr(self.tree_view, 'filter_items'): self.tree_view.filter_items(text)
+        """将过滤请求分发到所有视图模式。"""
+        self.tree_view.filter_items(text)
+        self.icon_view.filter_items(text)

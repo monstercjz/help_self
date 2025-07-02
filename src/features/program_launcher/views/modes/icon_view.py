@@ -11,9 +11,7 @@ from ...widgets.group_header_widget import GroupHeaderWidget
 from .flow_layout import FlowLayout
 
 class IconViewMode(BaseViewMode):
-    """
-    图标网格视图模式的实现。
-    """
+    # ... __init__ 和其他方法保持不变 ...
     def __init__(self, parent=None):
         super().__init__(parent)
         self.icon_cache = {}; self.icon_provider = QFileIconProvider()
@@ -73,44 +71,61 @@ class IconViewMode(BaseViewMode):
             
             self.content_layout.addWidget(card_container)
         self.content_layout.addStretch()
-    
+
+    def filter_items(self, text: str):
+        """【核心修复-BUG-2】为图标视图实现搜索功能。"""
+        text = text.lower()
+        for group_id, header in self.group_headers.items():
+            container = self.card_containers.get(group_id)
+            if not container: continue
+
+            group_name = header.title_label.text().lower()
+            group_has_visible_child = False
+            
+            layout = container.layout()
+            for i in range(layout.count()):
+                widget = layout.itemAt(i).widget()
+                if isinstance(widget, CardWidget):
+                    card_name = widget.name_label.text().lower()
+                    is_match = text in card_name
+                    widget.setVisible(is_match)
+                    if is_match:
+                        group_has_visible_child = True
+            
+            group_is_match = text in group_name
+            header.setVisible(group_has_visible_child or group_is_match)
+            container.setVisible(group_has_visible_child or group_is_match)
+
+    # ... 其他方法保持不变 ...
     def _get_program_icon(self, path: str) -> QIcon:
         if not path or path in self.icon_cache: return self.icon_cache.get(path, QIcon.fromTheme("application-x-executable"))
         icon = self.icon_provider.icon(QFileInfo(path))
         if icon.isNull(): icon = QIcon.fromTheme("application-x-executable")
         self.icon_cache[path] = icon
         return icon
-
     def _on_card_context_menu(self, program_id, event):
         menu = QMenu(self)
         menu.addAction("启动").triggered.connect(lambda: self.item_double_clicked.emit(program_id))
         menu.addAction("编辑...").triggered.connect(lambda: self.edit_item_requested.emit(program_id, 'program'))
         menu.addAction("删除").triggered.connect(lambda: self.delete_item_requested.emit(program_id, 'program'))
         menu.exec_(event.globalPos())
-
     def _on_group_context_menu(self, group_id, event):
-        """处理分组标题的右键菜单请求。"""
         menu = QMenu(self)
-        # 【核心修复】增加“添加程序到此分组...”菜单项
         menu.addAction("添加程序到此分组...").triggered.connect(lambda: self.add_program_to_group_requested.emit(group_id))
         menu.addSeparator()
         menu.addAction("重命名分组").triggered.connect(lambda: self.edit_item_requested.emit(group_id, 'group'))
         menu.addAction("删除分组").triggered.connect(lambda: self.delete_item_requested.emit(group_id, 'group'))
         menu.exec_(event.globalPos())
-
     def dragEnterEvent(self, event: QDragEnterEvent):
         if event.mimeData().hasFormat("application/x-program-launcher-card") or \
            event.mimeData().hasFormat("application/x-program-launcher-group"):
             event.acceptProposedAction()
         else:
             event.ignore()
-
     def dragLeaveEvent(self, event):
         self.drop_indicator.hide()
-
     def dragMoveEvent(self, event: QDragMoveEvent):
         pos = self.content_widget.mapFrom(self, event.position().toPoint())
-        
         if event.mimeData().hasFormat("application/x-program-launcher-card"):
             self.drop_indicator.setFrameShape(QFrame.Shape.VLine)
             target_group_id, _, indicator_pos = self._find_card_drop_pos(pos)
@@ -119,18 +134,15 @@ class IconViewMode(BaseViewMode):
             _, indicator_pos = self._find_group_drop_pos(pos)
         else:
             event.ignore(); return
-        
         if indicator_pos:
             self.drop_indicator.setGeometry(indicator_pos)
             self.drop_indicator.show()
             event.accept()
         else:
             self.drop_indicator.hide()
-
     def dropEvent(self, event: QDropEvent):
         self.drop_indicator.hide()
         pos = self.content_widget.mapFrom(self, event.position().toPoint())
-        
         if event.mimeData().hasFormat("application/x-program-launcher-card"):
             program_id = event.mimeData().data("application/x-program-launcher-card").data().decode('utf-8')
             target_group_id, target_index, _ = self._find_card_drop_pos(pos)
@@ -140,7 +152,6 @@ class IconViewMode(BaseViewMode):
         elif event.mimeData().hasFormat("application/x-program-launcher-group"):
             source_group_id = event.mimeData().data("application/x-program-launcher-group").data().decode('utf-8')
             target_index, _ = self._find_group_drop_pos(pos)
-            
             group_ids = list(self.group_headers.keys())
             if source_group_id in group_ids:
                 group_ids.remove(source_group_id)
@@ -149,7 +160,6 @@ class IconViewMode(BaseViewMode):
                 event.acceptProposedAction()
         else:
             event.ignore()
-
     def _find_card_drop_pos(self, pos_in_content: QPoint):
         for group_id, container in self.card_containers.items():
             if container.geometry().contains(pos_in_content):
@@ -160,7 +170,6 @@ class IconViewMode(BaseViewMode):
                     widget = layout.itemAt(i).widget()
                     if local_pos.x() < widget.geometry().center().x(): break
                     target_index = i + 1
-                
                 rect = QRect()
                 if layout.count() == 0: rect.setRect(5, 5, 2, 80)
                 elif target_index < layout.count():
@@ -169,21 +178,18 @@ class IconViewMode(BaseViewMode):
                 else:
                     last_widget = layout.itemAt(layout.count() - 1).widget()
                     rect.setRect(last_widget.x() + last_widget.width() + 3, last_widget.y(), 2, last_widget.height())
-                
                 final_rect = QRect(container.mapTo(self.content_widget, rect.topLeft()), rect.size())
                 return group_id, target_index, final_rect
         return None, -1, None
-    
     def _find_group_drop_pos(self, pos_in_content: QPoint):
         target_index = 0
         for i, (gid, header) in enumerate(self.group_headers.items()):
             container = self.card_containers[gid]
             group_rect = header.geometry().united(container.geometry())
-            if pos_in_content.y() < group_rect.center().y():
-                break
+            if pos_in_content.y() < group_rect.center().y(): break
             target_index = i + 1
-        
         rect = QRect()
+        if not self.group_headers: return target_index, None # No groups, no drop
         if target_index < len(self.group_headers):
             header = list(self.group_headers.values())[target_index]
             rect.setRect(header.x(), header.y() - 5, self.content_widget.width() - 20, 2)
@@ -191,5 +197,4 @@ class IconViewMode(BaseViewMode):
             last_header = list(self.group_headers.values())[-1]
             last_container = self.card_containers[list(self.group_headers.keys())[-1]]
             rect.setRect(last_header.x(), last_container.y() + last_container.height() + 5, self.content_widget.width() - 20, 2)
-            
         return target_index, rect

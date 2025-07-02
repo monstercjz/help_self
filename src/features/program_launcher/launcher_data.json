@@ -17,6 +17,10 @@
             "name": "7"
         },
         {
+            "id": "63fbd625-ec80-498b-a44a-815d5796e28a",
+            "name": "Calc"
+        },
+        {
             "id": "d21209bf-7676-4763-9425-4f17edc5db61",
             "name": "4"
         }
@@ -24,30 +28,23 @@
     "programs": {
         "e83694ba-7fe3-4317-9f02-3c9ee9a0e007": {
             "id": "e83694ba-7fe3-4317-9f02-3c9ee9a0e007",
-            "group_id": "562f0a8e-a94a-44e7-9cd1-1617696b97a1",
+            "group_id": "7ad2f478-04eb-463c-9f26-d44c5ce1f3d7",
             "name": "Aria2",
             "path": "D:/software/cmder/Cmder.exe",
             "order": 0
         },
-        "54d84f6e-3d02-4254-a875-e14c9b4d47ed": {
-            "id": "54d84f6e-3d02-4254-a875-e14c9b4d47ed",
-            "group_id": "562f0a8e-a94a-44e7-9cd1-1617696b97a1",
-            "name": "Cpuz X64",
-            "path": "D:/software/cpu-z_2.01-cn/cpuz_x64.exe",
-            "order": 1
-        },
         "dfb4d832-33ff-4dc0-b14c-8150cf0aa0e5": {
             "id": "dfb4d832-33ff-4dc0-b14c-8150cf0aa0e5",
-            "group_id": "7ad2f478-04eb-463c-9f26-d44c5ce1f3d7",
+            "group_id": "562f0a8e-a94a-44e7-9cd1-1617696b97a1",
             "name": "QQ",
             "path": "C:/Program Files/Tencent/QQNT/QQ.exe",
             "order": 0
         },
-        "63fbd625-ec80-498b-a44a-815d5796e28a": {
-            "id": "63fbd625-ec80-498b-a44a-815d5796e28a",
+        "54d84f6e-3d02-4254-a875-e14c9b4d47ed": {
+            "id": "54d84f6e-3d02-4254-a875-e14c9b4d47ed",
             "group_id": "df5987a1-7c2d-450c-b062-8236b5514ee7",
-            "name": "Calc",
-            "path": "C:/Windows/System32/calc.exe",
+            "name": "Cpuz X64",
+            "path": "D:/software/cpu-z_2.01-cn/cpuz_x64.exe",
             "order": 0
         },
         "07606ebb-16f3-4332-b377-72ea9fc633f1": {
