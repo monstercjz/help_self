@@ -1,8 +1,9 @@
 # desktop_center/src/features/program_launcher/widgets/add_program_dialog.py
 import os
 from PySide6.QtWidgets import (QDialog, QVBoxLayout, QLineEdit, QDialogButtonBox, QLabel,
-                               QFormLayout, QComboBox, QPushButton, QHBoxLayout, QFileDialog)
-from PySide6.QtCore import Slot
+                               QFormLayout, QComboBox, QPushButton, QHBoxLayout, QFileDialog,
+                               QMessageBox)
+from PySide6.QtCore import Slot, QFileInfo
 
 class AddProgramDialog(QDialog):
     """
@@ -69,7 +70,7 @@ class AddProgramDialog(QDialog):
         self.browse_btn.clicked.connect(self.browse_file)
         self.name_edit.textChanged.connect(self.validate_input)
         self.path_edit.textChanged.connect(self.validate_input)
-        self.button_box.accepted.connect(self.accept)
+        self.button_box.accepted.connect(self.on_accept)
         self.button_box.rejected.connect(self.reject)
 
     @Slot()
@@ -93,6 +94,36 @@ class AddProgramDialog(QDialog):
         name_ok = bool(self.name_edit.text().strip())
         path_ok = bool(self.path_edit.text().strip())
         self.ok_button.setEnabled(name_ok and path_ok)
+
+    @Slot()
+    def on_accept(self):
+        """
+        在接受对话框前，验证文件路径的有效性。
+        """
+        file_path = self.path_edit.text().strip()
+        file_info = QFileInfo(file_path)
+
+        if not file_info.exists():
+            QMessageBox.warning(self, "路径无效", f"文件路径不存在：\n{file_path}")
+            return
+        
+        if not file_info.is_file():
+            QMessageBox.warning(self, "路径无效", f"指定的路径不是一个文件：\n{file_path}")
+            return
+
+        # 在Windows上，可以进一步检查是否为.exe，但为了跨平台兼容性，我们只检查isExecutable
+        # if sys.platform == "win32" and not file_path.lower().endswith('.exe'):
+        #     reply = QMessageBox.question(self, "非标准文件", "这个文件似乎不是一个标准的可执行文件 (.exe)。\n您确定要添加吗？",
+        #                                  QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+        #                                  QMessageBox.StandardButton.No)
+        #     if reply == QMessageBox.StandardButton.No:
+        #         return
+
+        if not file_info.isExecutable():
+             QMessageBox.warning(self, "文件不可执行", f"系统报告该文件不可执行：\n{file_path}")
+             return
+
+        self.accept()
 
     def get_program_details(self) -> tuple[str, str, str]:
         """获取用户输入的程序详情。"""

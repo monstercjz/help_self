@@ -73,11 +73,17 @@ class LauncherController(QObject):
         program = self.model.get_program_by_id(program_id)
         if program and os.path.exists(program['path']):
             try:
-                subprocess.Popen(program['path'])
+                # 使用 startfile 在 Windows 上更健壮，对于非 .exe 文件（如快捷方式）也能更好地工作
+                if sys.platform == "win32":
+                    os.startfile(program['path'])
+                else:
+                    subprocess.Popen([program['path']])
+                
                 self.context.notification_service.show(
                     title="程序已启动", message=f"{program['name']} 正在启动。"
                 )
             except Exception as e:
+                logging.error(f"Failed to launch program {program['name']} ({program['path']}): {e}")
                 QMessageBox.critical(self.view, "启动失败", f"无法启动程序：\n{program['path']}\n\n错误: {e}")
         else:
             QMessageBox.warning(self.view, "启动失败", "程序路径不存在或已被移动，请编辑或删除此条目。")
@@ -131,7 +137,15 @@ class LauncherController(QObject):
                 self.model.delete_group(group_id, delete_programs=True)
     @Slot(str)
     def filter_view(self, text: str):
-        if hasattr(self.view, 'filter_items'): self.view.filter_items(text)
+        """
+        根据文本过滤视图。
+        如果文本为空，则显示所有数据；否则，显示过滤后的数据。
+        """
+        if not text:
+            self.refresh_view()
+        else:
+            filtered_data = self.model.filter_data(text)
+            self.view.rebuild_ui(filtered_data)
     @Slot()
     def change_data_path(self):
         current_path = self.model.data_file

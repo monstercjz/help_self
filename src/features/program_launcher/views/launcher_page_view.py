@@ -70,8 +70,7 @@ class LauncherPageView(QWidget):
         self.add_group_btn.clicked.connect(self.add_group_requested)
         self.add_program_btn.clicked.connect(lambda: self.add_program_requested.emit(None))
         self.settings_btn.clicked.connect(self.change_data_path_requested)
-        # 【修改】连接到自身的 filter_items 方法
-        self.search_bar.textChanged.connect(self.filter_items)
+        self.search_bar.textChanged.connect(self.search_text_changed)
         self.view_mode_group.idClicked.connect(self.stacked_widget.setCurrentIndex)
         self.stacked_widget.currentChanged.connect(self.on_view_mode_changed)
         self._connect_view_signals(self.tree_view)
@@ -88,24 +87,17 @@ class LauncherPageView(QWidget):
 
     def rebuild_ui(self, data: dict):
         self.data_cache = data
-        # 【修改】刷新时，同时更新两个视图的数据，并应用当前搜索
-        current_search = self.search_bar.text()
         self.tree_view.update_view(data)
         self.icon_view.update_view(data)
-        if current_search:
-            self.filter_items(current_search)
 
     def on_view_mode_changed(self, index: int):
-        # 切换视图时，数据已经是新的，只需要应用搜索即可
-        self.filter_items(self.search_bar.text())
+        # 当视图模式改变时，我们不需要做任何特别的操作，
+        # 因为两个视图的数据在 rebuild_ui 中总是同步的。
+        # 搜索过滤也由控制器统一处理。
+        pass
 
     def get_current_structure(self) -> dict:
         active_view = self.stacked_widget.currentWidget()
         if hasattr(active_view, 'get_current_structure'):
             return active_view.get_current_structure()
         return self.data_cache
-
-    def filter_items(self, text: str):
-        """将过滤请求分发到所有视图模式。"""
-        self.tree_view.filter_items(text)
-        self.icon_view.filter_items(text)

@@ -2,11 +2,12 @@
 import logging
 import os
 from PySide6.QtWidgets import (QTreeWidget, QTreeWidgetItem, QMenu, QAbstractItemView,
-                               QFileIconProvider, QVBoxLayout)
+                               QVBoxLayout)
 from PySide6.QtGui import QIcon, QDropEvent
-from PySide6.QtCore import Qt, QFileInfo
+from PySide6.QtCore import Qt
 
 from .base_view import BaseViewMode
+from ...services.icon_service import icon_service
 
 class LauncherTreeWidget(QTreeWidget):
     """
@@ -19,34 +20,40 @@ class LauncherTreeWidget(QTreeWidget):
     def dropEvent(self, event: QDropEvent):
         source_item = self.currentItem()
         if not source_item:
-            event.ignore(); return
+            event.ignore()
+            return
 
         target_item = self.itemAt(event.position().toPoint())
         drop_indicator = self.dropIndicatorPosition()
-
+        
         source_data = source_item.data(0, Qt.ItemDataRole.UserRole)
         source_type = source_data.get('type')
 
-        # 【核心修复-BUG-1】
-        if source_type == 'program':
-            # 规则：程序不能成为顶层项目
-            # 情况1: 拖到了空白处，目标项为空
-            if not target_item:
-                logging.warning("[LauncherTreeWidget] Illegal drop: Program cannot be dropped into top-level empty space.")
-                event.ignore(); return
-            
-            # 情况2: 拖到了一个分组的上方或下方，这将使其成为顶层项
-            if target_item.parent() is None and drop_indicator != QAbstractItemView.DropIndicatorPosition.OnItem:
-                 logging.warning("[LauncherTreeWidget] Illegal drop: Program cannot be dropped between groups.")
-                 event.ignore(); return
-
+        # 规则 1: 分组 (group) 只能在顶层移动，不能被拖入另一个分组
         if source_type == 'group':
-            if drop_indicator == QAbstractItemView.DropIndicatorPosition.OnItem:
-                event.ignore(); return
+            # 如果目标是另一个分组的子项，禁止
             if target_item and target_item.parent():
-                event.ignore(); return
+                event.ignore()
+                return
+            # 如果想把分组拖“到”另一个分组上（而不是之间），禁止
+            if drop_indicator == QAbstractItemView.DropIndicatorPosition.OnItem:
+                event.ignore()
+                return
+
+        # 规则 2: 程序 (program) 只能在分组内移动，不能成为顶层项目
+        if source_type == 'program':
+            # 如果目标是顶层（即目标是分组或目标为空白区域）
+            if target_item is None or target_item.parent() is None:
+                # 并且拖放位置不是在一个分组“之上”（OnItem）
+                if drop_indicator != QAbstractItemView.DropIndicatorPosition.OnItem:
+                    event.ignore()
+                    return
         
+        # 所有验证通过，执行默认的拖放操作
         super().dropEvent(event)
+
+        # 操作完成后，发出信号通知模型更新
+        # 采用全量更新的方式，简单可靠
         self.parent_view.items_moved.emit()
 
 
@@ -56,8 +63,6 @@ class TreeViewMode(BaseViewMode):
     """
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.icon_cache = {}
-        self.icon_provider = QFileIconProvider()
         
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
@@ -100,7 +105,7 @@ class TreeViewMode(BaseViewMode):
                 for prog_data in programs_by_group.get(group_data['id'], []):
                     program_item = QTreeWidgetItem(group_item, [prog_data['name']])
                     program_item.setData(0, Qt.ItemDataRole.UserRole, {"id": prog_data['id'], "type": "program", "name": prog_data['name'], "path": prog_data['path']})
-                    program_item.setIcon(0, self._get_program_icon(prog_data['path']))
+                    program_item.setIcon(0, icon_service.get_program_icon(prog_data['path']))
                     program_item.setFlags(program_item.flags() & ~Qt.ItemFlag.ItemIsDropEnabled)
                 group_item.setExpanded(True)
         finally:
@@ -110,28 +115,44 @@ class TreeViewMode(BaseViewMode):
             self.filter_items(current_search)
 
     def get_current_structure(self) -> dict:
+        """
+        从当前的UI树状态中，反向生成一份完整的数据结构字典。
+        """
         new_groups, new_programs = [], {}
         root = self.tree.invisibleRootItem()
+        
+        # 遍历所有顶层项目（即分组）
         for i in range(root.childCount()):
             group_item = root.child(i)
             group_data = group_item.data(0, Qt.ItemDataRole.UserRole)
-            if not isinstance(group_data, dict) or 'id' not in group_data: continue
+            
+            # 确保这是一个有效的分组项目
+            if not isinstance(group_data, dict) or group_data.get('type') != 'group':
+                continue
+            
             group_id = group_data['id']
             new_groups.append({"id": group_id, "name": group_data['name']})
+            
+            # 遍历该分组下的所有子项目（即程序）
             for j in range(group_item.childCount()):
                 program_item = group_item.child(j)
                 program_data = program_item.data(0, Qt.ItemDataRole.UserRole)
-                if not isinstance(program_data, dict) or 'id' not in program_data: continue
-                program_id = program_data['id']
-                new_programs[program_id] = {"id": program_id, "group_id": group_id, "name": program_data['name'], "path": program_data['path'], "order": j}
-        return {"groups": new_groups, "programs": new_programs}
 
-    def _get_program_icon(self, path: str) -> QIcon:
-        if not path or path in self.icon_cache: return self.icon_cache.get(path, QIcon.fromTheme("application-x-executable"))
-        icon = self.icon_provider.icon(QFileInfo(path))
-        if icon.isNull(): icon = QIcon.fromTheme("application-x-executable")
-        self.icon_cache[path] = icon
-        return icon
+                # 确保这是一个有效的程序项目
+                if not isinstance(program_data, dict) or program_data.get('type') != 'program':
+                    continue
+                
+                program_id = program_data['id']
+                # 从 program_data 中安全地获取 'path'
+                path = program_data.get('path', '') # 使用 .get() 避免 KeyError
+                new_programs[program_id] = {
+                    "id": program_id,
+                    "group_id": group_id,
+                    "name": program_data['name'],
+                    "path": path,
+                    "order": j
+                }
+        return {"groups": new_groups, "programs": new_programs}
 
     def _on_item_double_clicked(self, item: QTreeWidgetItem):
         data = item.data(0, Qt.ItemDataRole.UserRole)
@@ -153,31 +174,3 @@ class TreeViewMode(BaseViewMode):
             menu.addAction("编辑...").triggered.connect(lambda: self.edit_item_requested.emit(data['id'], 'program'))
             menu.addAction("删除").triggered.connect(lambda: self.delete_item_requested.emit(data['id'], 'program'))
         menu.exec_(self.tree.mapToGlobal(pos))
-        
-    def filter_items(self, text: str):
-        """【核心修复-BUG-2】为树状视图实现/验证搜索功能。"""
-        text = text.lower()
-        root = self.tree.invisibleRootItem()
-        for i in range(root.childCount()):
-            group_item = root.child(i)
-            group_data = group_item.data(0, Qt.ItemDataRole.UserRole)
-            group_name = group_data.get('name', '').lower()
-            
-            group_has_visible_child = False
-            for j in range(group_item.childCount()):
-                program_item = group_item.child(j)
-                program_data = program_item.data(0, Qt.ItemDataRole.UserRole)
-                program_name = program_data.get('name', '').lower()
-                
-                is_match = text in program_name
-                program_item.setHidden(not is_match)
-                if is_match:
-                    group_has_visible_child = True
-            
-            # 如果分组名匹配，或其下有匹配的程序，则显示该分组
-            group_is_match = text in group_name
-            group_item.setHidden(not (group_has_visible_child or group_is_match))
-            
-            # 如果在搜索，则展开匹配的分组
-            if text:
-                group_item.setExpanded(group_has_visible_child or group_is_match)
