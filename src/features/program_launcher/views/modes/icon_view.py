@@ -1,6 +1,6 @@
 # desktop_center/src/features/program_launcher/views/modes/icon_view.py
 import logging
-from PySide6.QtWidgets import (QMenu, QFileIconProvider, QVBoxLayout, 
+from PySide6.QtWidgets import (QFileIconProvider, QVBoxLayout,
                                QLabel, QWidget, QScrollArea, QFrame)
 from PySide6.QtGui import QIcon, QDragEnterEvent, QDropEvent, QDragMoveEvent
 from PySide6.QtCore import Qt, QFileInfo, QSize, QPoint, QRect
@@ -9,6 +9,7 @@ from .base_view import BaseViewMode
 from ...widgets.card_widget import CardWidget
 from ...widgets.group_header_widget import GroupHeaderWidget
 from ...services.icon_service import icon_service
+from ...widgets.menu_factory import MenuFactory
 from .flow_layout import FlowLayout
 
 class IconViewMode(BaseViewMode):
@@ -72,18 +73,11 @@ class IconViewMode(BaseViewMode):
         self.content_layout.addStretch()
 
     def _on_card_context_menu(self, program_id, event):
-        menu = QMenu(self)
-        menu.addAction("启动").triggered.connect(lambda: self.item_double_clicked.emit(program_id))
-        menu.addAction("编辑...").triggered.connect(lambda: self.edit_item_requested.emit(program_id, 'program'))
-        menu.addAction("删除").triggered.connect(lambda: self.delete_item_requested.emit(program_id, 'program'))
+        menu = MenuFactory.create_context_menu('program', program_id, self)
         menu.exec_(event.globalPos())
 
     def _on_group_context_menu(self, group_id, event):
-        menu = QMenu(self)
-        menu.addAction("添加程序到此分组...").triggered.connect(lambda: self.add_program_to_group_requested.emit(group_id))
-        menu.addSeparator()
-        menu.addAction("重命名分组").triggered.connect(lambda: self.edit_item_requested.emit(group_id, 'group'))
-        menu.addAction("删除分组").triggered.connect(lambda: self.delete_item_requested.emit(group_id, 'group'))
+        menu = MenuFactory.create_context_menu('group', group_id, self)
         menu.exec_(event.globalPos())
 
     def dragEnterEvent(self, event: QDragEnterEvent):

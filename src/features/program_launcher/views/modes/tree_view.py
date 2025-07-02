@@ -1,13 +1,14 @@
 # desktop_center/src/features/program_launcher/views/modes/tree_view.py
 import logging
 import os
-from PySide6.QtWidgets import (QTreeWidget, QTreeWidgetItem, QMenu, QAbstractItemView,
+from PySide6.QtWidgets import (QTreeWidget, QTreeWidgetItem, QAbstractItemView,
                                QVBoxLayout)
 from PySide6.QtGui import QIcon, QDropEvent
 from PySide6.QtCore import Qt
 
 from .base_view import BaseViewMode
 from ...services.icon_service import icon_service
+from ...widgets.menu_factory import MenuFactory
 
 class LauncherTreeWidget(QTreeWidget):
     """
@@ -170,16 +171,15 @@ class TreeViewMode(BaseViewMode):
             
     def _on_context_menu(self, pos):
         item = self.tree.itemAt(pos)
-        if not item: return
+        if not item:
+            return
+        
         data = item.data(0, Qt.ItemDataRole.UserRole)
-        menu = QMenu(self)
-        if data.get('type') == 'group':
-            menu.addAction("添加程序到此分组...").triggered.connect(lambda: self.add_program_to_group_requested.emit(data['id']))
-            menu.addSeparator()
-            menu.addAction("重命名分组").triggered.connect(lambda: self.edit_item_requested.emit(data['id'], 'group'))
-            menu.addAction("删除分组").triggered.connect(lambda: self.delete_item_requested.emit(data['id'], 'group'))
-        elif data.get('type') == 'program':
-            menu.addAction("启动").triggered.connect(lambda: self.item_double_clicked.emit(data['id']))
-            menu.addAction("编辑...").triggered.connect(lambda: self.edit_item_requested.emit(data['id'], 'program'))
-            menu.addAction("删除").triggered.connect(lambda: self.delete_item_requested.emit(data['id'], 'program'))
+        item_type = data.get('type')
+        item_id = data.get('id')
+
+        if not item_type or not item_id:
+            return
+
+        menu = MenuFactory.create_context_menu(item_type, item_id, self)
         menu.exec_(self.tree.mapToGlobal(pos))
