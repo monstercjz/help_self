@@ -32,7 +32,7 @@ class LauncherController(QObject):
         self.view.change_data_path_requested.connect(self.change_data_path)
         self.view.items_moved.connect(self.handle_items_moved)
         self.view.program_dropped.connect(self.handle_program_drop)
-        self.view.group_order_changed.connect(self.model.reorder_groups) # 【新增】连接新信号
+        self.view.icon_view.group_order_changed.connect(self.model.reorder_groups)
         self.model.data_changed.connect(self.refresh_view)
 
     # ... 其他方法基本保持不变 ...

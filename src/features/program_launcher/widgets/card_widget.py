@@ -25,9 +25,11 @@ class CardWidget(QWidget):
         self.icon_label = QLabel()
         self.icon_label.setPixmap(icon.pixmap(QSize(48, 48)))
         self.icon_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.icon_label.setTextInteractionFlags(Qt.TextInteractionFlag.NoTextInteraction)
         self.name_label = QLabel(program_data.get('name', ''))
         self.name_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.name_label.setWordWrap(True)
+        self.name_label.setTextInteractionFlags(Qt.TextInteractionFlag.NoTextInteraction)
 
         layout.addWidget(self.icon_label)
         layout.addWidget(self.name_label)
@@ -50,9 +52,9 @@ class CardWidget(QWidget):
         if not (event.buttons() & Qt.MouseButton.LeftButton): return
         if not self.drag_start_position or (event.position().toPoint() - self.drag_start_position).manhattanLength() < 10: return
 
-        drag = QDrag(self)
+        drag = QDrag(self.parentWidget())
         mime_data = QMimeData()
-        mime_data.setData("application/x-program-launcher-card", self.program_id.encode('utf-8'))
+        mime_data.setText(f"card:{self.program_id}")
         drag.setMimeData(mime_data)
 
         drag_pixmap = QPixmap(self.size())
@@ -65,7 +67,7 @@ class CardWidget(QWidget):
         drag.setHotSpot(event.position().toPoint())
 
         # 【核心修复】不再隐藏源控件，让数据驱动刷新来处理UI变化
-        # self.hide() 
+        # self.hide()
         drag.exec(Qt.DropAction.MoveAction)
         # if drag.exec(...) == Qt.DropAction.IgnoreAction:
         #    self.show()

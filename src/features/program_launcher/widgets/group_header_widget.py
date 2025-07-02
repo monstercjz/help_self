@@ -22,6 +22,7 @@ class GroupHeaderWidget(QWidget):
         self.title_label = QLabel(f"<b>{group_data.get('name', '')}</b>")
         self.title_label.setStyleSheet("padding: 15px 0 8px 0; font-size: 14px; border-bottom: 1px solid #e0e0e0;")
         
+        self.title_label.setTextInteractionFlags(Qt.TextInteractionFlag.NoTextInteraction)
         layout.addWidget(self.title_label)
         
     def mousePressEvent(self, event: QMouseEvent):
@@ -38,9 +39,9 @@ class GroupHeaderWidget(QWidget):
         if not (event.buttons() & Qt.MouseButton.LeftButton): return
         if not self.drag_start_position or (event.position().toPoint() - self.drag_start_position).manhattanLength() < 10: return
 
-        drag = QDrag(self)
+        drag = QDrag(self.parentWidget())
         mime_data = QMimeData()
-        mime_data.setData("application/x-program-launcher-group", self.group_id.encode('utf-8'))
+        mime_data.setText(f"group:{self.group_id}")
         drag.setMimeData(mime_data)
 
         pixmap = self.grab()
