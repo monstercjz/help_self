@@ -136,7 +136,7 @@ class LauncherModel(QObject):
             self.data['groups'] = new_groups_order
             self.save_data()
             self.data_changed.emit()
-            logging.info("Group order has been updated.")
+            logging.info(f"Model: Group order has been updated to: {group_ids}")
         else:
             logging.warning(f"Group reorder failed due to ID mismatch. Expected {len(self.data['groups'])}, got {len(new_groups_order)}")
 
@@ -240,56 +240,40 @@ class LauncherModel(QObject):
     def move_program(self, program_id: str, target_group_id: str, target_index: int):
         """
         移动一个程序到新的位置，这可能是在同一个分组内，也可能是在不同分组之间。
-
-        此方法会处理两种情况：
-        1. 组内移动：只调整该分组内程序的 `order` 字段。
-        2. 跨组移动：从源分组移除程序，添加到目标分组，并分别更新两个分组内所有程序的 `order` 字段。
-
-        Args:
-            program_id: 要移动的程序的ID。
-            target_group_id: 目标分组的ID。
-            target_index: 程序在目标分组中的新索引位置。
+        此方法通过直接修改 self.data 并重新计算受影响分组的 order 来保证数据一致性。
         """
-        program = self.data['programs'].get(program_id)
-        if not program: return
-            
-        source_group_id = program['group_id']
-        
-        # 步骤1: 从源分组的程序列表中移除被移动的程序
-        source_group_progs = self.get_programs_in_group(source_group_id)
-        moved_program = None
-        for p in source_group_progs:
-            if p['id'] == program_id:
-                moved_program = p
-                break
-        if moved_program:
-            source_group_progs.remove(moved_program)
-        
-        # 步骤2: 将被移动的程序插入到目标分组的程序列表中
-        if source_group_id == target_group_id:
-            # 如果是组内移动，目标列表就是修改后的源列表
-            target_group_progs = source_group_progs
-        else:
-            # 如果是跨组移动，获取一个独立的目标列表
-            target_group_progs = self.get_programs_in_group(target_group_id)
-        
-        # 确保索引在有效范围内
-        if target_index > len(target_group_progs):
-            target_index = len(target_group_progs)
-        target_group_progs.insert(target_index, moved_program)
-        
-        # 更新被移动程序的 group_id
-        program['group_id'] = target_group_id
+        program_to_move = self.data['programs'].get(program_id)
+        if not program_to_move:
+            logging.error(f"move_program: Program with id {program_id} not found.")
+            return
 
-        # 步骤3: 重新计算并更新受影响分组的 order 字段
-        # 更新源分组的 order
-        for i, p in enumerate(source_group_progs):
-            self.data['programs'][p['id']]['order'] = i
-            
-        # 如果是跨组移动，还需要更新目标分组的 order
+        source_group_id = program_to_move['group_id']
+
+        # 步骤 1: 立即在核心数据中更新被移动程序的 group_id
+        program_to_move['group_id'] = target_group_id
+
+        # 步骤 2: 重新生成并更新目标分组的顺序
+        target_progs = self.get_programs_in_group(target_group_id)
+        
+        # 为了处理组内拖拽，我们需要从列表中移除旧的项
+        # 使用列表推导式来安全地移除
+        target_progs = [p for p in target_progs if p['id'] != program_id]
+        
+        # 确保索引有效
+        if target_index > len(target_progs):
+            target_index = len(target_progs)
+        target_progs.insert(target_index, program_to_move)
+        
+        # 遍历这个顺序正确的列表，更新核心数据中的 order
+        for i, prog in enumerate(target_progs):
+            self.data['programs'][prog['id']]['order'] = i
+
+        # 步骤 3: 如果是跨组移动，重新生成并更新源分组的顺序
         if source_group_id != target_group_id:
-            for i, p in enumerate(target_group_progs):
-                self.data['programs'][p['id']]['order'] = i
-            
+            source_progs = self.get_programs_in_group(source_group_id)
+            for i, prog in enumerate(source_progs):
+                self.data['programs'][prog['id']]['order'] = i
+        
+        logging.info(f"Model: Program {program_id} moved to group {target_group_id} at index {target_index}. Triggering save and refresh.")
         self.save_data()
         self.data_changed.emit()

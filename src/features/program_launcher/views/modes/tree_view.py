@@ -18,43 +18,52 @@ class LauncherTreeWidget(QTreeWidget):
         self.parent_view = parent_view
 
     def dropEvent(self, event: QDropEvent):
+        # 记录拖放前的信息
         source_item = self.currentItem()
         if not source_item:
-            event.ignore()
-            return
-
-        target_item = self.itemAt(event.position().toPoint())
-        drop_indicator = self.dropIndicatorPosition()
+            event.ignore(); return
         
         source_data = source_item.data(0, Qt.ItemDataRole.UserRole)
         source_type = source_data.get('type')
+        source_id = source_data.get('id')
 
-        # 规则 1: 分组 (group) 只能在顶层移动，不能被拖入另一个分组
+        # 执行验证逻辑
+        target_item = self.itemAt(event.position().toPoint())
+        drop_indicator = self.dropIndicatorPosition()
+
         if source_type == 'group':
-            # 如果目标是另一个分组的子项，禁止
-            if target_item and target_item.parent():
-                event.ignore()
-                return
-            # 如果想把分组拖“到”另一个分组上（而不是之间），禁止
-            if drop_indicator == QAbstractItemView.DropIndicatorPosition.OnItem:
-                event.ignore()
-                return
-
-        # 规则 2: 程序 (program) 只能在分组内移动，不能成为顶层项目
-        if source_type == 'program':
-            # 如果目标是顶层（即目标是分组或目标为空白区域）
-            if target_item is None or target_item.parent() is None:
-                # 并且拖放位置不是在一个分组“之上”（OnItem）
-                if drop_indicator != QAbstractItemView.DropIndicatorPosition.OnItem:
-                    event.ignore()
-                    return
+            if (target_item and target_item.parent()) or drop_indicator == QAbstractItemView.DropIndicatorPosition.OnItem:
+                logging.warning("Illegal drop: Group cannot be dropped into another group.")
+                event.ignore(); return
+        elif source_type == 'program':
+            if (target_item is None or target_item.parent() is None) and drop_indicator != QAbstractItemView.DropIndicatorPosition.OnItem:
+                logging.warning("Illegal drop: Program cannot be a top-level item.")
+                event.ignore(); return
         
-        # 所有验证通过，执行默认的拖放操作
+        # 核心修复：先调用父类方法，让Qt完成UI移动
         super().dropEvent(event)
 
-        # 操作完成后，发出信号通知模型更新
-        # 采用全量更新的方式，简单可靠
-        self.parent_view.items_moved.emit()
+        # --- UI已经更新，现在分析新状态并发射精确信号 ---
+        logging.info("Drop event processed by QTreeWidget, analyzing new structure...")
+
+        if source_type == 'group':
+            root = self.invisibleRootItem()
+            new_group_order = [root.child(i).data(0, Qt.ItemDataRole.UserRole)['id'] for i in range(root.childCount())]
+            self.parent_view.group_order_changed.emit(new_group_order)
+            logging.info(f"Emitted group_order_changed: {new_group_order}")
+
+        elif source_type == 'program':
+            new_parent_item = source_item.parent()
+            if not new_parent_item:
+                logging.error("Program ended up in an invalid top-level position after drop.")
+                return
+
+            target_group_data = new_parent_item.data(0, Qt.ItemDataRole.UserRole)
+            target_group_id = target_group_data.get('id')
+            new_index = new_parent_item.indexOfChild(source_item)
+            
+            self.parent_view.program_dropped.emit(source_id, target_group_id, new_index)
+            logging.info(f"Emitted program_dropped: program '{source_id}' to group '{target_group_id}' at index {new_index}")
 
 
 class TreeViewMode(BaseViewMode):

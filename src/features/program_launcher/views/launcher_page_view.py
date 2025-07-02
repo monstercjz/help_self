@@ -20,7 +20,6 @@ class LauncherPageView(QWidget):
     delete_item_requested = Signal(str, str)
     search_text_changed = Signal(str)
     change_data_path_requested = Signal()
-    items_moved = Signal()
     program_dropped = Signal(str, str, int)
     group_order_changed = Signal(list)
 
@@ -91,7 +90,6 @@ class LauncherPageView(QWidget):
         view.item_double_clicked.connect(self.item_double_clicked)
         view.edit_item_requested.connect(self.edit_item_requested)
         view.delete_item_requested.connect(self.delete_item_requested)
-        view.items_moved.connect(self.items_moved)
         view.program_dropped.connect(self.program_dropped)
         view.add_program_to_group_requested.connect(self.add_program_requested)
         view.group_order_changed.connect(self.group_order_changed)
@@ -132,12 +130,6 @@ class LauncherPageView(QWidget):
         # 因为两个视图的数据在 rebuild_ui 中总是同步的。
         # 搜索过滤也由控制器统一处理。
         pass
-
-    def get_current_structure(self) -> dict:
-        active_view = self.stacked_widget.currentWidget()
-        if hasattr(active_view, 'get_current_structure'):
-            return active_view.get_current_structure()
-        return self.data_cache
 
     def _update_clear_button_visibility(self, text: str):
         self.clear_action.setVisible(bool(text))

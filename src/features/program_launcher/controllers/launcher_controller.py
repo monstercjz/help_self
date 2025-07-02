@@ -30,7 +30,6 @@ class LauncherController(QObject):
         self.view.delete_item_requested.connect(self.delete_item)
         self.view.search_text_changed.connect(self.filter_view)
         self.view.change_data_path_requested.connect(self.change_data_path)
-        self.view.items_moved.connect(self.handle_items_moved)
         self.view.program_dropped.connect(self.handle_program_drop)
         self.view.icon_view.group_order_changed.connect(self.model.reorder_groups)
         self.model.data_changed.connect(self.refresh_view)
@@ -39,11 +38,6 @@ class LauncherController(QObject):
     def refresh_view(self):
         logging.info("[CONTROLLER] Refreshing view from model data.")
         self.view.rebuild_ui(self.model.get_all_data())
-    @Slot()
-    def handle_items_moved(self):
-        logging.info("[CONTROLLER] Slot 'handle_items_moved' was called. Synchronizing model.")
-        new_structure = self.view.get_current_structure()
-        self.model.update_full_structure(new_structure)
     @Slot(str, str, int)
     def handle_program_drop(self, program_id: str, target_group_id: str, target_index: int):
         logging.info(f"[CONTROLLER] Handling program drop: prog_id={program_id}, group_id={target_group_id}, index={target_index}")
