@@ -2,10 +2,6 @@
 from PySide6.QtWidgets import QWidget
 from PySide6.QtCore import Signal
 
-# 【核心修复】移除 ABC 和自定义元类，以避免所有元类冲突问题。
-# from abc import ABC, abstractmethod
-# class QABCMeta(type(QWidget), type(ABC)): pass
-
 class BaseViewMode(QWidget):
     """
     所有视图模式的基类。
@@ -16,7 +12,8 @@ class BaseViewMode(QWidget):
     edit_item_requested = Signal(str, str) # item_id, item_type
     delete_item_requested = Signal(str, str) # item_id, item_type
     add_program_to_group_requested = Signal(str) # group_id, 用于右键菜单
-    items_moved = Signal() # 用于拖拽排序
+    items_moved = Signal() # 用于树状视图的拖拽
+    program_dropped = Signal(str, str, int) # program_id, target_group_id, target_index
 
     def __init__(self, parent=None):
         super().__init__(parent)

@@ -1,49 +1,35 @@
 {
     "groups": [
         {
-            "id": "df5987a1-7c2d-450c-b062-8236b5514ee7",
-            "name": "12"
-        },
-        {
-            "id": "ff5f4b4a-16e3-4fc0-8703-58c3fe01b201",
-            "name": "7"
-        },
-        {
             "id": "562f0a8e-a94a-44e7-9cd1-1617696b97a1",
             "name": "56"
         },
         {
+            "id": "df5987a1-7c2d-450c-b062-8236b5514ee7",
+            "name": "12"
+        },
+        {
             "id": "7ad2f478-04eb-463c-9f26-d44c5ce1f3d7",
             "name": "32"
+        },
+        {
+            "id": "ff5f4b4a-16e3-4fc0-8703-58c3fe01b201",
+            "name": "7"
         }
     ],
     "programs": {
+        "e83694ba-7fe3-4317-9f02-3c9ee9a0e007": {
+            "id": "e83694ba-7fe3-4317-9f02-3c9ee9a0e007",
+            "group_id": "df5987a1-7c2d-450c-b062-8236b5514ee7",
+            "name": "Aria2",
+            "path": "D:/software/cmder/Cmder.exe",
+            "order": 1
+        },
         "dfb4d832-33ff-4dc0-b14c-8150cf0aa0e5": {
             "id": "dfb4d832-33ff-4dc0-b14c-8150cf0aa0e5",
             "group_id": "df5987a1-7c2d-450c-b062-8236b5514ee7",
             "name": "QQ",
             "path": "C:/Program Files/Tencent/QQNT/QQ.exe",
-            "order": 0
-        },
-        "07606ebb-16f3-4332-b377-72ea9fc633f1": {
-            "id": "07606ebb-16f3-4332-b377-72ea9fc633f1",
-            "group_id": "df5987a1-7c2d-450c-b062-8236b5514ee7",
-            "name": "ev",
-            "path": "C:/Program Files/Everything/Everything.exe",
-            "order": 1
-        },
-        "54d84f6e-3d02-4254-a875-e14c9b4d47ed": {
-            "id": "54d84f6e-3d02-4254-a875-e14c9b4d47ed",
-            "group_id": "ff5f4b4a-16e3-4fc0-8703-58c3fe01b201",
-            "name": "Cpuz X64",
-            "path": "D:/software/cpu-z_2.01-cn/cpuz_x64.exe",
-            "order": 0
-        },
-        "e83694ba-7fe3-4317-9f02-3c9ee9a0e007": {
-            "id": "e83694ba-7fe3-4317-9f02-3c9ee9a0e007",
-            "group_id": "562f0a8e-a94a-44e7-9cd1-1617696b97a1",
-            "name": "Aria2",
-            "path": "D:/software/cmder/Cmder.exe",
             "order": 0
         },
         "63fbd625-ec80-498b-a44a-815d5796e28a": {
@@ -52,6 +38,20 @@
             "name": "Calc",
             "path": "C:/Windows/System32/calc.exe",
             "order": 0
+        },
+        "07606ebb-16f3-4332-b377-72ea9fc633f1": {
+            "id": "07606ebb-16f3-4332-b377-72ea9fc633f1",
+            "group_id": "df5987a1-7c2d-450c-b062-8236b5514ee7",
+            "name": "ev",
+            "path": "C:/Program Files/Everything/Everything.exe",
+            "order": 2
+        },
+        "54d84f6e-3d02-4254-a875-e14c9b4d47ed": {
+            "id": "54d84f6e-3d02-4254-a875-e14c9b4d47ed",
+            "group_id": "7ad2f478-04eb-463c-9f26-d44c5ce1f3d7",
+            "name": "Cpuz X64",
+            "path": "D:/software/cpu-z_2.01-cn/cpuz_x64.exe",
+            "order": 1
         }
     }
 }
