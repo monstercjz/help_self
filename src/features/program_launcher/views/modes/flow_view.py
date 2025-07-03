@@ -40,8 +40,6 @@ class FlowViewMode(BaseViewMode):
         self.drop_indicator.hide()
 
     def update_view(self, data: dict):
-        # 确保在更新前，先断开旧控件的信号连接，防止内存泄漏
-        # 在这个实现中，因为是全部删除重建，所以不需要手动断开。
         while self.view_layout.count():
             item = self.view_layout.takeAt(0)
             if item and item.widget():
@@ -59,27 +57,33 @@ class FlowViewMode(BaseViewMode):
         for group_id in programs_by_group:
             programs_by_group[group_id].sort(key=lambda p: p.get("order", 0))
 
-        # 使用一个字典来存储widget引用，便于后续查找
         self.group_widgets_map = {}
         
         for group_data in groups:
             group_id = group_data['id']
             
+            # 【核心变更】创建分组的总容器
+            group_block = QFrame()
+            group_block.setObjectName("FlowGroupBlock")
+            group_block_layout = QVBoxLayout(group_block)
+            group_block_layout.setContentsMargins(0,0,0,0)
+            group_block_layout.setSpacing(15) # 标题和内容区的间距
+
             group_title = FlowGroupHeaderWidget(group_data)
-            group_title.customContextMenuRequested.connect(self._on_group_context_menu)
-            self.view_layout.addWidget(group_title)
+            group_block_layout.addWidget(group_title)
 
             pills_container = QWidget()
             pills_container.setObjectName(f"pills_container_{group_id}")
             flow_layout = FlowLayout(pills_container, margin=0, h_spacing=10, v_spacing=10)
             
-            # 将分组标题和程序容器都存入map，便于拖拽定位
             self.group_widgets_map[group_id] = (group_title, pills_container)
             
             programs_in_group = programs_by_group.get(group_id, [])
             if not programs_in_group:
                 empty_label = QLabel("(此分组为空)")
-                empty_label.setStyleSheet("color: #999; margin-left: 10px;")
+                # 【变更】为美化做准备，设置对齐和对象名
+                empty_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+                empty_label.setObjectName("emptyGroupLabel")
                 flow_layout.addWidget(empty_label)
             else:
                 for prog_data in programs_in_group:
@@ -89,7 +93,8 @@ class FlowViewMode(BaseViewMode):
                     pill.customContextMenuRequested.connect(self._on_pill_context_menu)
                     flow_layout.addWidget(pill)
 
-            self.view_layout.addWidget(pills_container)
+            group_block_layout.addWidget(pills_container)
+            self.view_layout.addWidget(group_block)
         
         self.view_layout.addStretch(1)
 
@@ -145,17 +150,13 @@ class FlowViewMode(BaseViewMode):
                 return
 
         elif drag_type == "group":
-            # 【核心修复】拖放结束后，只计算新的ID顺序并发射信号，不直接操作UI
             target_index, _ = self._find_group_drop_pos(pos_in_content)
-            
-            # 从UI布局中获取当前的ID顺序
-            group_ids = [self.view_layout.itemAt(i).widget().group_id 
-                         for i in range(self.view_layout.count()) 
-                         if isinstance(self.view_layout.itemAt(i).widget(), FlowGroupHeaderWidget)]
+            group_ids = [self.view_layout.itemAt(i).widget().findChild(FlowGroupHeaderWidget).group_id
+                         for i in range(self.view_layout.count())
+                         if isinstance(self.view_layout.itemAt(i).widget(), QFrame)]
 
             if source_id in group_ids:
                 group_ids.remove(source_id)
-                # 确保插入索引有效
                 if target_index > len(group_ids):
                     target_index = len(group_ids)
                 group_ids.insert(target_index, source_id)
@@ -171,33 +172,29 @@ class FlowViewMode(BaseViewMode):
         target_index = 0
         min_dist = float('inf')
         
-        group_header_widgets = [self.view_layout.itemAt(i).widget() 
-                                for i in range(self.view_layout.count()) 
-                                if isinstance(self.view_layout.itemAt(i).widget(), FlowGroupHeaderWidget)]
+        # 【变更】查找 FlowGroupBlock
+        group_blocks = [self.view_layout.itemAt(i).widget() 
+                        for i in range(self.view_layout.count()) 
+                        if self.view_layout.itemAt(i).widget() and self.view_layout.itemAt(i).widget().objectName() == "FlowGroupBlock"]
         
-        if not group_header_widgets: return 0, None
+        if not group_blocks: return 0, None
 
-        # 找到垂直方向上最近的分组标题
-        for i, widget in enumerate(group_header_widgets):
+        for i, widget in enumerate(group_blocks):
             dist = abs(pos.y() - widget.geometry().center().y())
             if dist < min_dist:
                 min_dist = dist
                 target_index = i
         
-        widget = group_header_widgets[target_index]
+        widget = group_blocks[target_index]
         g = widget.geometry()
         
         self.drop_indicator.setFrameShape(QFrame.Shape.HLine)
         self.drop_indicator.setLineWidth(2)
         
-        # 判断是插在上方还是下方
         if pos.y() < g.center().y():
-            return target_index, QRect(g.x(), g.y() - 3, g.width(), 2)
+            return target_index, QRect(g.x(), g.y() - 6, g.width(), 2)
         else:
-            # 如果是最后一个，需要找到它对应的pills_container的底部
-            _, pills_container = self.group_widgets_map[widget.group_id]
-            g_bottom = pills_container.geometry().bottom()
-            return target_index + 1, QRect(g.x(), g_bottom + 3, g.width(), 2)
+            return target_index + 1, QRect(g.x(), g.bottom() + 6, g.width(), 2)
 
     def _find_pill_drop_pos(self, pos: QPoint) -> tuple[str | None, int, QRect | None]:
         target_widget = self.content_widget.childAt(pos)
