@@ -55,12 +55,10 @@ QScrollArea {
 
 /* === 卡片视图 (IconViewMode) - 动态尺寸样式 === */
 
-/* 【变更】移除固定的width属性，现在由代码控制 */
 #GroupContainerWidget {
     background-color: #ffffff;
     border: 1px solid #EBEEF5;
     border-radius: 8px;
-    /* width: 320px; */ /* <-- 已移除 */
 }
 
 #GroupHeaderWidget QLabel {
@@ -82,7 +80,6 @@ CardWidget QLabel {
     color: #606266;
     font-size: 13px;
 }
-
 
 /* === 树状视图 (TreeViewMode) - 保持不变 === */
 
@@ -114,6 +111,35 @@ CardWidget QLabel {
 #innerTreeContainer {
     background-color: #fafafa;
 }
+
+/* === 【新增】流式视图 (FlowViewMode) 样式 === */
+#FlowViewMode {
+    padding: 10px;
+}
+
+#FlowViewMode #groupTitle {
+    font-size: 18px;
+    font-weight: bold;
+    color: #303133;
+    margin-top: 15px;
+    margin-bottom: 10px;
+    padding-left: 5px;
+}
+
+PillWidget {
+    background-color: #ffffff;
+    border: 1px solid #e0e0e0;
+    border-radius: 8px;
+}
+PillWidget:hover {
+    border-color: #409eff;
+    background-color: #f5faff;
+}
+PillWidget QLabel {
+    font-size: 14px;
+    color: #333333;
+}
+
 
 /* === 滚动条 - 保持不变 === */
 QScrollBar:vertical {

@@ -40,12 +40,16 @@ class LauncherController(QObject):
         self.view.search_text_changed.connect(self.filter_view)
         self.view.change_data_path_requested.connect(self.change_data_path)
         self.view.program_dropped.connect(self.handle_program_drop)
-        # 同时监听来自两个视图的分组排序信号
-        self.view.icon_view.group_order_changed.connect(self.model.reorder_groups)
-        self.view.tree_view.group_order_changed.connect(self.model.reorder_groups)
+        
+        # 【核心修复】移除对具体子视图的监听，改为监听主视图的统一信号出口。
+        # 这样，无论哪个视图模式发起了分组排序，控制器都能收到并处理。
+        # self.view.icon_view.group_order_changed.connect(self.model.reorder_groups) <-- 移除
+        # self.view.tree_view.group_order_changed.connect(self.model.reorder_groups) <-- 移除
+        self.view.group_order_changed.connect(self.model.reorder_groups)
+        
         self.model.data_changed.connect(self.refresh_view)
 
-    # ... 其他方法基本保持不变 ...
+    # ... 其他所有方法 (refresh_view, handle_program_drop, add_group, 等) 保持完全不变 ...
     def refresh_view(self):
         logging.info("[CONTROLLER] Refreshing view from model data.")
         data = self.model.get_all_data()
