@@ -1,14 +1,11 @@
 /* === 全局与基础 === */
 
-/* 对应对象: LauncherPageView (整个插件的顶层窗口) */
 #LauncherPageView {
-    background-color: #f5f5f7; /* 设置一个统一的浅灰色背景 */
-    font-family: "Microsoft YaHei UI", "Segoe UI", sans-serif; /* 统一字体 */
+    background-color: #f5f5f7;
+    font-family: "Microsoft YaHei UI", "Segoe UI", sans-serif;
 }
 
 /* === 顶部工具栏 === */
-
-/* 对应对象: QPushButton (所有按钮的通用样式) */
 QPushButton {
     background-color: #ffffff;
     border: 1px solid #dcdfe6;
@@ -18,26 +15,22 @@ QPushButton {
     color: #303133;
     min-height: 20px;
 }
-/* 鼠标悬停在按钮上时的状态 */
 QPushButton:hover {
     background-color: #ecf5ff;
     color: #409eff;
     border-color: #c6e2ff;
 }
-/* 鼠标按下按钮时的状态 */
 QPushButton:pressed {
     background-color: #a0cfff;
     border-color: #a0cfff;
     color: #ffffff;
 }
-/* 按钮被选中时的状态 (例如视图切换按钮) */
 QPushButton:checked {
     background-color: #409eff;
     border-color: #409eff;
     color: #ffffff;
 }
 
-/* 对应对象: QLineEdit (搜索框) */
 QLineEdit {
     background-color: #ffffff;
     border: 1px solid #dcdfe6;
@@ -45,128 +38,102 @@ QLineEdit {
     border-radius: 6px;
     font-size: 14px;
 }
-/* 搜索框获得焦点时的状态 */
 QLineEdit:focus {
     border-color: #409eff;
 }
 
 /* === 视图区域 === */
-
-/* 对应对象: QScrollArea (所有滚动区域的容器) */
 QScrollArea {
-    background-color: transparent; /* 背景透明，以显示父窗口的背景色 */
-    border: none; /* 无边框 */
+    background-color: transparent;
+    border: none;
 }
 
-/* === 卡片视图 (IconViewMode) === */
+/* 拖放指示器样式 */
+#dropIndicator {
+    background-color: #409eff;
+}
 
-/* 对应对象: GroupHeaderWidget (卡片视图中的分组标题) */
+/* === 卡片视图 (IconViewMode) - 动态尺寸样式 === */
+
+/* 【变更】移除固定的width属性，现在由代码控制 */
+#GroupContainerWidget {
+    background-color: #ffffff;
+    border: 1px solid #EBEEF5;
+    border-radius: 8px;
+    /* width: 320px; */ /* <-- 已移除 */
+}
+
 #GroupHeaderWidget QLabel {
-    font-size: 16px;
+    font-size: 15px;
     font-weight: bold;
     color: #303133;
-    padding: 20px 10px 10px 10px;
-    border-bottom: 2px solid #e4e7ed;
+    padding: 5px 0px;
 }
 
-/* 对应对象: CardWidget (卡片视图中的程序卡片) */
-#CardWidget {
-    background-color: #ffffff;
-    border: 1px solid #e4e7ed;
-    border-radius: 8px;
-    padding: 10px;
+CardWidget {
+    background-color: transparent;
+    border: none;
+    border-radius: 6px;
 }
-/* 鼠标悬停在卡片上时的状态 */
-#CardWidget:hover {
-    border-color: #409eff;
+CardWidget:hover {
+    background-color: #f5f7fa;
 }
-/* 卡片内的文字标签 */
-#CardWidget QLabel {
+CardWidget QLabel {
     color: #606266;
+    font-size: 13px;
 }
 
-/* === 树状视图 (TreeViewMode) === */
 
-/* 对应对象: LauncherTreeWidget (树视图控件本身) */
-/* 参数: objectName="launcherTreeView" */
+/* === 树状视图 (TreeViewMode) - 保持不变 === */
+
 #launcherTreeView {
-    background-color: transparent; /* 透明背景，与容器融为一体 */
-    border: none; /* 无边框 */
-    outline: 0; /* 移除焦点时的虚线框 */
-    /* font-size 现已移至Python代码中，通过config.ini进行配置 */
+    background-color: transparent;
+    border: none;
+    outline: 0;
 }
-
-/* 对应对象: 树中的每一个项目 (包括分组和程序) */
 #launcherTreeView::item {
-    padding: 8px 2px; /* 垂直内边距8px，水平内边距2px */
+    padding: 8px 2px;
     border-radius: 4px;
 }
-
-/* 鼠标悬停或选中项目时的状态 */
 #launcherTreeView::item:hover,
 #launcherTreeView::item:selected {
-    background-color: #f0f0f0; /* 非常淡的灰色背景 */
-    color: #000000; /* 黑色文字 */
+    background-color: #f0f0f0;
+    color: #000000;
 }
-/* 当控件失去焦点时，保持选中项的样式不变 */
 #launcherTreeView::item:selected:!active {
     background-color: #f0f0f0;
 }
-
-/* 对应对象: 树视图控件本身，用于设置列的默认属性 */
 #launcherTreeView {
-    qproperty-alternatingRowColors: false; /* 禁用交替行颜色，以确保我们的样式生效 */
-    /* color 属性将通过Python代码动态设置，以实现更精细的控制 */
+    qproperty-alternatingRowColors: false;
 }
-
-/* 对应对象: 树中的每一个项目，用于覆盖上面的默认颜色 */
-#launcherTreeView::item {
-    /* color 属性将通过Python代码动态设置，以实现更精细的控制 */
-}
-
-/* 对应对象: 树的展开/折叠箭头 */
-/* 此处留空，完全依赖系统默认绘制，以确保箭头100%可见 */
-
-/* === 树状视图容器样式 === */
-
-/* 对应对象: 外层和内层的线框容器 (QGroupBox) */
-/* 参数: objectName="outerTreeContainer", objectName="innerTreeContainer" */
 #outerTreeContainer, #innerTreeContainer {
-    border: 1px solid #dcdfe6; /* 统一边框颜色 */
-    border-radius: 6px; /* 统一圆角 */
-    margin-top: 6px; /* 由于没有标题，可以减小顶部边距 */
+    border: 1px solid #dcdfe6;
+    border-radius: 6px;
+    margin-top: 6px;
 }
-
-/* 内层容器可以有不同的背景色以作区分 */
 #innerTreeContainer {
     background-color: #fafafa;
 }
 
-/* === 滚动条 === */
-
-/* 对应对象: QScrollBar (垂直滚动条) */
+/* === 滚动条 - 保持不变 === */
 QScrollBar:vertical {
     border: none;
-    background: #f5f5f7; /* 与主背景色一致 */
-    width: 10px; /* 滚动条宽度 */
+    background: #f5f5f7;
+    width: 10px;
     margin: 0px 0px 0px 0px;
 }
-/* 滚动条上的滑块 */
 QScrollBar::handle:vertical {
-    background: #dcdfe6; /* 滑块颜色 */
-    min-height: 20px; /* 滑块最小高度 */
-    border-radius: 5px; /* 滑块圆角 */
+    background: #dcdfe6;
+    min-height: 20px;
+    border-radius: 5px;
 }
-/* 鼠标悬停在滑块上时的状态 */
 QScrollBar::handle:vertical:hover {
     background: #c0c4cc;
 }
-/* 滚动条两端的箭头按钮 (这里设置为空) */
 QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {
     border: none;
     background: none;
 }
-/* 滚动条背景的可点击区域 (这里设置为空) */
 QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical {
     background: none;
 }

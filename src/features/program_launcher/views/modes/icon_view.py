@@ -1,76 +1,158 @@
 # desktop_center/src/features/program_launcher/views/modes/icon_view.py
 import logging
-from PySide6.QtWidgets import (QFileIconProvider, QVBoxLayout,
-                               QLabel, QWidget, QScrollArea, QFrame)
-from PySide6.QtGui import QIcon, QDragEnterEvent, QDropEvent, QDragMoveEvent
-from PySide6.QtCore import Qt, QFileInfo, QSize, QPoint, QRect
+import math
+from PySide6.QtWidgets import (QVBoxLayout, QLabel, QWidget, QScrollArea, QFrame, QGridLayout)
+from PySide6.QtGui import QDragEnterEvent, QDropEvent, QDragMoveEvent, QShowEvent
+from PySide6.QtCore import Qt, QPoint, QRect, QSize
 
 from .base_view import BaseViewMode
 from ...widgets.card_widget import CardWidget
-from ...widgets.group_header_widget import GroupHeaderWidget
 from ...services.icon_service import icon_service
 from ...widgets.menu_factory import MenuFactory
-from .flow_layout import FlowLayout
+from ...widgets.group_container_widget import GroupContainerWidget
 
 class IconViewMode(BaseViewMode):
+    # --- 布局常量 ---
+    COLUMNS = 2 
+    GROUP_INTERNAL_COLUMNS = 3
+    MAIN_SPACING = 16
+    # 【变更】定义外边距常量
+    HORIZONTAL_MARGIN = 16
+    GROUP_PADDING = 12
+    CARD_SPACING = 10
+    CARD_ASPECT_RATIO = 1.0
+
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.card_containers = {}; self.group_headers = {}
-        main_layout = QVBoxLayout(self); main_layout.setContentsMargins(0, 0, 0, 0)
-        scroll_area = QScrollArea(); scroll_area.setWidgetResizable(True)
-        scroll_area.setFrameShape(QScrollArea.Shape.NoFrame)
-        scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-        self.content_widget = QWidget(); self.content_widget.setAcceptDrops(True)
-        scroll_area.setWidget(self.content_widget)
-        self.content_layout = QVBoxLayout(self.content_widget)
-        self.content_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
-        main_layout.addWidget(scroll_area)
+        self.group_containers = {}
+        self.data_cache = {}
+        self._calculated_group_width = 0
+        self._calculated_card_size = QSize(90, 90)
+        self._initial_show_done = False 
+
+        main_layout = QVBoxLayout(self)
+        main_layout.setContentsMargins(0, 0, 0, 0)
+        
+        self.scroll_area = QScrollArea()
+        self.scroll_area.setWidgetResizable(True)
+        self.scroll_area.setFrameShape(QScrollArea.Shape.NoFrame)
+        self.scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        
+        self.content_widget = QWidget()
+        self.content_widget.setAcceptDrops(True)
+        
+        self.content_layout = QGridLayout(self.content_widget)
+        self.content_layout.setSpacing(self.MAIN_SPACING)
+        # 【核心变更】设置内容布局的内外边距，以增加边缘的留白
+        self.content_layout.setContentsMargins(self.HORIZONTAL_MARGIN, 10, self.HORIZONTAL_MARGIN, 10)
+        self.content_layout.setAlignment(Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignHCenter)
+        
+        self.scroll_area.setWidget(self.content_widget)
+        main_layout.addWidget(self.scroll_area)
+
         self.drop_indicator = QFrame(self.content_widget)
-        self.drop_indicator.setLineWidth(2); self.drop_indicator.hide()
+        self.drop_indicator.setFrameShape(QFrame.Shape.VLine)
+        self.drop_indicator.setLineWidth(3)
+        self.drop_indicator.setObjectName("dropIndicator")
+        self.drop_indicator.hide()
+
         self.setAcceptDrops(True)
 
+    def showEvent(self, event: QShowEvent):
+        """
+        在控件首次显示时，根据viewport宽度计算并固定所有尺寸，然后触发渲染。
+        这是比 resizeEvent 更可靠的触发点。
+        """
+        super().showEvent(event)
+        if not self._initial_show_done:
+            logging.info("IconViewMode is being shown for the first time. Triggering layout calculation and rendering.")
+            self._initial_show_done = True
+            self._recalculate_sizes()
+            self._render_view()
+
+    def _recalculate_sizes(self):
+        """
+        核心计算方法：根据viewport宽度，自顶向下计算并设定所有组件的固定尺寸。
+        """
+        # 宽度计算现在作用于减去了左右边距的可用空间
+        viewport_width = self.scroll_area.viewport().width()
+        logging.info(f"Calculating sizes based on viewport width: {viewport_width}px")
+
+        # 布局会自动处理边距，所以这里的计算基于完整的viewport宽度
+        # QGridLayout会从其内容矩形(contentRect)中分配空间，该矩形已排除了边距
+        group_width = (viewport_width - 
+                       (self.HORIZONTAL_MARGIN * 2) - 
+                       (self.COLUMNS - 1) * self.MAIN_SPACING) / self.COLUMNS
+                       
+        self._calculated_group_width = int(group_width)
+        logging.info(f"Calculated GroupContainer fixed width: {self._calculated_group_width}px")
+
+        internal_content_width = self._calculated_group_width - (2 * self.GROUP_PADDING)
+        card_width = (internal_content_width - (self.GROUP_INTERNAL_COLUMNS - 1) * self.CARD_SPACING) / self.GROUP_INTERNAL_COLUMNS
+        card_height = card_width / self.CARD_ASPECT_RATIO
+        self._calculated_card_size = QSize(int(card_width), int(card_height))
+        logging.info(f"Calculated CardWidget fixed size: {self._calculated_card_size.width()}x{self._calculated_card_size.height()}px")
+        
     def update_view(self, data: dict):
-        self.card_containers.clear(); self.group_headers.clear()
+        """
+        接收新数据，缓存它，并且只有在初始化完成后才立即渲染。
+        """
+        self.data_cache = data
+        if self._initial_show_done:
+            logging.info("View is already initialized, re-rendering with new data.")
+            self._render_view()
+
+    def _render_view(self):
+        """
+        真正的渲染方法，使用缓存的数据和计算好的尺寸来构建UI。
+        """
+        self.group_containers.clear()
         while self.content_layout.count():
             child = self.content_layout.takeAt(0)
-            if child.widget(): child.widget().deleteLater()
+            if child.widget():
+                child.widget().deleteLater()
 
-        groups = data.get("groups", []); programs = data.get("programs", {})
-        programs_by_group = {}
+        groups = self.data_cache.get("groups", [])
+        programs = self.data_cache.get("programs", {})
+        
+        programs_by_group = {group['id']: [] for group in groups}
         for prog_id, prog_data in programs.items():
             group_id = prog_data.get('group_id')
-            if group_id not in programs_by_group: programs_by_group[group_id] = []
-            programs_by_group[group_id].append(prog_data)
+            if group_id in programs_by_group:
+                programs_by_group[group_id].append(prog_data)
+        
         for group_id in programs_by_group:
             programs_by_group[group_id].sort(key=lambda p: p.get("order", 0))
 
-        if not groups:
-            self.content_layout.addWidget(QLabel("没有内容，请先添加分组和程序。"))
-            return
-
+        row, col = 0, 0
         for group_data in groups:
-            group_header = GroupHeaderWidget(group_data)
-            group_header.customContextMenuRequested.connect(self._on_group_context_menu)
-            self.content_layout.addWidget(group_header)
-            self.group_headers[group_data['id']] = group_header
-
-            card_container = QWidget()
-            flow_layout = FlowLayout(card_container, h_spacing=10, v_spacing=10)
-            self.card_containers[group_data['id']] = card_container
-
-            programs_in_group = programs_by_group.get(group_data['id'], [])
+            group_id = group_data['id']
+            container = GroupContainerWidget(group_data, fixed_width=self._calculated_group_width)
+            self.group_containers[group_id] = container
+            
+            container.header_widget.customContextMenuRequested.connect(self._on_group_context_menu)
+            
+            programs_in_group = programs_by_group.get(group_id, [])
             if not programs_in_group:
-                flow_layout.addWidget(QLabel("(此分组为空)"))
+                empty_label = QLabel("(此分组为空)")
+                empty_label.setStyleSheet("color: #999; padding: 10px;")
+                container.add_card(empty_label, self.CARD_SPACING)
             else:
                 for prog_data in programs_in_group:
                     icon = icon_service.get_program_icon(prog_data['path'])
-                    card = CardWidget(prog_data, icon)
+                    card = CardWidget(prog_data, icon, fixed_size=self._calculated_card_size)
                     card.doubleClicked.connect(self.item_double_clicked)
                     card.customContextMenuRequested.connect(self._on_card_context_menu)
-                    flow_layout.addWidget(card)
+                    container.add_card(card, self.CARD_SPACING)
             
-            self.content_layout.addWidget(card_container)
-        self.content_layout.addStretch()
+            self.content_layout.addWidget(container, row, col)
+            col += 1
+            if col >= self.COLUMNS:
+                col = 0
+                row += 1
+        
+        self.content_layout.setRowStretch(self.content_layout.rowCount(), 1)
+
 
     def _on_card_context_menu(self, program_id, event):
         menu = MenuFactory.create_context_menu('program', program_id, self)
@@ -81,7 +163,6 @@ class IconViewMode(BaseViewMode):
         menu.exec_(event.globalPos())
 
     def dragEnterEvent(self, event: QDragEnterEvent):
-        # Check for the unified text format
         if event.mimeData().hasText() and ":" in event.mimeData().text():
             event.acceptProposedAction()
         else:
@@ -91,22 +172,18 @@ class IconViewMode(BaseViewMode):
         self.drop_indicator.hide()
 
     def dragMoveEvent(self, event: QDragMoveEvent):
-        pos = self.content_widget.mapFrom(self, event.position().toPoint())
-        
-        # Parse the unified text format to determine drag type
+        pos_in_content = event.position().toPoint()
         mime_text = event.mimeData().text()
         drag_type, _ = mime_text.split(":", 1)
 
-        indicator_pos = None
+        indicator_rect = None
         if drag_type == "card":
-            self.drop_indicator.setFrameShape(QFrame.Shape.VLine)
-            _, _, indicator_pos = self._find_card_drop_pos(pos)
+            _, _, indicator_rect = self._find_card_drop_pos(pos_in_content)
         elif drag_type == "group":
-            self.drop_indicator.setFrameShape(QFrame.Shape.HLine)
-            _, indicator_pos = self._find_group_drop_pos(pos)
+            _, indicator_rect = self._find_group_drop_pos(pos_in_content)
         
-        if indicator_pos:
-            self.drop_indicator.setGeometry(indicator_pos)
+        if indicator_rect:
+            self.drop_indicator.setGeometry(indicator_rect)
             self.drop_indicator.show()
             event.accept()
         else:
@@ -116,11 +193,9 @@ class IconViewMode(BaseViewMode):
     def dropEvent(self, event: QDropEvent):
         self.drop_indicator.hide()
         if not event.mimeData().hasText():
-            event.ignore()
-            return
+            event.ignore(); return
 
-        # Parse the unified text format
-        pos = self.content_widget.mapFrom(self, event.position().toPoint())
+        pos = event.position().toPoint()
         mime_text = event.mimeData().text()
         drag_type, source_id = mime_text.split(":", 1)
 
@@ -129,131 +204,95 @@ class IconViewMode(BaseViewMode):
             if target_group_id is not None:
                 self.program_dropped.emit(source_id, target_group_id, target_index)
                 event.acceptProposedAction()
-            else:
-                event.ignore()
         elif drag_type == "group":
             target_index, _ = self._find_group_drop_pos(pos)
-            group_ids = list(self.group_headers.keys())
+            
+            group_ids = [self.content_layout.itemAt(i).widget().group_id for i in range(self.content_layout.count()) if self.content_layout.itemAt(i) and self.content_layout.itemAt(i).widget()]
+
             if source_id in group_ids:
                 group_ids.remove(source_id)
-                if target_index > len(group_ids):
-                    target_index = len(group_ids)
+                if target_index > len(group_ids): target_index = len(group_ids)
                 group_ids.insert(target_index, source_id)
                 self.group_order_changed.emit(group_ids)
                 event.acceptProposedAction()
-            else:
-                event.ignore()
-        else:
-            event.ignore()
-
-    def _find_card_drop_pos(self, pos_in_content: QPoint) -> tuple[str | None, int, QRect | None]:
-        """
-        计算程序卡片(Card)的拖放目标位置。
-
-        这个方法实现了两个核心功能：
-        1. 确定鼠标指针当前悬停在哪个分组的区域上。
-        2. 在确定了目标分组后，计算出卡片应该插入到该分组的哪个索引位置。
-
-        Args:
-            pos_in_content: 鼠标指针在 content_widget 坐标系中的位置。
-
-        Returns:
-            一个元组 (target_group_id, target_index, indicator_rect)。
-            如果找不到有效的目标位置，则返回 (None, -1, None)。
-        """
-        # 步骤1: 确定鼠标悬停在哪个分组的整体区域上
-        target_group_id = None
-        for gid, header in self.group_headers.items():
-            container = self.card_containers[gid]
-            # 将分组标题和其内容容器的矩形区域合并，作为该分组的完整响应区域
-            group_rect = header.geometry().united(container.geometry())
-            if group_rect.contains(pos_in_content):
-                target_group_id = gid
-                break
         
-        if target_group_id is None:
-            return None, -1, None
+        event.ignore()
 
-        # 步骤2: 在已确定的目标分组内，查找精确的插入索引
-        container = self.card_containers[target_group_id]
-        layout = container.layout()
-        # 将全局坐标转换为目标容器的局部坐标
-        local_pos = container.mapFrom(self.content_widget, pos_in_content)
+    def _find_card_drop_pos(self, pos: QPoint) -> tuple[str | None, int, QRect | None]:
+        target_container = self.content_widget.childAt(pos)
+        while target_container and not isinstance(target_container, GroupContainerWidget):
+            target_container = target_container.parentWidget()
         
-        target_index = 0
-        # 遍历容器内的所有控件，找到第一个中心点在鼠标指针右侧的卡片
-        for i in range(layout.count()):
-            widget = layout.itemAt(i).widget()
-            if not isinstance(widget, CardWidget): continue
-            if local_pos.x() < widget.geometry().center().x():
-                break
-            target_index = i + 1
+        if not target_container: return None, -1, None
 
-        # 步骤3: 计算用于视觉反馈的指示器矩形区域
+        layout = target_container.card_layout
+        local_pos = target_container.card_container.mapFrom(self.content_widget, pos)
+
+        if not layout or layout.count() == 0 or not isinstance(layout.itemAt(0).widget(), CardWidget):
+            rect = QRect(0, 0, 3, self._calculated_card_size.height())
+            final_rect_pos = target_container.card_container.mapTo(self.content_widget, rect.topLeft())
+            final_rect = QRect(final_rect_pos, rect.size())
+            return target_container.group_id, 0, final_rect
+
+        cell_width = self._calculated_card_size.width() + layout.horizontalSpacing()
+        cell_height = self._calculated_card_size.height() + layout.verticalSpacing()
+        
+        row = math.floor(local_pos.y() / cell_height) if cell_height > 0 else 0
+        col = math.floor(local_pos.x() / cell_width) if cell_width > 0 else 0
+        
+        target_index = row * self.GROUP_INTERNAL_COLUMNS + col
+        
+        card_count = sum(1 for i in range(layout.count()) if isinstance(layout.itemAt(i).widget(), CardWidget))
+        if target_index > card_count:
+            target_index = card_count
+
         rect = QRect()
-        card_widgets_exist = any(isinstance(layout.itemAt(i).widget(), CardWidget) for i in range(layout.count()))
-
-        if not card_widgets_exist:
-            # 如果分组为空，指示器显示在最左侧
-            rect.setRect(5, 5, 2, 80)
-        elif target_index < layout.count():
-            # 如果插入点在中间，指示器显示在目标卡片的左侧
-            widget = layout.itemAt(target_index).widget()
-            if isinstance(widget, CardWidget):
-                rect.setRect(widget.x() - 5, widget.y(), 2, widget.height())
+        if target_index < card_count:
+            item = layout.itemAt(target_index)
+            if item and item.widget():
+                widget = item.widget()
+                rect.setRect(widget.x() - 5, widget.y(), 3, widget.height())
         else:
-            # 如果插入点在末尾，指示器显示在最后一个卡片的右侧
-            last_card = None
-            for i in range(layout.count() - 1, -1, -1):
-                widget = layout.itemAt(i).widget()
-                if isinstance(widget, CardWidget):
-                    last_card = widget
-                    break
-            if last_card:
-                rect.setRect(last_card.x() + last_card.width() + 3, last_card.y(), 2, last_card.height())
+            if card_count > 0:
+                item = layout.itemAt(card_count - 1)
+                if item and item.widget():
+                    widget = item.widget()
+                    rect.setRect(widget.x() + widget.width() + 5, widget.y(), 3, widget.height())
+            else: # Fallback for empty group
+                rect.setRect(self.GROUP_PADDING, self.GROUP_PADDING, 3, self._calculated_card_size.height())
 
-        if not rect.isNull():
-            # 将局部坐标系的矩形转换为 content_widget 的全局坐标系
-            final_rect = QRect(container.mapTo(self.content_widget, rect.topLeft()), rect.size())
-            return target_group_id, target_index, final_rect
-            
-        # 如果上述逻辑都失败了（例如，一个空的FlowLayout），提供一个默认的返回值
-        return target_group_id, 0, QRect(container.mapTo(self.content_widget, QPoint(5,5)), QSize(2,80))
 
-    def _find_group_drop_pos(self, pos_in_content: QPoint) -> tuple[int, QRect | None]:
-        """
-        计算分组(Group)的拖放目标位置。
+        if rect.isNull():
+            return target_container.group_id, target_index, None
 
-        分组只能在垂直方向上进行重新排序。
-        此方法通过判断鼠标指针的Y坐标，来确定分组应该插入到哪个现有分组的前面。
+        final_rect_pos = target_container.card_container.mapTo(self.content_widget, rect.topLeft())
+        final_rect = QRect(final_rect_pos, rect.size())
 
-        Args:
-            pos_in_content: 鼠标指针在 content_widget 坐标系中的位置。
+        return target_container.group_id, target_index, final_rect
 
-        Returns:
-            一个元组 (target_index, indicator_rect)。
-        """
+    def _find_group_drop_pos(self, pos: QPoint) -> tuple[int, QRect | None]:
         target_index = 0
-        # 遍历所有分组，找到第一个中心点在鼠标指针下方的分组
-        for i, (gid, header) in enumerate(self.group_headers.items()):
-            container = self.card_containers[gid]
-            group_rect = header.geometry().united(container.geometry())
-            if pos_in_content.y() < group_rect.center().y():
-                break
-            target_index = i + 1
-            
-        rect = QRect()
-        if not self.group_headers:
+        min_dist = float('inf')
+        
+        if self.content_layout.count() == 0:
             return 0, None
-            
-        if target_index < len(self.group_headers):
-            # 如果插入点在中间，指示器显示在目标分组的上方
-            header = list(self.group_headers.values())[target_index]
-            rect.setRect(header.x(), header.y() - 5, self.content_widget.width() - 20, 2)
-        else:
-            # 如果插入点在末尾，指示器显示在最后一个分组的下方
-            last_header = list(self.group_headers.values())[-1]
-            last_container = self.card_containers[list(self.group_headers.keys())[-1]]
-            rect.setRect(last_header.x(), last_container.y() + last_container.height() + 5, self.content_widget.width() - 20, 2)
-            
+
+        for i in range(self.content_layout.count()):
+            item = self.content_layout.itemAt(i)
+            if item and item.widget():
+                dist = (pos - item.geometry().center()).manhattanLength()
+                if dist < min_dist:
+                    min_dist = dist
+                    target_index = i
+        
+        rect = QRect()
+        item = self.content_layout.itemAt(target_index)
+        if item and item.widget():
+            g = item.geometry()
+            if pos.x() < g.center().x():
+                rect.setRect(g.x() - 8, g.y(), 3, g.height())
+            else:
+                rect.setRect(g.right() + 5, g.y(), 3, g.height())
+                target_index += 1
+
         return target_index, rect
