@@ -5,22 +5,21 @@ from PySide6.QtCore import Qt, Signal, QSize, QMimeData
 
 class PillWidget(QFrame):
     """
-    一个“药丸”或“标签”样式的控件，用于在流式布局中显示单个程序。
-    现在支持拖拽和右键菜单，具有统一的固定宽度，并能自动截断长文本。
+    一个“药丸”或“标签”样式的控件，用于在网格布局中显示单个程序。
+    【变更】尺寸由外部动态计算并传入，不再使用内部固定的宽度。
     """
     doubleClicked = Signal(str)
     customContextMenuRequested = Signal(str, QContextMenuEvent)
 
-    FIXED_WIDTH = 160
-
-    def __init__(self, program_data: dict, icon: QIcon, parent=None):
+    def __init__(self, program_data: dict, icon: QIcon, fixed_size: QSize, parent=None):
         super().__init__(parent)
         self.setObjectName("PillWidget")
         self.program_id = program_data.get('id')
         self.program_data = program_data
-        self.drag_start_position = None # 用于拖拽判断
+        self.drag_start_position = None
         
-        self.setFixedWidth(self.FIXED_WIDTH)
+        # 【核心变更】应用由外部计算得出的固定尺寸
+        self.setFixedSize(fixed_size)
         self.setToolTip(program_data.get('path', ''))
 
         layout = QHBoxLayout(self)
@@ -49,11 +48,9 @@ class PillWidget(QFrame):
 
         drag = QDrag(self)
         mime_data = QMimeData()
-        # 复用 "card:" 标识符，代表拖拽的是一个程序项
         mime_data.setText(f"card:{self.program_id}")
         drag.setMimeData(mime_data)
 
-        # 创建一个半透明的拖拽图像
         drag_pixmap = QPixmap(self.size())
         drag_pixmap.fill(Qt.GlobalColor.transparent)
         painter = QPainter(drag_pixmap)
