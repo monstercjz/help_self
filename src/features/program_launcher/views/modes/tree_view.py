@@ -2,9 +2,9 @@
 import logging
 import os
 from PySide6.QtWidgets import (QTreeWidget, QTreeWidgetItem, QAbstractItemView,
-                               QVBoxLayout)
-from PySide6.QtGui import QIcon, QDropEvent
-from PySide6.QtCore import Qt
+                               QVBoxLayout, QHeaderView, QGroupBox, QHBoxLayout)
+from PySide6.QtGui import QIcon, QDropEvent, QFont, QResizeEvent, QColor
+from PySide6.QtCore import Qt, QSize
 
 from .base_view import BaseViewMode
 from ...services.icon_service import icon_service
@@ -75,18 +75,44 @@ class TreeViewMode(BaseViewMode):
         super().__init__(parent)
         
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setContentsMargins(10, 10, 10, 10)
+
+        # 1. 创建外层容器，它将占据100%宽度
+        outer_container = QGroupBox() # 移除标题
+        outer_container.setObjectName("outerTreeContainer") # 设置对象名
+        outer_layout = QHBoxLayout(outer_container)
+
+        # 2. 创建内层容器（宽度为50%）
+        self.tree_container = QGroupBox() # 移除标题
+        self.tree_container.setObjectName("innerTreeContainer") # 设置对象名
+        inner_layout = QVBoxLayout(self.tree_container)
         
         self.tree = LauncherTreeWidget(self)
+        self.tree.setObjectName("launcherTreeView")
         self.tree.setHeaderHidden(True)
+        self.tree.setColumnCount(2)
+        self.tree.setIndentation(20)
+
+        header = self.tree.header()
+        # --- 最终列宽策略 ---
+        # 第一列拉伸，占据所有可用空间
+        header.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
+        # 第二列根据内容自适应宽度
+        header.setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
+        header.setStretchLastSection(False)
+
         self.tree.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.tree.setDragDropMode(QAbstractItemView.DragDropMode.InternalMove)
         self.tree.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
         self.tree.setDragEnabled(True)
         self.tree.setAcceptDrops(True)
         self.tree.setDropIndicatorShown(True)
-        
-        layout.addWidget(self.tree)
+
+        # 3. 组装UI层级
+        inner_layout.addWidget(self.tree)             # 树 -> 内层容器
+        outer_layout.addWidget(self.tree_container)   # 内层容器 -> 外层布局
+        outer_layout.addStretch(1)                    # 添加弹簧以填充右侧空白
+        layout.addWidget(outer_container)             # 外层容器 -> 主布局
 
         self.tree.itemDoubleClicked.connect(self._on_item_double_clicked)
         self.tree.customContextMenuRequested.connect(self._on_context_menu)
@@ -94,6 +120,17 @@ class TreeViewMode(BaseViewMode):
     def update_view(self, data: dict):
         current_search = self.parent().search_bar.text() if self.parent() and hasattr(self.parent(), 'search_bar') else ""
         
+        # 应用从配置中读取的样式
+        config = data.get('tree_view_config', {})
+        icon_size = config.get('icon_size', 20)
+        font_size = config.get('font_size', 13)
+        
+        self.tree.setIconSize(QSize(icon_size, icon_size))
+        
+        font = self.tree.font()
+        font.setPointSize(font_size)
+        self.tree.setFont(font)
+
         self.tree.blockSignals(True)
         try:
             self.tree.clear()
@@ -108,15 +145,44 @@ class TreeViewMode(BaseViewMode):
                 programs_by_group[group_id].sort(key=lambda p: p.get("order", 0))
 
             for group_data in groups:
-                group_item = QTreeWidgetItem(self.tree, [group_data['name']])
-                group_item.setData(0, Qt.ItemDataRole.UserRole, {"id": group_data['id'], "type": "group", "name": group_data['name']})
-                group_item.setIcon(0, QIcon.fromTheme("folder"))
+                group_id = group_data['id']
+                group_programs = programs_by_group.get(group_id, [])
+                
+                # 创建分组项，并直接设置文本
+                group_item = QTreeWidgetItem(self.tree)
+                group_item.setText(0, group_data['name'])
+                group_item.setText(1, str(len(group_programs)))
+                
+                # 设置数据和标识
+                group_item.setData(0, Qt.ItemDataRole.UserRole, {"id": group_id, "type": "group", "name": group_data['name']})
                 group_item.setFlags(group_item.flags() | Qt.ItemFlag.ItemIsDropEnabled)
-                for prog_data in programs_by_group.get(group_data['id'], []):
-                    program_item = QTreeWidgetItem(group_item, [prog_data['name']])
-                    program_item.setData(0, Qt.ItemDataRole.UserRole, {"id": prog_data['id'], "type": "program", "name": prog_data['name'], "path": prog_data['path']})
+                
+                # 设置分组的特殊样式
+                font = group_item.font(0)
+                font.setWeight(QFont.Bold)
+                group_item.setFont(0, font)
+                group_item.setTextAlignment(1, Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+                
+                # 明确设置第一列（名称）的颜色
+                group_item.setForeground(0, QColor("#303133")) # 深灰色
+
+                # 设置第二列数字的颜色为更淡的灰色
+                group_item.setForeground(1, QColor("#B0B0B0"))
+                
+                # 设置第二列数字的字体大小比程序名字小3个数值
+                count_font = group_item.font(1)
+                count_font.setPointSize(self.tree.font().pointSize() - 3)
+                group_item.setFont(1, count_font)
+
+                # 添加程序子项
+                for prog_data in group_programs:
+                    program_item = QTreeWidgetItem(group_item)
+                    # 在名称前添加空格以增加与图标的距离
+                    program_item.setText(0, "   " + prog_data['name'])
                     program_item.setIcon(0, icon_service.get_program_icon(prog_data['path']))
+                    program_item.setData(0, Qt.ItemDataRole.UserRole, {"id": prog_data['id'], "type": "program", "name": prog_data['name'], "path": prog_data['path']})
                     program_item.setFlags(program_item.flags() & ~Qt.ItemFlag.ItemIsDropEnabled)
+                
                 group_item.setExpanded(True)
         finally:
             self.tree.blockSignals(False)
@@ -183,3 +249,12 @@ class TreeViewMode(BaseViewMode):
 
         menu = MenuFactory.create_context_menu(item_type, item_id, self)
         menu.exec_(self.tree.mapToGlobal(pos))
+
+    def resizeEvent(self, event: QResizeEvent):
+        """
+        重写 resizeEvent 以动态设置容器宽度为父窗口的一半。
+        """
+        super().resizeEvent(event)
+        # 减去边距，使计算更精确
+        new_width = (self.width() - self.layout().contentsMargins().left() * 2) * 0.35
+        self.tree_container.setMaximumWidth(int(new_width))

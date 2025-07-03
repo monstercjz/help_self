@@ -82,6 +82,8 @@ class LauncherModel(QObject):
     def set_data_path(self, new_path: str):
         if new_path == self.data_file: return
         self.config_service.set_option(CONFIG_SECTION, "data_file_path", new_path)
+        # 不应在此处保存整个配置文件，这会导致其他未被set的配置项丢失。
+        # 保存操作应由更高层级的应用逻辑（如退出或全局设置保存）触发。
         self.config_service.save_config()
         self.data_file = new_path
         try:

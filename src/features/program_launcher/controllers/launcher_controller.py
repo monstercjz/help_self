@@ -19,6 +19,15 @@ class LauncherController(QObject):
         self.model = model
         self.view = view
         self.context = context
+        
+        # 读取树状视图的配置，遵循项目通用模式
+        self.tree_view_icon_size = int(self.context.config_service.get_value(
+            "ProgramLauncher", "treeview_iconsize", fallback="20"
+        ))
+        self.tree_view_font_size = int(self.context.config_service.get_value(
+            "ProgramLauncher", "treeview_fontsize", fallback="10"
+        ))
+
         self._connect_signals()
         self.refresh_view()
 
@@ -31,13 +40,21 @@ class LauncherController(QObject):
         self.view.search_text_changed.connect(self.filter_view)
         self.view.change_data_path_requested.connect(self.change_data_path)
         self.view.program_dropped.connect(self.handle_program_drop)
+        # 同时监听来自两个视图的分组排序信号
         self.view.icon_view.group_order_changed.connect(self.model.reorder_groups)
+        self.view.tree_view.group_order_changed.connect(self.model.reorder_groups)
         self.model.data_changed.connect(self.refresh_view)
 
     # ... 其他方法基本保持不变 ...
     def refresh_view(self):
         logging.info("[CONTROLLER] Refreshing view from model data.")
-        self.view.rebuild_ui(self.model.get_all_data())
+        data = self.model.get_all_data()
+        # 将配置传递给视图
+        data['tree_view_config'] = {
+            'icon_size': self.tree_view_icon_size,
+            'font_size': self.tree_view_font_size
+        }
+        self.view.rebuild_ui(data)
     @Slot(str, str, int)
     def handle_program_drop(self, program_id: str, target_group_id: str, target_index: int):
         logging.info(f"[CONTROLLER] Handling program drop: prog_id={program_id}, group_id={target_group_id}, index={target_index}")
