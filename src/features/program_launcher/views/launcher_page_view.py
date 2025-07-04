@@ -100,7 +100,9 @@ class LauncherPageView(QWidget):
         view_mode_layout.addWidget(self.icon_view_btn)
         view_mode_layout.addWidget(self.flow_view_btn)
         
-        self.tree_view_btn.setChecked(True)
+        # self.tree_view_btn.setChecked(True)  # 注释掉原来的默认设置
+        self.icon_view_btn.setChecked(True) # 将图标视图设为默认
+        
         toolbar_layout.addWidget(view_mode_widget)
 
         
