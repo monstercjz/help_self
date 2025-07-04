@@ -1,9 +1,10 @@
 # desktop_center/src/features/program_launcher/widgets/card_widget.py
-from PySide6.QtWidgets import QWidget, QVBoxLayout, QLabel
+from PySide6.QtWidgets import QFrame, QVBoxLayout, QLabel
 from PySide6.QtGui import QIcon, QMouseEvent, QContextMenuEvent, QDrag, QPixmap, QPainter
 from PySide6.QtCore import Qt, Signal, QSize, QMimeData, QPoint
 
-class CardWidget(QWidget):
+# class CardWidget(QWidget):新加 修改可以实现悬停背景有颜色
+class CardWidget(QFrame):
     """
     一个独立的卡片控件，用于在图标视图中显示单个程序。
     其尺寸由外部视图动态计算并设置。
@@ -13,9 +14,12 @@ class CardWidget(QWidget):
 
     def __init__(self, program_data: dict, icon: QIcon, fixed_size: QSize, parent=None):
         super().__init__(parent)
+        #新加
+        self.setObjectName("CardWidget")
         self.program_id = program_data.get('id')
         self.program_data = program_data
-        
+        # 新加
+        self.setAutoFillBackground(True)
         # 【变更】应用由外部计算得出的固定尺寸，取代硬编码
         self.setFixedSize(fixed_size)
         self.setToolTip(program_data.get('path', ''))

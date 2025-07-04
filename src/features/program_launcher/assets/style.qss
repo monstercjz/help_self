@@ -116,17 +116,19 @@ QScrollArea {
     padding: 5px 0px;
 }
 
-CardWidget {
+#CardWidget {
     background-color: transparent;
-    border: none;
+    border: 1px solid transparent; /* Add transparent border to prevent layout shift on hover */
     border-radius: 6px;
 }
-CardWidget:hover {
-    background-color: #f5f7fa;
+#CardWidget:hover {
+    background-color: #ecf5ff;
+    border: 1px solid #c6e2ff;
 }
-CardWidget QLabel {
+#CardWidget QLabel {
     color: #606266;
     font-size: 13px;
+    background-color: transparent; /* Ensure label background is also transparent */
 }
 
 /* === 树状视图 (TreeViewMode) - 保持不变 === */
