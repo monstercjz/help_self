@@ -36,49 +36,76 @@ class LauncherPageView(QWidget):
 
     def _init_ui(self):
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(10, 10, 10, 10)
+        layout.setContentsMargins(15, 0, 15, 15)
         layout.setSpacing(10)
-        toolbar_layout = QHBoxLayout()
-        self.add_group_btn = QPushButton(QIcon.fromTheme("list-add"), " 新建分组")
-        self.add_program_btn = QPushButton(QIcon.fromTheme("document-new"), " 添加程序")
+
+        # --- 顶部工具栏 ---
+        toolbar_container = QWidget()
+        toolbar_container.setObjectName("toolbarContainer")
+        toolbar_container.setStyleSheet("#toolbarContainer { background-color: #F8F8F8; border-top: 1px solid #E0E0E0; border-bottom: 1px solid #E0E0E0; }")
+        toolbar_container.setContentsMargins(15, 10, 15, 10)
+        toolbar_container.setFixedHeight(60)
+
+        toolbar_layout = QHBoxLayout(toolbar_container)
+        toolbar_layout.setContentsMargins(0, 0, 0, 0)
+
+        # 1. 搜索框 (最左)
         self.search_bar = QLineEdit()
         self.search_bar.setPlaceholderText("搜索程序...")
         self.clear_action = self.search_bar.addAction(QIcon.fromTheme("edit-clear"), QLineEdit.ActionPosition.TrailingPosition)
         self.clear_action.setVisible(False)
-        self.settings_btn = QPushButton()
-        self.settings_btn.setIcon(QIcon.fromTheme("emblem-system"))
+        toolbar_layout.addWidget(self.search_bar)
+
+        # 2. 添加按钮
+        self.add_program_btn = QPushButton(QIcon.fromTheme("list-add"), "")
+        self.add_program_btn.setObjectName("addProgramBtn")
+        self.add_program_btn.setToolTip("添加程序")
+        self.add_group_btn = QPushButton("🗂️")
+        self.add_group_btn.setObjectName("addGroupBtn")
+        self.add_group_btn.setToolTip("新建分组")
+        toolbar_layout.addWidget(self.add_program_btn)
+        toolbar_layout.addWidget(self.add_group_btn)
+        # 4. 设置按钮 (最右)
+        self.settings_btn = QPushButton("📂")
+        self.settings_btn.setObjectName("settingsBtn")
         self.settings_btn.setToolTip("设置数据文件路径")
+        toolbar_layout.addWidget(self.settings_btn)
+
+        # 添加一个弹性空间
+        toolbar_layout.addSpacerItem(QSpacerItem(20, 20, QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum))
+
+        # 3. 视图模式切换按钮组
+        view_mode_widget = QWidget()
+        view_mode_widget.setObjectName("viewModeWidget")
+        view_mode_layout = QHBoxLayout(view_mode_widget)
+        view_mode_layout.setContentsMargins(0,0,0,0)
+        view_mode_layout.setSpacing(10)
         
-        # --- 视图切换按钮组 ---
         self.view_mode_group = QButtonGroup(self)
-        self.tree_view_btn = QPushButton(QIcon.fromTheme("view-list-tree"), "")
+        self.tree_view_btn = QPushButton("●")
         self.tree_view_btn.setToolTip("树状视图")
         self.tree_view_btn.setCheckable(True)
-        self.icon_view_btn = QPushButton(QIcon.fromTheme("view-grid"), "")
+        self.icon_view_btn = QPushButton("●")
         self.icon_view_btn.setToolTip("图标视图")
         self.icon_view_btn.setCheckable(True)
-        # 【新增】创建流式视图按钮
-        self.flow_view_btn = QPushButton(QIcon.fromTheme("view-list-icons"), "")
+        self.flow_view_btn = QPushButton("●")
         self.flow_view_btn.setToolTip("流式视图")
         self.flow_view_btn.setCheckable(True)
 
         self.view_mode_group.addButton(self.tree_view_btn, 0)
         self.view_mode_group.addButton(self.icon_view_btn, 1)
-        # 【新增】将流式视图按钮添加到按钮组
         self.view_mode_group.addButton(self.flow_view_btn, 2)
         
-        self.tree_view_btn.setChecked(True) # 默认选中树状视图
+        view_mode_layout.addWidget(self.tree_view_btn)
+        view_mode_layout.addWidget(self.icon_view_btn)
+        view_mode_layout.addWidget(self.flow_view_btn)
+        
+        self.tree_view_btn.setChecked(True)
+        toolbar_layout.addWidget(view_mode_widget)
 
-        toolbar_layout.addWidget(self.add_group_btn)
-        toolbar_layout.addWidget(self.add_program_btn)
-        toolbar_layout.addSpacerItem(QSpacerItem(20, 20, QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum))
-        toolbar_layout.addWidget(self.search_bar)
-        toolbar_layout.addWidget(self.tree_view_btn)
-        toolbar_layout.addWidget(self.icon_view_btn)
-        # 【新增】将流式视图按钮添加到工具栏
-        toolbar_layout.addWidget(self.flow_view_btn)
-        toolbar_layout.addWidget(self.settings_btn)
-        layout.addLayout(toolbar_layout)
+        
+
+        layout.addWidget(toolbar_container)
 
         # --- 视图堆叠窗口 ---
         self.stacked_widget = QStackedWidget()

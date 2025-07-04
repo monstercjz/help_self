@@ -75,7 +75,7 @@ class TreeViewMode(BaseViewMode):
         super().__init__(parent)
         
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(10, 10, 10, 10)
+        layout.setContentsMargins(0, 0, 0, 0)
 
         # 1. 创建外层容器，它将占据100%宽度
         outer_container = QGroupBox() # 移除标题

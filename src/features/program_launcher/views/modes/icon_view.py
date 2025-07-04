@@ -44,7 +44,7 @@ class IconViewMode(BaseViewMode):
         self.content_layout = QGridLayout(self.content_widget)
         self.content_layout.setSpacing(self.MAIN_SPACING)
         # 【核心变更】设置内容布局的内外边距，以增加边缘的留白
-        self.content_layout.setContentsMargins(self.HORIZONTAL_MARGIN, 10, self.HORIZONTAL_MARGIN, 10)
+        self.content_layout.setContentsMargins(self.HORIZONTAL_MARGIN, 0, self.HORIZONTAL_MARGIN, 0)
         self.content_layout.setAlignment(Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignHCenter)
         
         self.scroll_area.setWidget(self.content_widget)

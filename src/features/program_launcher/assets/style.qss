@@ -5,7 +5,8 @@
     font-family: "Microsoft YaHei UI", "Segoe UI", sans-serif;
 }
 
-/* === 顶部工具栏 === */
+
+
 QPushButton {
     background-color: #ffffff;
     border: 1px solid #dcdfe6;
@@ -40,6 +41,53 @@ QLineEdit {
 }
 QLineEdit:focus {
     border-color: #409eff;
+}
+
+/* --- 功能按钮（添加、设置）的扁平化样式 --- */
+#addGroupBtn, #addProgramBtn, #settingsBtn {
+    background-color: transparent;
+    border: none;
+    padding: 6px;
+    border-radius: 4px;
+    font-size: 21px;
+    font-weight: bold;
+}
+
+#addGroupBtn:hover, #addProgramBtn:hover, #settingsBtn:hover {
+    background-color: #a0cfff;
+}
+
+
+
+
+/* --- 视图模式切换按钮 --- */
+#viewModeWidget {
+    border: 1px dotted #E0E0E0;
+    border-radius: 6px;
+    padding: 2px;
+}
+
+#viewModeWidget QPushButton {
+    border: none;
+    background-color: transparent;
+    color: #c0c4cc; /* 未选中时的颜色 */
+    font-size: 22px; /* 调整圆点大小 */
+    padding: 0px;
+    min-width: 20px; /* 固定宽度 */
+    max-width: 20px; /* 固定宽度 */
+    min-height: 20px; /* 固定高度 */
+    max-height: 20px; /* 固定高度 */
+    border-radius: 10px; /* 使背景成为圆形 */
+}
+
+#viewModeWidget QPushButton:hover {
+    color: #a0cfff; /* 悬停时颜色 */
+    background-color: transparent;
+}
+
+#viewModeWidget QPushButton:checked {
+    color: #409eff; /* 选中时颜色 */
+    background-color: transparent;
 }
 
 /* === 视图区域 === */
@@ -105,8 +153,8 @@ CardWidget QLabel {
 }
 #outerTreeContainer, #innerTreeContainer {
     border: 1px solid #dcdfe6;
-    border-radius: 6px;
-    margin-top: 6px;
+    
+    
 }
 #innerTreeContainer {
     background-color: #fafafa;

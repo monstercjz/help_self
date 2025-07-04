@@ -45,7 +45,7 @@ class FlowViewMode(BaseViewMode):
         self.view_layout = QVBoxLayout(self.content_widget)
         self.view_layout.setSpacing(self.MAIN_SPACING)
         self.view_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
-        self.view_layout.setContentsMargins(self.HORIZONTAL_MARGIN, 10, self.HORIZONTAL_MARGIN, 10)
+        self.view_layout.setContentsMargins(self.HORIZONTAL_MARGIN, 0, self.HORIZONTAL_MARGIN, 0)
         
         self.scroll_area.setWidget(self.content_widget)
         main_layout.addWidget(self.scroll_area)
