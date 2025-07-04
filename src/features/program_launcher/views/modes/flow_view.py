@@ -18,10 +18,9 @@ class FlowViewMode(BaseViewMode):
     COLUMNS = 4
     MAIN_SPACING = 15
     GROUP_PADDING = 15
-    PILL_H_SPACING = 10
+    PILL_H_SPACING = 25
     PILL_V_SPACING = 10
-    PILL_ASPECT_RATIO = 0.25
-    # 【新增】用于水平居中的边距常量
+    PILL_ASPECT_RATIO = 0.35
     HORIZONTAL_MARGIN = 16
 
     def __init__(self, parent=None):
@@ -30,7 +29,6 @@ class FlowViewMode(BaseViewMode):
         
         self.data_cache = {}
         self._calculated_pill_size = QSize(160, 40)
-        # 【新增】存储分组卡片的固定宽度
         self._calculated_group_block_width = 0
         self._initial_show_done = False 
 
@@ -47,7 +45,6 @@ class FlowViewMode(BaseViewMode):
         self.view_layout = QVBoxLayout(self.content_widget)
         self.view_layout.setSpacing(self.MAIN_SPACING)
         self.view_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
-        # 【新增】为父布局增加边距，以便内容可以居中
         self.view_layout.setContentsMargins(self.HORIZONTAL_MARGIN, 10, self.HORIZONTAL_MARGIN, 10)
         
         self.scroll_area.setWidget(self.content_widget)
@@ -68,20 +65,18 @@ class FlowViewMode(BaseViewMode):
     def _recalculate_sizes(self):
         viewport_width = self.scroll_area.viewport().width()
         content_padding = self.view_layout.contentsMargins().left() + self.view_layout.contentsMargins().right()
-        available_width = viewport_width - content_padding
+        
+        # 【核心修复】改变计算顺序和基准
+        # 1. 先计算 GroupBlock 的固定宽度，它依赖于 viewport
+        self._calculated_group_block_width = viewport_width - content_padding
+        logging.info(f"FlowViewMode calculated group block fixed width: {self._calculated_group_block_width}px")
 
-        # 【核心修复】计算逻辑调整
-        # 1. 计算 PillWidget 的尺寸
-        pill_width = (available_width - (self.COLUMNS - 1) * self.PILL_H_SPACING) / self.COLUMNS
+        # 2. 然后，以 GroupBlock 的内部可用空间为基准，计算 PillWidget 的尺寸
+        group_block_internal_width = self._calculated_group_block_width - (self.GROUP_PADDING * 2)
+        pill_width = (group_block_internal_width - (self.PILL_H_SPACING * (self.COLUMNS - 1))) / self.COLUMNS
         pill_height = pill_width * self.PILL_ASPECT_RATIO
         self._calculated_pill_size = QSize(int(pill_width), int(pill_height))
         logging.info(f"FlowViewMode calculated pill size: {self._calculated_pill_size}")
-
-        # 2. 基于 PillWidget 的尺寸，反向计算出 GroupBlock 的固定宽度
-        group_block_internal_width = (self._calculated_pill_size.width() * self.COLUMNS) + \
-                                     (self.PILL_H_SPACING * (self.COLUMNS - 1))
-        self._calculated_group_block_width = group_block_internal_width + (self.GROUP_PADDING * 2)
-        logging.info(f"FlowViewMode calculated group block fixed width: {self._calculated_group_block_width}")
 
 
     def update_view(self, data: dict):
@@ -113,12 +108,12 @@ class FlowViewMode(BaseViewMode):
             
             group_block = QFrame()
             group_block.setObjectName("FlowGroupBlock")
-            # 【核心修复】为分组卡片设置固定的宽度
             group_block.setFixedWidth(self._calculated_group_block_width)
             
             group_block_layout = QVBoxLayout(group_block)
             group_block_layout.setContentsMargins(self.GROUP_PADDING, self.GROUP_PADDING, self.GROUP_PADDING, self.GROUP_PADDING)
-            group_block_layout.setSpacing(15)
+            # 【核心变更】减小标题与内容之间的垂直间距
+            group_block_layout.setSpacing(5)
 
             group_title = FlowGroupHeaderWidget(group_data)
             group_block_layout.addWidget(group_title)
@@ -128,6 +123,8 @@ class FlowViewMode(BaseViewMode):
             grid_layout = QGridLayout(pills_container)
             grid_layout.setHorizontalSpacing(self.PILL_H_SPACING)
             grid_layout.setVerticalSpacing(self.PILL_V_SPACING)
+            # 【核心修复】为内容列右侧的列设置一个大于0的伸缩因子，将所有内容推向左侧。
+            grid_layout.setColumnStretch(self.COLUMNS, 1)
             
             self.group_widgets_map[group_id] = (group_title, pills_container)
             
@@ -151,7 +148,6 @@ class FlowViewMode(BaseViewMode):
                         row += 1
 
             group_block_layout.addWidget(pills_container)
-            # 添加到主布局，并设置居中对齐
             self.view_layout.addWidget(group_block, 0, Qt.AlignmentFlag.AlignHCenter)
         
         self.view_layout.addStretch(1)
@@ -288,7 +284,6 @@ class FlowViewMode(BaseViewMode):
 
         item_at_index = grid_layout.itemAtPosition(row, col)
         if not item_at_index and target_index == card_count and card_count > 0:
-            # 拖到行末尾
             item_at_index = grid_layout.itemAt(card_count - 1)
 
         if item_at_index and item_at_index.widget():

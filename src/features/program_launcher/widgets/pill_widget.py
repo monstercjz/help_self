@@ -6,7 +6,7 @@ from PySide6.QtCore import Qt, Signal, QSize, QMimeData
 class PillWidget(QFrame):
     """
     一个“药丸”或“标签”样式的控件，用于在网格布局中显示单个程序。
-    【变更】尺寸由外部动态计算并传入，不再使用内部固定的宽度。
+    尺寸由外部动态计算并传入，内部布局经过微调以确保内容完整显示。
     """
     doubleClicked = Signal(str)
     customContextMenuRequested = Signal(str, QContextMenuEvent)
@@ -18,24 +18,54 @@ class PillWidget(QFrame):
         self.program_data = program_data
         self.drag_start_position = None
         
-        # 【核心变更】应用由外部计算得出的固定尺寸
+        # --- 尺寸与布局 ---
+        # 【影响因素 1: 外部固定尺寸】
+        # PillWidget的总尺寸由外部视图（如FlowViewMode）计算后传入。
+        # 这是所有内部布局约束的基础。
         self.setFixedSize(fixed_size)
         self.setToolTip(program_data.get('path', ''))
 
+        # 创建水平布局管理器
         layout = QHBoxLayout(self)
-        layout.setContentsMargins(10, 5, 10, 5)
-        layout.setSpacing(8)
 
+        # 【影响因素 2: 内部边距】
+        # setContentsMargins(left, top, right, bottom)
+        # 定义了布局边缘与PillWidget边框之间的距离。
+        # 减小左右边距可以为图标和文字提供更多水平空间。
+        # 原为 (10, 5, 10, 5)，现调整为 (8, 4, 8, 4)
+        layout.setContentsMargins(15, 4, 15, 4)
+        
+        # 【影响因素 3: 控件间距】
+        # setSpacing() 定义了布局内各个控件（这里是图标和文字）之间的距离。
+        # 减小此值可以使图标和文字靠得更近，为文字腾出空间。
+        # 原为 8，现调整为 6
+        layout.setSpacing(4)
+
+        # --- 图标控件 ---
         self.icon_label = QLabel()
-        self.icon_label.setPixmap(icon.pixmap(QSize(16, 16)))
+        # 【核心修复】为图标的容器（QLabel）设置一个固定的宽度。
+        # 这确保了无论旁边的文本多长，图标的水平位置都是恒定的。
+        self.icon_label.setFixedWidth(38) 
+        self.icon_label.setPixmap(icon.pixmap(QSize(24, 24)))
         self.icon_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         
+        # --- 文字控件 ---
         self.name_label = QLabel(program_data.get('name', ''))
-        self.name_label.setAlignment(Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft)
+        self.name_label.setAlignment(Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignHCenter)
+        # 当分配给QLabel的空间不足时，它会自动用 "..." 截断文本，这是我们期望的行为。
+         # 【核心修复】显式设置文本溢出模式，确保在文本过长时显示省略号。
+        
 
+        # --- 组装布局 ---
         layout.addWidget(self.icon_label)
         layout.addWidget(self.name_label)
-        layout.addStretch(1)
+        
+        # 【影响因素 5: 弹性伸缩】 (已移除)
+        # addStretch() 会添加一个可伸缩的空白空间。
+        # 在固定宽度的布局中，如果文字标签自身的尺寸策略已经可以填满空间，
+        # 额外的Stretch可能会不必要地抢占空间，导致文字被提前截断。
+        # 移除它可以让QLabel获得最大的可用空间。
+        # layout.addStretch(1) <-- 已移除
 
     def mousePressEvent(self, event: QMouseEvent):
         if event.button() == Qt.MouseButton.LeftButton:

@@ -112,9 +112,9 @@ CardWidget QLabel {
     background-color: #fafafa;
 }
 
-/* === 【变更】流式视图 (FlowViewMode) 样式 - 美化版 === */
-#FlowViewMode QWidget { /* 设置 content_widget 的内边距 */
-    padding: 10px;
+/* === 流式视图 (FlowViewMode) 样式 - 美化版 === */
+#FlowViewMode  QWidget {
+    padding: 1px;
 }
 
 /* 分组的总容器卡片 */
@@ -122,18 +122,18 @@ CardWidget QLabel {
     background-color: #ffffff;
     border: 1px solid #EBEEF5;
     border-radius: 8px;
-    padding: 15px;
-    margin-bottom: 15px; /* 组间距 */
+    padding: 1px;
+    margin-bottom: 10px;
 }
 
 /* 分组标题 */
-#FlowViewMode #groupTitle {
-    font-size: 16px;
+/* 【核心修复】使用后代选择器直接 targeting QLabel */
+#FlowViewMode #groupTitle QLabel {
+    font-size: 15px;
     font-weight: bold;
     color: #303133;
     margin: 0;
     padding: 0;
-    border-bottom: none; /* 移除旧样式 */
 }
 
 /* “分组为空”的提示文本 */
