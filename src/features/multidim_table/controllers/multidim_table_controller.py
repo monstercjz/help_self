@@ -78,7 +78,7 @@ class MultidimTableController(QObject):
         # 连接设计器信号
         designer.add_column_requested.connect(lambda col_name: self._on_add_column(designer, table_name, col_name))
         designer.delete_column_requested.connect(lambda col_name: self._on_delete_column(designer, table_name, col_name))
-        designer.rename_column_requested.connect(lambda old, new: self._on_rename_column(designer, table_name, old, new))
+        designer.change_column_requested.connect(lambda old_name, new_name, new_type: self._on_change_column(designer, table_name, old_name, new_name, new_type))
         designer.add_row_requested.connect(lambda: self._on_add_row(designer))
         designer.delete_row_requested.connect(lambda rows: self._on_delete_rows(designer, rows))
         designer.save_data_requested.connect(lambda df: self._on_save_data(table_name, df))
@@ -142,10 +142,40 @@ class MultidimTableController(QObject):
         if not success:
             self._db_view.show_error("重命名失败", f"无法重命名表: {err}")
 
-    def _on_rename_column(self, designer, table_name, old_name, new_name):
-        success, err = self._model.rename_column(table_name, old_name, new_name)
-        if success:
-            # 重新加载数据和结构以确保UI完全同步
+    def _on_change_column(self, designer, table_name, old_name, new_name, new_type):
+        # 检查字段类型是否改变
+        schema, _ = self._model.get_table_schema(table_name)
+        old_type = next((col['type'] for col in schema if col['name'] == old_name), None)
+
+        type_changed = (old_type != new_type)
+        name_changed = (old_name != new_name)
+
+        if not type_changed and not name_changed:
+            return # 没有变化
+
+        final_success = True
+        error_message = ""
+
+        # 1. 如果类型改变，则重建表
+        if type_changed:
+            success, err = self._model.change_column_type(table_name, old_name, new_type)
+            if not success:
+                final_success = False
+                error_message += f"更改类型失败: {err}\n"
+        
+        # 2. 如果名称改变，则重命名
+        # 如果类型已改变，新名称应在新表上操作，但我们的模型已处理
+        # 如果类型未改变，则在原表上操作
+        if name_changed and final_success:
+            # 如果类型也变了，重命名操作需要针对新列名
+            current_name = old_name if not type_changed else old_name
+            success, err = self._model.rename_column(table_name, current_name, new_name)
+            if not success:
+                final_success = False
+                error_message += f"重命名失败: {err}\n"
+
+        # 3. 刷新UI
+        if final_success:
             self._model.load_from_db(table_name)
             schema, _ = self._model.get_table_schema(table_name)
             headers = self._model._original_df.columns.tolist()
@@ -153,4 +183,8 @@ class MultidimTableController(QObject):
             designer.set_schema(schema)
             designer.set_data(headers, data)
         else:
-            designer.show_error("重命名失败", f"无法重命名字段: {err}")
+            designer.show_error("修改字段失败", error_message)
+
+    def _on_rename_column(self, designer, table_name, old_name, new_name):
+        # 此方法已被 _on_change_column 替代
+        pass

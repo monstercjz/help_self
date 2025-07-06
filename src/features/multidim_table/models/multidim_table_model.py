@@ -230,6 +230,55 @@ class MultidimTableModel(QObject):
         except Exception as e:
             return False, str(e)
 
+    def change_column_type(self, table_name: str, column_name: str, new_type: str):
+        """更改表中列的数据类型（通过重建表实现）。"""
+        try:
+            if not self.conn: return False, "数据库未连接。"
+            
+            # 1. 获取当前表结构
+            cursor = self.conn.cursor()
+            cursor.execute(f'PRAGMA table_info("{table_name}")')
+            columns_info = cursor.fetchall()
+            
+            # 2. 创建新的表结构定义
+            new_columns_defs = []
+            column_names = []
+            for col in columns_info:
+                name = col[1]
+                ctype = col[2]
+                if name == column_name:
+                    new_columns_defs.append(f'"{name}" {new_type}')
+                else:
+                    new_columns_defs.append(f'"{name}" {ctype}')
+                column_names.append(f'"{name}"')
+
+            new_table_name = f"{table_name}_new"
+            columns_def_str = ", ".join(new_columns_defs)
+            columns_names_str = ", ".join(column_names)
+
+            # 3. 事务开始
+            cursor.execute("BEGIN TRANSACTION;")
+            
+            # 4. 创建新表
+            cursor.execute(f'CREATE TABLE "{new_table_name}" ({columns_def_str})')
+            
+            # 5. 复制数据
+            cursor.execute(f'INSERT INTO "{new_table_name}" ({columns_names_str}) SELECT {columns_names_str} FROM "{table_name}"')
+            
+            # 6. 删除旧表
+            cursor.execute(f'DROP TABLE "{table_name}"')
+            
+            # 7. 重命名新表
+            cursor.execute(f'ALTER TABLE "{new_table_name}" RENAME TO "{table_name}"')
+            
+            # 8. 提交事务
+            self.conn.commit()
+            
+            return True, None
+        except Exception as e:
+            self.conn.rollback()
+            return False, str(e)
+
     def rename_column(self, table_name: str, old_name: str, new_name: str):
         """重命名表中的一个列。"""
         try:
