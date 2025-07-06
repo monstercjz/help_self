@@ -5,20 +5,20 @@
             "name": "文件管理"
         },
         {
-            "id": "d21209bf-7676-4763-9425-4f17edc5db61",
-            "name": "通讯工具"
-        },
-        {
             "id": "7ad2f478-04eb-463c-9f26-d44c5ce1f3d7",
             "name": "常用工具"
         },
         {
-            "id": "df5987a1-7c2d-450c-b062-8236b5514ee7",
-            "name": "系统工具"
+            "id": "d21209bf-7676-4763-9425-4f17edc5db61",
+            "name": "通讯工具"
         },
         {
             "id": "ff5f4b4a-16e3-4fc0-8703-58c3fe01b201",
             "name": "编程相关"
+        },
+        {
+            "id": "df5987a1-7c2d-450c-b062-8236b5514ee7",
+            "name": "系统工具"
         },
         {
             "id": "63fbd625-ec80-498b-a44a-815d5796e28a",
@@ -31,67 +31,67 @@
             "group_id": "562f0a8e-a94a-44e7-9cd1-1617696b97a1",
             "name": "Ccleaner",
             "path": "D:/software/CCleaner-Pro-6.18.10824-x64-Plus/CCleaner/CCleaner.exe",
-            "order": 1
+            "order": 6
         },
         "54d84f6e-3d02-4254-a875-e14c9b4d47ed": {
             "id": "54d84f6e-3d02-4254-a875-e14c9b4d47ed",
             "group_id": "562f0a8e-a94a-44e7-9cd1-1617696b97a1",
-            "name": "Cpuz1111",
+            "name": "Cpuz",
             "path": "D:/software/cpu-z_2.01-cn/cpuz_x64.exe",
-            "order": 0
+            "order": 7
         },
         "dfb4d832-33ff-4dc0-b14c-8150cf0aa0e5": {
             "id": "dfb4d832-33ff-4dc0-b14c-8150cf0aa0e5",
             "group_id": "562f0a8e-a94a-44e7-9cd1-1617696b97a1",
             "name": "QQ",
             "path": "C:/Program Files/Tencent/QQNT/QQ.exe",
-            "order": 3
+            "order": 4
         },
         "07606ebb-16f3-4332-b377-72ea9fc633f1": {
             "id": "07606ebb-16f3-4332-b377-72ea9fc633f1",
             "group_id": "562f0a8e-a94a-44e7-9cd1-1617696b97a1",
             "name": "ev",
             "path": "C:/Program Files/Everything/Everything.exe",
-            "order": 2
+            "order": 3
         },
         "e83694ba-7fe3-4317-9f02-3c9ee9a0e007": {
             "id": "e83694ba-7fe3-4317-9f02-3c9ee9a0e007",
-            "group_id": "d21209bf-7676-4763-9425-4f17edc5db61",
+            "group_id": "562f0a8e-a94a-44e7-9cd1-1617696b97a1",
             "name": "Aria2",
             "path": "D:/software/cmder/Cmder.exe",
-            "order": 0
+            "order": 5
         },
         "64a8abee-2efb-40d7-a174-5a6007db0a85": {
             "id": "64a8abee-2efb-40d7-a174-5a6007db0a85",
-            "group_id": "d21209bf-7676-4763-9425-4f17edc5db61",
+            "group_id": "562f0a8e-a94a-44e7-9cd1-1617696b97a1",
             "name": "Geek",
             "path": "D:/software/geek/geek.exe",
             "order": 2
         },
         "e8bbe868-2809-4ee6-a503-ecc08f102486": {
             "id": "e8bbe868-2809-4ee6-a503-ecc08f102486",
-            "group_id": "562f0a8e-a94a-44e7-9cd1-1617696b97a1",
+            "group_id": "7ad2f478-04eb-463c-9f26-d44c5ce1f3d7",
             "name": "Hwinfo64",
             "path": "D:/software/hwi_736/HWiNFO64.exe",
-            "order": 4
+            "order": 1
         },
         "91767d8d-ac6f-4e2c-a18b-4f85e836d29a": {
             "id": "91767d8d-ac6f-4e2c-a18b-4f85e836d29a",
-            "group_id": "562f0a8e-a94a-44e7-9cd1-1617696b97a1",
+            "group_id": "7ad2f478-04eb-463c-9f26-d44c5ce1f3d7",
             "name": "Windowsterminal",
             "path": "D:/software/Microsoft.WindowsTerminal_1.21.3231.0_x64/terminal-1.21.3231.0/WindowsTerminal.exe",
-            "order": 5
+            "order": 0
         },
         "74786718-5c6b-4968-bb7b-fcb6fb98b6c6": {
             "id": "74786718-5c6b-4968-bb7b-fcb6fb98b6c6",
             "group_id": "562f0a8e-a94a-44e7-9cd1-1617696b97a1",
             "name": "Vdf.Gui",
             "path": "D:/software/App-win-x64/VDF.GUI.exe",
-            "order": 6
+            "order": 0
         },
         "c2bff24e-9b57-4eee-aa29-26df4caf5214": {
             "id": "c2bff24e-9b57-4eee-aa29-26df4caf5214",
-            "group_id": "d21209bf-7676-4763-9425-4f17edc5db61",
+            "group_id": "562f0a8e-a94a-44e7-9cd1-1617696b97a1",
             "name": "Fscapture",
             "path": "D:/software/FSCaptureSetup10.4/FSCapture.exe",
             "order": 1
