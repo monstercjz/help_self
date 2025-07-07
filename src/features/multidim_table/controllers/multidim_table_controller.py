@@ -400,13 +400,23 @@ class MultidimTableController(QObject):
             designer.show_status_message("已加载全部数据，现在可以编辑和保存。", 5000)
             # 临时消息消失后，确保总行数持久显示
             QTimer.singleShot(5000, lambda: designer.status_bar.showMessage(f"总行数: {self.total_rows}"))
+            designer.setWindowTitle(f"设计表: {designer.table_name}") # 切换到全量模式时，移除未保存提示
         else:
             # 返回分页模式
             self.current_page = 1
+            # 重新获取总行数和总页数，确保与数据库同步
+            self.total_rows, err = self._model.get_total_row_count(self.current_table_name)
+            if err:
+                designer.show_error("错误", f"无法获取总行数: {err}")
+                return
+            self.total_pages = (self.total_rows + self.page_size - 1) // self.page_size
+            if self.total_pages == 0: self.total_pages = 1
+
             self._load_page_data(designer)
             designer.show_status_message("已返回分页浏览模式。", 3000)
             # 临时消息消失后，确保总行数持久显示
             QTimer.singleShot(3000, lambda: designer.status_bar.showMessage(f"总行数: {self.total_rows}"))
+            designer.setWindowTitle(f"设计表: {designer.table_name}") # 移除未保存提示
         
         # 更新UI状态
         designer.update_pagination_controls(self.current_page, self.total_pages, self.is_full_data_mode)
