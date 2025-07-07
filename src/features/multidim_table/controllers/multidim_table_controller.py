@@ -97,7 +97,8 @@ class MultidimTableController(QObject):
 
         # 连接设计器信号
         designer.page_changed.connect(self._on_page_changed)
-        designer.analysis_requested.connect(self._on_analyze_column)
+        # designer.analysis_requested.connect(self._on_analyze_column) # 旧的单字段分析信号，暂时注释掉
+        designer.pivot_table_requested.connect(self._on_pivot_table_requested) # 连接新的多字段分析信号
         designer.toggle_full_data_mode_requested.connect(self._on_toggle_full_data_mode)
         designer.add_column_requested.connect(lambda col_name: self._on_add_column(designer, table_name, col_name))
         designer.delete_column_requested.connect(lambda col_name: self._on_delete_column(designer, table_name, col_name))
@@ -366,6 +367,26 @@ class MultidimTableController(QObject):
         except Exception as e:
             designer.display_analysis_result(f"分析时发生错误: {e}")
     
+    def _on_pivot_table_requested(self, pivot_config):
+        """处理透视表分析请求。"""
+        designer = None
+        for widget in self._db_view.parent().findChildren(TableDesignerView):
+            if widget.isVisible() and widget.table_name == self.current_table_name:
+                designer = widget
+                break
+        if not designer:
+            return
+
+        if self.analysis_df.empty:
+            designer.display_analysis_result("请先加载数据进行分析。")
+            return
+
+        success, result_df, err = self._model.create_pivot_table_from_df(self.analysis_df, pivot_config)
+        if success:
+            designer.display_analysis_result(result_df.to_string())
+        else:
+            designer.display_analysis_result(f"透视表分析失败: {err}")
+
     def _load_last_db(self):
         """加载上次成功打开的数据库。"""
         import os

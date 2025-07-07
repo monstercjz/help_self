@@ -24,8 +24,9 @@ class TableDesignerView(QDialog):
     import_requested = Signal(str)
     export_requested = Signal(str)
     page_changed = Signal(int) # direction: 1 for next, -1 for prev
-    analysis_requested = Signal(str) # column name
+    analysis_requested = Signal(str) # column name (deprecated, will be removed)
     toggle_full_data_mode_requested = Signal()
+    pivot_table_requested = Signal(object) # 新增信号，用于发送透视表配置
 
     def __init__(self, table_name, parent=None):
         super().__init__(parent)
@@ -176,21 +177,70 @@ class TableDesignerView(QDialog):
         layout.addWidget(self.column_list_widget)
 
     def setup_analysis_tab(self, layout):
-        """设置数据分析选项卡的用户界面。"""
-        # --- Top control bar ---
-        top_bar_layout = QHBoxLayout()
-        top_bar_layout.addWidget(QLabel("选择分析字段:"))
-        self.analysis_column_combo = QComboBox()
-        self.analysis_column_combo.currentTextChanged.connect(self.analysis_requested)
-        top_bar_layout.addWidget(self.analysis_column_combo)
-        top_bar_layout.addStretch()
-        layout.addLayout(top_bar_layout)
+        """设置数据分析选项卡的用户界面，支持多字段联合分析。"""
+        main_h_layout = QHBoxLayout()
 
-        # --- Analysis Result Display ---
+        # 左侧：可用字段列表
+        left_v_layout = QVBoxLayout()
+        left_v_layout.addWidget(QLabel("可用字段:"))
+        self.available_fields_list = QListWidget()
+        self.available_fields_list.setDragEnabled(True)
+        self.available_fields_list.setDragDropMode(QListWidget.DragDrop)
+        self.available_fields_list.setDefaultDropAction(Qt.MoveAction)
+        self.available_fields_list.setSelectionMode(QAbstractItemView.ExtendedSelection) # 允许多选和拖放
+        left_v_layout.addWidget(self.available_fields_list)
+        main_h_layout.addLayout(left_v_layout)
+
+        # 中间：行、列、值字段区域
+        center_v_layout = QVBoxLayout()
+
+        # 行字段
+        center_v_layout.addWidget(QLabel("行字段 (Rows): <small>（将源数据字段拖放到此处，作为透视表的行索引）</small>"))
+        self.rows_fields_list = QListWidget()
+        self.rows_fields_list.setAcceptDrops(True)
+        self.rows_fields_list.setDropIndicatorShown(True)
+        self.rows_fields_list.setDragDropMode(QListWidget.DragDrop)
+        self.rows_fields_list.setDefaultDropAction(Qt.MoveAction)
+        self.rows_fields_list.setSelectionMode(QAbstractItemView.ExtendedSelection) # 允许多选和拖放
+        center_v_layout.addWidget(self.rows_fields_list)
+
+        # 列字段
+        center_v_layout.addWidget(QLabel("列字段 (Columns): <small>（将源数据字段拖放到此处，作为透视表的列索引）</small>"))
+        self.columns_fields_list = QListWidget()
+        self.columns_fields_list.setAcceptDrops(True)
+        self.columns_fields_list.setDropIndicatorShown(True)
+        self.columns_fields_list.setDragDropMode(QListWidget.DragDrop)
+        self.columns_fields_list.setDefaultDropAction(Qt.MoveAction)
+        self.columns_fields_list.setSelectionMode(QAbstractItemView.ExtendedSelection) # 允许多选和拖放
+        center_v_layout.addWidget(self.columns_fields_list)
+
+        # 值字段
+        center_v_layout.addWidget(QLabel("值字段 (Values): <small>（将数值字段拖放到此处进行聚合计算）</small>"))
+        self.values_fields_list = QListWidget()
+        self.values_fields_list.setAcceptDrops(True)
+        self.values_fields_list.setDropIndicatorShown(True)
+        self.values_fields_list.setDragDropMode(QListWidget.DragDrop)
+        self.values_fields_list.setDefaultDropAction(Qt.MoveAction)
+        self.values_fields_list.setSelectionMode(QAbstractItemView.ExtendedSelection) # 允许多选和拖放
+        center_v_layout.addWidget(self.values_fields_list)
+
+        # 分析按钮
+        self.analyze_button = QPushButton("执行分析")
+        self.analyze_button.clicked.connect(self._on_analyze_data) # 连接到新的槽函数
+        center_v_layout.addWidget(self.analyze_button)
+
+        main_h_layout.addLayout(center_v_layout)
+
+        # 右侧：分析结果显示
+        right_v_layout = QVBoxLayout()
+        right_v_layout.addWidget(QLabel("分析结果:"))
         self.analysis_result_display = QTextEdit()
         self.analysis_result_display.setReadOnly(True)
-        self.analysis_result_display.setFontFamily("Courier New") # Use a monospaced font
-        layout.addWidget(self.analysis_result_display)
+        self.analysis_result_display.setFontFamily("Courier New")
+        right_v_layout.addWidget(self.analysis_result_display)
+        main_h_layout.addLayout(right_v_layout)
+
+        layout.addLayout(main_h_layout)
 
     def set_data(self, headers, data):
         self.data_table_model.clear()
@@ -338,12 +388,28 @@ class TableDesignerView(QDialog):
         """在状态栏显示一条临时消息。"""
         self.status_bar.showMessage(message, timeout)
 
+    def _on_analyze_data(self):
+        """收集透视表配置并发出信号。"""
+        rows = [self.rows_fields_list.item(i).text() for i in range(self.rows_fields_list.count())]
+        columns = [self.columns_fields_list.item(i).text() for i in range(self.columns_fields_list.count())]
+        values = [self.values_fields_list.item(i).text() for i in range(self.values_fields_list.count())]
+        
+        # 暂时只支持默认聚合函数 'sum'，后续可以扩展UI让用户选择
+        # 这里需要一个更复杂的结构来存储值字段和其对应的聚合函数
+        # 暂时简化为只传递字段名，聚合函数在控制器中默认处理
+        
+        pivot_config = {
+            "rows": rows,
+            "columns": columns,
+            "values": values,
+            "aggfunc": "sum" # 默认聚合函数
+        }
+        self.pivot_table_requested.emit(pivot_config)
+
     def populate_analysis_columns(self, columns):
-        """填充分析字段的下拉列表。"""
-        self.analysis_column_combo.blockSignals(True)
-        self.analysis_column_combo.clear()
-        self.analysis_column_combo.addItems(columns)
-        self.analysis_column_combo.blockSignals(False)
+        """填充可用字段列表。"""
+        self.available_fields_list.clear()
+        self.available_fields_list.addItems(columns)
 
     def display_analysis_result(self, result_text):
         """显示分析结果。"""

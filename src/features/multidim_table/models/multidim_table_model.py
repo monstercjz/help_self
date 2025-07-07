@@ -101,6 +101,31 @@ class MultidimTableModel(QObject):
         except Exception as e:
             return False, str(e)
 
+    def create_pivot_table_from_df(self, df: pd.DataFrame, pivot_config: dict):
+        """
+        根据配置从给定的DataFrame创建数据透视表。
+        df: 要进行透视操作的DataFrame。
+        pivot_config: 包含 'rows', 'columns', 'values', 'aggfunc' 的字典。
+        """
+        rows = pivot_config.get("rows", [])
+        columns = pivot_config.get("columns", [])
+        values = pivot_config.get("values", [])
+        aggfunc = pivot_config.get("aggfunc", "sum") # 默认聚合函数为sum
+
+        if not values:
+            return False, None, "请至少选择一个度量值。"
+        
+        try:
+            pivot_df = df.pivot_table(
+                index=rows,
+                columns=columns,
+                values=values,
+                aggfunc=aggfunc
+            )
+            return True, pivot_df, None
+        except Exception as e:
+            return False, None, str(e)
+
     def get_table_list(self):
         """获取数据库中所有用户创建的表的列表。"""
         if not self.conn:
