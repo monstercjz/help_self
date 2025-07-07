@@ -3,11 +3,12 @@ from PySide6.QtWidgets import (
     QDialog, QVBoxLayout, QTabWidget, QWidget, QTableView,
     QAbstractItemView, QHeaderView, QPushButton, QHBoxLayout,
     QListWidget, QInputDialog, QMessageBox, QLineEdit, QFileDialog,
-    QLabel, QStyle, QMenu, QStatusBar, QComboBox, QTextEdit
+    QLabel, QStyle, QMenu, QStatusBar, QComboBox
 )
 from PySide6.QtGui import QStandardItemModel, QStandardItem, QAction
 from PySide6.QtCore import Signal, Qt, QSortFilterProxyModel, QTimer
 from .edit_column_dialog import EditColumnDialog
+import pandas as pd # 导入pandas
 
 class TableDesignerView(QDialog):
     """
@@ -234,10 +235,20 @@ class TableDesignerView(QDialog):
         # 右侧：分析结果显示
         right_v_layout = QVBoxLayout()
         right_v_layout.addWidget(QLabel("分析结果:"))
-        self.analysis_result_display = QTextEdit()
-        self.analysis_result_display.setReadOnly(True)
-        self.analysis_result_display.setFontFamily("Courier New")
-        right_v_layout.addWidget(self.analysis_result_display)
+        
+        self.analysis_result_view = QTableView()
+        self.analysis_result_model = QStandardItemModel()
+        self.analysis_result_proxy_model = QSortFilterProxyModel()
+        self.analysis_result_proxy_model.setSourceModel(self.analysis_result_model)
+        self.analysis_result_view.setModel(self.analysis_result_proxy_model)
+        
+        self.analysis_result_view.setEditTriggers(QAbstractItemView.NoEditTriggers) # 只读
+        self.analysis_result_view.setSelectionBehavior(QAbstractItemView.SelectRows) # 整行选择
+        self.analysis_result_view.setSortingEnabled(True) # 启用排序
+        self.analysis_result_view.horizontalHeader().setStretchLastSection(True) # 最后一列填充剩余空间
+        self.analysis_result_view.setAlternatingRowColors(True) # 交替行颜色
+        
+        right_v_layout.addWidget(self.analysis_result_view)
         main_h_layout.addLayout(right_v_layout)
 
         layout.addLayout(main_h_layout)
@@ -411,9 +422,35 @@ class TableDesignerView(QDialog):
         self.available_fields_list.clear()
         self.available_fields_list.addItems(columns)
 
-    def display_analysis_result(self, result_text):
-        """显示分析结果。"""
-        self.analysis_result_display.setText(result_text)
+    def display_analysis_result(self, result):
+        """
+        显示分析结果。
+        result 可以是 pandas.DataFrame 或字符串（错误信息）。
+        """
+        self.analysis_result_model.clear()
+        if isinstance(result, pd.DataFrame):
+            if result.empty:
+                self.analysis_result_model.setHorizontalHeaderLabels(["无结果"])
+                return
+
+            headers = result.columns.tolist()
+            self.analysis_result_model.setHorizontalHeaderLabels(headers)
+            
+            for r_idx, row_data in result.iterrows():
+                row_items = [QStandardItem(str(item)) for item in row_data]
+                self.analysis_result_model.appendRow(row_items)
+            
+            # 调整列宽以适应内容
+            self.analysis_result_view.resizeColumnsToContents()
+        elif isinstance(result, str):
+            # 如果是字符串，显示为单列表格，内容为错误信息
+            self.analysis_result_model.setHorizontalHeaderLabels(["错误/信息"])
+            item = QStandardItem(result)
+            self.analysis_result_model.appendRow(item)
+        else:
+            self.analysis_result_model.setHorizontalHeaderLabels(["未知结果类型"])
+            item = QStandardItem(str(result))
+            self.analysis_result_model.appendRow(item)
 
     def update_pagination_controls(self, current_page, total_pages, is_full_data_mode):
         """更新分页控件的状态和标签。"""

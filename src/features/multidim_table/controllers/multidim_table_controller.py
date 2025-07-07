@@ -383,9 +383,25 @@ class MultidimTableController(QObject):
 
         success, result_df, err = self._model.create_pivot_table_from_df(self.analysis_df, pivot_config)
         if success:
-            designer.display_analysis_result(result_df.to_string())
+            # 如果有行字段，将索引重置为列，以便在UI中显示
+            if pivot_config["rows"]:
+                result_df = result_df.reset_index()
+                # 如果有多个行字段，reset_index会创建多列，列名就是行字段名
+                # 如果只有一个行字段，确保其列名正确
+                if len(pivot_config["rows"]) == 1:
+                    result_df.rename(columns={result_df.columns[0]: pivot_config["rows"][0]}, inplace=True)
+            
+            # 处理多级列索引，将其扁平化
+            if isinstance(result_df.columns, pd.MultiIndex):
+                # 将多级列名连接成单级字符串，例如 ('评分', '角色名') -> '评分_角色名'
+                # 如果只有一级，例如 ('评分',) -> '评分'
+                result_df.columns = ['_'.join(col).strip() if isinstance(col, tuple) else str(col) for col in result_df.columns.values]
+                # 移除可能由空值字段引起的尾部下划线
+                result_df.columns = [col.rstrip('_') for col in result_df.columns]
+            
+            designer.display_analysis_result(result_df) # 直接传递DataFrame
         else:
-            designer.display_analysis_result(f"透视表分析失败: {err}")
+            designer.display_analysis_result(f"透视表分析失败: {err}") # 传递错误信息字符串
 
     def _load_last_db(self):
         """加载上次成功打开的数据库。"""
