@@ -84,6 +84,14 @@ class MultidimTableController(QObject):
         # 创建并显示表设计器对话框
         designer = TableDesignerView(table_name, self._db_view)
         
+        # 为对话框应用独立的暗色样式
+        import os
+        qss_path = os.path.join(os.path.dirname(__file__), "..", "assets", "style.qss")
+        if os.path.exists(qss_path):
+            with open(qss_path, "r", encoding="utf-8") as f:
+                style = f.read()
+                designer.setStyleSheet(style)
+
         # 连接设计器信号
         designer.page_changed.connect(self._on_page_changed)
         designer.add_column_requested.connect(lambda col_name: self._on_add_column(designer, table_name, col_name))
@@ -151,6 +159,13 @@ class MultidimTableController(QObject):
         success, err = self._model.save_to_db()
         if not success:
             self._db_view.show_error("保存失败", f"无法保存数据: {err}")
+        else:
+            # 找到对应的designer并显示状态消息
+            for widget in self._db_view.parent().findChildren(TableDesignerView):
+                if widget.isVisible() and widget.table_name == table_name:
+                    widget.show_status_message("数据保存成功！")
+                    widget.setWindowTitle(f"设计表: {table_name}") # 移除未保存提示
+                    break
 
     def _on_rename_table(self, old_name, new_name):
         success, err = self._model.rename_table(old_name, new_name)
@@ -240,6 +255,8 @@ class MultidimTableController(QObject):
                 else:
                     designer.show_error("导出失败", "不支持的文件格式。")
                     return
+            
+            designer.show_status_message(f"成功导出到 {file_path}", 5000)
 
         except Exception as e:
             designer.show_error("导出失败", f"无法将数据保存到文件: {e}")
@@ -259,6 +276,7 @@ class MultidimTableController(QObject):
         designer.set_data(headers, data)
         designer.set_schema(schema)
         designer.update_pagination_controls(self.current_page, self.total_pages)
+        designer.status_bar.showMessage(f"总行数: {self.total_rows}")
 
     def _on_page_changed(self, direction):
         """处理翻页请求。"""

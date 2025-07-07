@@ -3,10 +3,10 @@ from PySide6.QtWidgets import (
     QDialog, QVBoxLayout, QTabWidget, QWidget, QTableView,
     QAbstractItemView, QHeaderView, QPushButton, QHBoxLayout,
     QListWidget, QInputDialog, QMessageBox, QLineEdit, QFileDialog,
-    QLabel
+    QLabel, QStyle, QMenu, QStatusBar
 )
-from PySide6.QtGui import QStandardItemModel, QStandardItem
-from PySide6.QtCore import Signal, Qt, QSortFilterProxyModel
+from PySide6.QtGui import QStandardItemModel, QStandardItem, QAction
+from PySide6.QtCore import Signal, Qt, QSortFilterProxyModel, QTimer
 from .edit_column_dialog import EditColumnDialog
 
 class TableDesignerView(QDialog):
@@ -53,28 +53,38 @@ class TableDesignerView(QDialog):
 
         layout.addWidget(self.tabs)
 
+        # --- Status Bar ---
+        self.status_bar = QStatusBar()
+        self.status_bar.setSizeGripEnabled(False) # We have a resizable window, no need for the grip
+        layout.addWidget(self.status_bar)
+
     def setup_data_tab(self, layout):
         # --- Top button bar ---
         top_bar_layout = QHBoxLayout()
         self.add_row_button = QPushButton("添加行")
+        self.add_row_button.setIcon(self.style().standardIcon(QStyle.SP_FileDialogNewFolder))
         self.add_row_button.clicked.connect(self.add_row_requested)
         top_bar_layout.addWidget(self.add_row_button)
         
         self.delete_row_button = QPushButton("删除选中行")
+        self.delete_row_button.setIcon(self.style().standardIcon(QStyle.SP_TrashIcon))
         self.delete_row_button.clicked.connect(self._on_delete_row)
         top_bar_layout.addWidget(self.delete_row_button)
         
         top_bar_layout.addStretch()
 
-        self.import_button = QPushButton("导入CSV")
+        self.import_button = QPushButton("导入")
+        self.import_button.setIcon(self.style().standardIcon(QStyle.SP_ArrowDown))
         self.import_button.clicked.connect(self._on_import)
         top_bar_layout.addWidget(self.import_button)
 
-        self.export_button = QPushButton("导出CSV")
+        self.export_button = QPushButton("导出")
+        self.export_button.setIcon(self.style().standardIcon(QStyle.SP_ArrowUp))
         self.export_button.clicked.connect(self._on_export)
         top_bar_layout.addWidget(self.export_button)
         
         self.save_data_button = QPushButton("保存更改")
+        self.save_data_button.setIcon(self.style().standardIcon(QStyle.SP_DialogSaveButton))
         self.save_data_button.clicked.connect(self._on_save_data)
         top_bar_layout.addWidget(self.save_data_button)
         
@@ -91,6 +101,8 @@ class TableDesignerView(QDialog):
         self.data_table_view.setEditTriggers(QAbstractItemView.DoubleClicked)
         self.data_table_view.setSelectionBehavior(QAbstractItemView.SelectRows)
         self.data_table_view.setSortingEnabled(True) # 启用排序
+        self.data_table_view.setContextMenuPolicy(Qt.CustomContextMenu)
+        self.data_table_view.customContextMenuRequested.connect(self._show_data_context_menu)
 
         self.data_table_model = QStandardItemModel()
         
@@ -106,6 +118,7 @@ class TableDesignerView(QDialog):
         # --- Pagination bar ---
         pagination_layout = QHBoxLayout()
         self.prev_page_button = QPushButton("上一页")
+        self.prev_page_button.setIcon(self.style().standardIcon(QStyle.SP_ArrowLeft))
         self.prev_page_button.clicked.connect(lambda: self.page_changed.emit(-1))
         pagination_layout.addWidget(self.prev_page_button)
 
@@ -113,6 +126,7 @@ class TableDesignerView(QDialog):
         pagination_layout.addWidget(self.page_label)
 
         self.next_page_button = QPushButton("下一页")
+        self.next_page_button.setIcon(self.style().standardIcon(QStyle.SP_ArrowRight))
         self.next_page_button.clicked.connect(lambda: self.page_changed.emit(1))
         pagination_layout.addWidget(self.next_page_button)
         layout.addLayout(pagination_layout)
@@ -121,14 +135,17 @@ class TableDesignerView(QDialog):
         # --- Top button bar ---
         top_bar_layout = QHBoxLayout()
         self.add_column_button = QPushButton("添加字段")
+        self.add_column_button.setIcon(self.style().standardIcon(QStyle.SP_FileDialogNewFolder))
         self.add_column_button.clicked.connect(self._on_add_column)
         top_bar_layout.addWidget(self.add_column_button)
         
         self.delete_column_button = QPushButton("删除选中字段")
+        self.delete_column_button.setIcon(self.style().standardIcon(QStyle.SP_TrashIcon))
         self.delete_column_button.clicked.connect(self._on_delete_column)
         top_bar_layout.addWidget(self.delete_column_button)
 
         self.edit_column_button = QPushButton("修改字段")
+        self.edit_column_button.setIcon(self.style().standardIcon(QStyle.SP_DriveFDIcon))
         self.edit_column_button.clicked.connect(self._on_edit_column)
         top_bar_layout.addWidget(self.edit_column_button)
         
@@ -137,6 +154,8 @@ class TableDesignerView(QDialog):
 
         # --- Column List ---
         self.column_list_widget = QListWidget()
+        self.column_list_widget.setContextMenuPolicy(Qt.CustomContextMenu)
+        self.column_list_widget.customContextMenuRequested.connect(self._show_structure_context_menu)
         layout.addWidget(self.column_list_widget)
 
     def set_data(self, headers, data):
@@ -240,6 +259,46 @@ class TableDesignerView(QDialog):
         file_path, _ = QFileDialog.getSaveFileName(self, "导出文件", f"{self.table_name}", "Excel 文件 (*.xlsx);;CSV 文件 (*.csv)")
         if file_path:
             self.export_requested.emit(file_path)
+
+    def _show_data_context_menu(self, position):
+        """显示数据表格的右键上下文菜单。"""
+        menu = QMenu()
+        
+        add_action = QAction("添加新行", self)
+        add_action.triggered.connect(self.add_row_requested)
+        menu.addAction(add_action)
+
+        # 只有在选中行时才显示删除选项
+        if self.data_table_view.selectionModel().hasSelection():
+            delete_action = QAction("删除选中行", self)
+            delete_action.triggered.connect(self._on_delete_row)
+            menu.addAction(delete_action)
+            
+        menu.exec(self.data_table_view.viewport().mapToGlobal(position))
+
+    def _show_structure_context_menu(self, position):
+        """显示字段列表的右键上下文菜单。"""
+        menu = QMenu()
+        
+        add_action = QAction("添加新字段", self)
+        add_action.triggered.connect(self._on_add_column)
+        menu.addAction(add_action)
+
+        # 只有在选中项时才显示修改和删除选项
+        if self.column_list_widget.itemAt(position):
+            edit_action = QAction("修改选中字段", self)
+            edit_action.triggered.connect(self._on_edit_column)
+            menu.addAction(edit_action)
+
+            delete_action = QAction("删除选中字段", self)
+            delete_action.triggered.connect(self._on_delete_column)
+            menu.addAction(delete_action)
+            
+        menu.exec(self.column_list_widget.mapToGlobal(position))
+
+    def show_status_message(self, message, timeout=3000):
+        """在状态栏显示一条临时消息。"""
+        self.status_bar.showMessage(message, timeout)
 
     def update_pagination_controls(self, current_page, total_pages):
         """更新分页控件的状态和标签。"""

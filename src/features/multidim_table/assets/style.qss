@@ -1,0 +1,82 @@
+/* General Font and Color Scheme */
+QWidget {
+    font-family: "Microsoft YaHei UI", "Segoe UI", Arial, sans-serif;
+    font-size: 10pt;
+    color: #E0E0E0; /* Light gray text for dark themes */
+    background-color: #2D2D2D; /* Dark gray background */
+}
+
+/* Labels */
+QLabel {
+    font-size: 10pt;
+}
+
+/* Buttons */
+QPushButton {
+    background-color: #4A4A4A;
+    border: 1px solid #6A6A6A;
+    padding: 5px 10px;
+    border-radius: 4px;
+}
+
+QPushButton:hover {
+    background-color: #5A5A5A;
+    border: 1px solid #7A7A7A;
+}
+
+QPushButton:pressed {
+    background-color: #3A3A3A;
+}
+
+QPushButton:disabled {
+    background-color: #404040;
+    color: #808080;
+}
+
+/* Line Edits and Input Fields */
+QLineEdit, QComboBox {
+    background-color: #3C3C3C;
+    border: 1px solid #5A5A5A;
+    padding: 4px;
+    border-radius: 4px;
+}
+
+/* Table and List Views */
+QTableView, QListWidget {
+    background-color: #333333;
+    border: 1px solid #4A4A4A;
+    gridline-color: #4A4A4A;
+}
+
+/* Table and List Headers */
+QHeaderView::section {
+    background-color: #4A4A4A;
+    color: #FFFFFF;
+    padding: 4px;
+    border: 1px solid #5A5A5A;
+    font-weight: bold;
+    font-size: 10pt;
+}
+
+/* Tabs */
+QTabWidget::pane {
+    border: 1px solid #4A4A4A;
+}
+
+QTabBar::tab {
+    background: #2D2D2D;
+    border: 1px solid #4A4A4A;
+    padding: 8px 15px;
+    border-bottom: none; /* to merge with pane */
+}
+
+QTabBar::tab:selected {
+    background: #4A4A4A;
+    margin-bottom: -1px; /* cover the border */
+}
+
+/* Status Bar */
+QStatusBar {
+    font-size: 9pt;
+    color: #A0A0A0;
+}

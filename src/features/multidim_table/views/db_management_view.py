@@ -1,9 +1,11 @@
 # src/features/multidim_table/views/db_management_view.py
 from PySide6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QListWidget, 
-    QInputDialog, QMessageBox, QListWidgetItem, QLabel, QFileDialog
+    QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QListWidget,
+    QInputDialog, QMessageBox, QListWidgetItem, QLabel, QFileDialog,
+    QStyle, QMenu
 )
-from PySide6.QtCore import Signal
+from PySide6.QtCore import Signal, Qt
+from PySide6.QtGui import QAction
 
 class DbManagementView(QWidget):
     """
@@ -27,10 +29,12 @@ class DbManagementView(QWidget):
         # --- Database Selection Toolbar ---
         db_toolbar = QHBoxLayout()
         self.create_db_button = QPushButton("新建数据库")
+        self.create_db_button.setIcon(self.style().standardIcon(QStyle.SP_FileIcon))
         self.create_db_button.clicked.connect(self._on_create_db)
         db_toolbar.addWidget(self.create_db_button)
 
         self.open_db_button = QPushButton("打开数据库")
+        self.open_db_button.setIcon(self.style().standardIcon(QStyle.SP_DirOpenIcon))
         self.open_db_button.clicked.connect(self._on_open_db)
         db_toolbar.addWidget(self.open_db_button)
         
@@ -43,14 +47,17 @@ class DbManagementView(QWidget):
         self.table_panel = QWidget()
         table_layout = QHBoxLayout(self.table_panel)
         self.create_table_button = QPushButton("创建新表")
+        self.create_table_button.setIcon(self.style().standardIcon(QStyle.SP_FileDialogNewFolder))
         self.create_table_button.clicked.connect(self._on_create_table_clicked)
         table_layout.addWidget(self.create_table_button)
 
         self.delete_table_button = QPushButton("删除选中表")
+        self.delete_table_button.setIcon(self.style().standardIcon(QStyle.SP_TrashIcon))
         self.delete_table_button.clicked.connect(self._on_delete_table_clicked)
         table_layout.addWidget(self.delete_table_button)
 
         self.rename_table_button = QPushButton("重命名选中表")
+        self.rename_table_button.setIcon(self.style().standardIcon(QStyle.SP_DriveFDIcon)) # Using a floppy disk icon for 'rename'
         self.rename_table_button.clicked.connect(self._on_rename_table_clicked)
         table_layout.addWidget(self.rename_table_button)
 
@@ -60,6 +67,8 @@ class DbManagementView(QWidget):
         # --- Table List ---
         self.table_list_widget = QListWidget()
         self.table_list_widget.itemDoubleClicked.connect(self._on_table_selected)
+        self.table_list_widget.setContextMenuPolicy(Qt.CustomContextMenu)
+        self.table_list_widget.customContextMenuRequested.connect(self._show_table_context_menu)
         layout.addWidget(self.table_list_widget)
 
     def _on_create_db(self):
@@ -125,3 +134,25 @@ class DbManagementView(QWidget):
         new_name, ok = QInputDialog.getText(self, "重命名表", f"请输入 '{old_name}' 的新名称:")
         if ok and new_name and new_name != old_name:
             self.rename_table_requested.emit(old_name, new_name)
+
+    def _show_table_context_menu(self, position):
+        """显示表列表的右键上下文菜单。"""
+        selected_item = self.table_list_widget.itemAt(position)
+        if not selected_item:
+            return
+
+        menu = QMenu()
+        
+        open_action = QAction("打开", self)
+        open_action.triggered.connect(lambda: self._on_table_selected(selected_item))
+        menu.addAction(open_action)
+
+        rename_action = QAction("重命名", self)
+        rename_action.triggered.connect(self._on_rename_table_clicked)
+        menu.addAction(rename_action)
+
+        delete_action = QAction("删除", self)
+        delete_action.triggered.connect(self._on_delete_table_clicked)
+        menu.addAction(delete_action)
+        
+        menu.exec(self.table_list_widget.mapToGlobal(position))

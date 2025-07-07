@@ -1,4 +1,5 @@
 # src/features/multidim_table/plugin.py
+import os
 from src.core.plugin_interface import IFeaturePlugin
 from src.core.context import ApplicationContext
 from src.features.multidim_table.models.multidim_table_model import MultidimTableModel
@@ -31,3 +32,11 @@ class MultidimTablePlugin(IFeaturePlugin):
         
         # 设置插件的主页面
         self.page_widget = db_management_view
+
+    def _get_stylesheet(self) -> str | None:
+        """加载并返回QSS样式表内容。"""
+        qss_path = os.path.join(os.path.dirname(__file__), "assets", "style.qss")
+        if os.path.exists(qss_path):
+            with open(qss_path, "r", encoding="utf-8") as f:
+                return f.read()
+        return None
