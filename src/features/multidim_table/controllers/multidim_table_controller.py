@@ -97,15 +97,13 @@ class MultidimTableController(QObject):
 
         # 连接设计器信号
         designer.page_changed.connect(self._on_page_changed)
-        # designer.analysis_requested.connect(self._on_analyze_column) # 旧的单字段分析信号，暂时注释掉
-        designer.pivot_table_requested.connect(self._on_pivot_table_requested) # 连接新的多字段分析信号
+        designer.pivot_table_requested.connect(self._on_pivot_table_requested)
         designer.toggle_full_data_mode_requested.connect(self._on_toggle_full_data_mode)
         designer.add_column_requested.connect(lambda col_name: self._on_add_column(designer, table_name, col_name))
         designer.delete_column_requested.connect(lambda col_name: self._on_delete_column(designer, table_name, col_name))
         designer.change_column_requested.connect(lambda old_name, new_name, new_type: self._on_change_column(designer, table_name, old_name, new_name, new_type))
         designer.add_row_requested.connect(lambda: self._on_add_row(designer))
-        # designer.delete_row_requested.connect(lambda rows: self._on_delete_rows(designer, rows)) # 移除旧的连接
-        designer.rows_deleted_in_view.connect(lambda count: self._on_rows_deleted_in_view(designer, count)) # 连接新的信号
+        designer.rows_deleted_in_view.connect(lambda count: self._on_rows_deleted_in_view(designer, count))
         designer.save_data_requested.connect(lambda df: self._on_save_data(table_name, df))
         designer.import_requested.connect(lambda path: self._on_import_data(designer, path))
         designer.export_requested.connect(lambda path: self._on_export_data(designer, path))
@@ -132,7 +130,7 @@ class MultidimTableController(QObject):
         # 标题已在视图中更新，这里不再重复
 
     def _on_add_row(self, designer):
-        headers = [designer.data_table_model.horizontalHeaderItem(i).text() for i in range(designer.data_table_model.columnCount())]
+        headers = [designer.data_tab_view.data_table_model.horizontalHeaderItem(i).text() for i in range(designer.data_tab_view.data_table_model.columnCount())]
         add_dialog = AddDataDialog(headers, designer)
         if add_dialog.exec():
             new_data = add_dialog.get_data()
