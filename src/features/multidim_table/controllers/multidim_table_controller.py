@@ -1,5 +1,5 @@
 # src/features/multidim_table/controllers/multidim_table_controller.py
-from PySide6.QtCore import QObject, QSettings
+from PySide6.QtCore import QObject, QSettings, QTimer
 from src.features.multidim_table.models.multidim_table_model import MultidimTableModel
 from src.features.multidim_table.views.db_management_view import DbManagementView
 from src.features.multidim_table.views.table_designer_view import TableDesignerView
@@ -21,6 +21,8 @@ class MultidimTableController(QObject):
         self.total_rows = 0
         self.total_pages = 1
         self.current_table_name = None
+        self.is_full_data_mode = False
+        self.analysis_df = pd.DataFrame() # 用于分析的全量数据
 
         self._connect_signals()
         self._db_view.set_current_db(None) # Initially no db is open
@@ -72,6 +74,7 @@ class MultidimTableController(QObject):
     def _on_table_selected(self, table_name):
         self.current_table_name = table_name
         self.current_page = 1
+        self.is_full_data_mode = False # 每次打开都重置为分页模式
         
         # 获取总行数和总页数
         self.total_rows, err = self._model.get_total_row_count(table_name)
@@ -94,31 +97,38 @@ class MultidimTableController(QObject):
 
         # 连接设计器信号
         designer.page_changed.connect(self._on_page_changed)
+        designer.analysis_requested.connect(self._on_analyze_column)
+        designer.toggle_full_data_mode_requested.connect(self._on_toggle_full_data_mode)
         designer.add_column_requested.connect(lambda col_name: self._on_add_column(designer, table_name, col_name))
         designer.delete_column_requested.connect(lambda col_name: self._on_delete_column(designer, table_name, col_name))
         designer.change_column_requested.connect(lambda old_name, new_name, new_type: self._on_change_column(designer, table_name, old_name, new_name, new_type))
         designer.add_row_requested.connect(lambda: self._on_add_row(designer))
-        designer.delete_row_requested.connect(lambda rows: self._on_delete_rows(designer, rows))
+        # designer.delete_row_requested.connect(lambda rows: self._on_delete_rows(designer, rows)) # 移除旧的连接
+        designer.rows_deleted_in_view.connect(lambda count: self._on_rows_deleted_in_view(designer, count)) # 连接新的信号
         designer.save_data_requested.connect(lambda df: self._on_save_data(table_name, df))
         designer.import_requested.connect(lambda path: self._on_import_data(designer, path))
         designer.export_requested.connect(lambda path: self._on_export_data(designer, path))
 
-        # 加载第一页数据
+        # 加载第一页数据和分析所需的全量数据
         self._load_page_data(designer)
+        self._load_full_data_for_analysis(designer)
         
         designer.exec()
 
-    def _on_delete_rows(self, designer, rows_to_delete):
-        # 从UI模型中直接删除行以获得即时反馈
-        # 从后往前删，避免索引变化导致错误
-        for row in sorted(rows_to_delete, reverse=True):
-            designer.data_table_model.removeRow(row)
-        
-        # 更新内存中的DataFrame，但不立即保存到数据库
-        # 等待用户点击“保存更改”按钮
-        current_df = designer.get_data()
-        self._model._original_df = current_df
+    def _on_rows_deleted_in_view(self, designer, deleted_count):
+        """响应视图中行被删除的信号，更新控制器状态和UI。"""
+        self.total_rows -= deleted_count
+        self.total_pages = (self.total_rows + self.page_size - 1) // self.page_size
+        if self.total_pages == 0: self.total_pages = 1
+
+        # 更新内存中的DataFrame，确保与UI同步
+        current_df = designer.get_data() # 从UI获取最新数据
+        self._model._original_df = current_df.copy()
         self._model._df = current_df.copy()
+
+        designer.update_pagination_controls(self.current_page, self.total_pages, self.is_full_data_mode)
+        designer.status_bar.showMessage(f"总行数: {self.total_rows}") # 持久更新
+        # 标题已在视图中更新，这里不再重复
 
     def _on_add_row(self, designer):
         headers = [designer.data_table_model.horizontalHeaderItem(i).text() for i in range(designer.data_table_model.columnCount())]
@@ -127,16 +137,23 @@ class MultidimTableController(QObject):
             new_data = add_dialog.get_data()
             designer.add_data_row(list(new_data.values()))
 
+            # 更新内存中的DataFrame，确保与UI同步
+            current_df = designer.get_data()
+            self._model._original_df = current_df.copy()
+            self._model._df = current_df.copy()
+
+            # 更新总行数并刷新UI
+            self.total_rows += 1
+            self.total_pages = (self.total_rows + self.page_size - 1) // self.page_size
+            designer.update_pagination_controls(self.current_page, self.total_pages, self.is_full_data_mode)
+            designer.status_bar.showMessage(f"总行数: {self.total_rows}") # 持久更新
+            designer.setWindowTitle(f"设计表: {designer.table_name} (有未保存的更改)")
+
     def _on_delete_column(self, designer, table_name, column_name):
         success, err = self._model.delete_column(table_name, column_name)
         if success:
             # 重新加载数据和结构
-            self._model.load_from_db(table_name)
-            schema, _ = self._model.get_table_schema(table_name)
-            headers = self._model._original_df.columns.tolist()
-            data = self._model._original_df.values.tolist()
-            designer.set_schema(schema)
-            designer.set_data(headers, data)
+            self._refresh_all_data_and_views(designer)
         else:
             designer.show_error("删除失败", f"无法删除字段: {err}")
 
@@ -144,16 +161,16 @@ class MultidimTableController(QObject):
         success, err = self._model.add_column(table_name, column_name)
         if success:
             # 重新加载数据和结构
-            self._model.load_from_db(table_name)
-            schema, _ = self._model.get_table_schema(table_name)
-            headers = self._model._original_df.columns.tolist()
-            data = self._model._original_df.values.tolist()
-            designer.set_schema(schema)
-            designer.set_data(headers, data)
+            self._refresh_all_data_and_views(designer)
         else:
             designer.show_error("添加失败", f"无法添加字段: {err}")
 
     def _on_save_data(self, table_name, dataframe):
+        # 增加一层保护，如果不是全量模式，则不允许保存
+        if not self.is_full_data_mode:
+            self._db_view.show_error("保存失败", "请先点击“加载全部数据”再进行保存。")
+            return
+
         self._model.active_table = table_name
         self._model._original_df = dataframe
         success, err = self._model.save_to_db()
@@ -163,8 +180,12 @@ class MultidimTableController(QObject):
             # 找到对应的designer并显示状态消息
             for widget in self._db_view.parent().findChildren(TableDesignerView):
                 if widget.isVisible() and widget.table_name == table_name:
-                    widget.show_status_message("数据保存成功！")
+                    widget.show_status_message("数据保存成功！", 4000) # 显示4秒
                     widget.setWindowTitle(f"设计表: {table_name}") # 移除未保存提示
+                    # 保存后刷新数据
+                    self._refresh_all_data_and_views(widget)
+                    # 临时消息消失后，确保总行数持久显示
+                    QTimer.singleShot(4000, lambda: widget.status_bar.showMessage(f"总行数: {self.total_rows}"))
                     break
 
     def _on_rename_table(self, old_name, new_name):
@@ -206,12 +227,7 @@ class MultidimTableController(QObject):
 
         # 3. 刷新UI
         if final_success:
-            self._model.load_from_db(table_name)
-            schema, _ = self._model.get_table_schema(table_name)
-            headers = self._model._original_df.columns.tolist()
-            data = self._model._original_df.values.tolist()
-            designer.set_schema(schema)
-            designer.set_data(headers, data)
+            self._refresh_all_data_and_views(designer)
         else:
             designer.show_error("修改字段失败", error_message)
 
@@ -233,6 +249,14 @@ class MultidimTableController(QObject):
             headers = imported_df.columns.tolist()
             data = imported_df.values.tolist()
             designer.set_data(headers, data)
+            
+            # 强制同步总行数状态
+            self.total_rows = len(imported_df)
+            self.is_full_data_mode = True # 导入后即为全量模式
+            self.total_pages = 1 # 全量模式只有一页
+            designer.update_pagination_controls(1, 1, True)
+            designer.status_bar.showMessage(f"总行数: {self.total_rows}")
+
             # 提醒用户需要手动保存
             designer.setWindowTitle(f"设计表: {designer.table_name} (导入未保存)")
         except Exception as e:
@@ -257,6 +281,8 @@ class MultidimTableController(QObject):
                     return
             
             designer.show_status_message(f"成功导出到 {file_path}", 5000)
+            # 临时消息消失后，确保总行数持久显示
+            QTimer.singleShot(5000, lambda: designer.status_bar.showMessage(f"总行数: {self.total_rows}"))
 
         except Exception as e:
             designer.show_error("导出失败", f"无法将数据保存到文件: {e}")
@@ -275,7 +301,7 @@ class MultidimTableController(QObject):
         data = self._model._original_df.values.tolist()
         designer.set_data(headers, data)
         designer.set_schema(schema)
-        designer.update_pagination_controls(self.current_page, self.total_pages)
+        designer.update_pagination_controls(self.current_page, self.total_pages, self.is_full_data_mode)
         designer.status_bar.showMessage(f"总行数: {self.total_rows}")
 
     def _on_page_changed(self, direction):
@@ -289,6 +315,56 @@ class MultidimTableController(QObject):
                 if widget.isVisible() and widget.table_name == self.current_table_name:
                     self._load_page_data(widget)
                     break
+
+    def _load_full_data_for_analysis(self, designer):
+        """在后台加载全量数据用于分析。"""
+        try:
+            self.analysis_df = pd.read_sql(f'SELECT * FROM "{self.current_table_name}"', self._model.conn)
+            designer.populate_analysis_columns(self.analysis_df.columns.tolist())
+        except Exception as e:
+            designer.show_error("分析数据加载失败", str(e))
+
+    def _on_analyze_column(self, column_name):
+        """当用户选择一个字段进行分析时调用。"""
+        if column_name not in self.analysis_df.columns:
+            return
+
+        # 找到对应的designer
+        designer = None
+        for widget in self._db_view.parent().findChildren(TableDesignerView):
+            if widget.isVisible() and widget.table_name == self.current_table_name:
+                designer = widget
+                break
+        if not designer:
+            return
+
+        try:
+            series = self.analysis_df[column_name]
+            result_text = f"--- 对字段 '{column_name}' 的分析 ---\n\n"
+
+            # 判断是数值型还是类别型
+            if pd.api.types.is_numeric_dtype(series):
+                stats = series.describe()
+                result_text += "基本描述性统计:\n"
+                result_text += "---------------------\n"
+                result_text += f"总数 (Count):    {stats['count']}\n"
+                result_text += f"平均值 (Mean):     {stats['mean']:.2f}\n"
+                result_text += f"标准差 (Std):    {stats['std']:.2f}\n"
+                result_text += f"最小值 (Min):      {stats['min']}\n"
+                result_text += f"25% (Q1):        {stats['25%']}\n"
+                result_text += f"50% (Median):    {stats['50%']}\n"
+                result_text += f"75% (Q3):        {stats['75%']}\n"
+                result_text += f"最大值 (Max):      {stats['max']}\n"
+            else:
+                # 对非数值型数据进行值计数
+                counts = series.value_counts()
+                result_text += "值的频率分布:\n"
+                result_text += "---------------------\n"
+                result_text += counts.to_string()
+
+            designer.display_analysis_result(result_text)
+        except Exception as e:
+            designer.display_analysis_result(f"分析时发生错误: {e}")
     
     def _load_last_db(self):
         """加载上次成功打开的数据库。"""
@@ -297,3 +373,72 @@ class MultidimTableController(QObject):
         last_db_path = settings.value("last_db_path")
         if last_db_path and os.path.exists(last_db_path):
             self._on_db_connect(last_db_path)
+
+    def _on_toggle_full_data_mode(self):
+        """切换全量数据加载模式。"""
+        self.is_full_data_mode = not self.is_full_data_mode
+        
+        # 找到当前的设计器窗口
+        designer = None
+        for widget in self._db_view.parent().findChildren(TableDesignerView):
+            if widget.isVisible() and widget.table_name == self.current_table_name:
+                designer = widget
+                break
+        if not designer:
+            return
+
+        if self.is_full_data_mode:
+            # 加载所有数据
+            self._model.load_from_db(self.current_table_name) # limit=-1 默认加载全部
+            headers = self._model._original_df.columns.tolist()
+            data = self._model._original_df.values.tolist()
+            designer.set_data(headers, data)
+            
+            # 强制同步总行数状态
+            self.total_rows = len(self._model._original_df)
+            designer.status_bar.showMessage(f"总行数: {self.total_rows}")
+            designer.show_status_message("已加载全部数据，现在可以编辑和保存。", 5000)
+            # 临时消息消失后，确保总行数持久显示
+            QTimer.singleShot(5000, lambda: designer.status_bar.showMessage(f"总行数: {self.total_rows}"))
+        else:
+            # 返回分页模式
+            self.current_page = 1
+            self._load_page_data(designer)
+            designer.show_status_message("已返回分页浏览模式。", 3000)
+            # 临时消息消失后，确保总行数持久显示
+            QTimer.singleShot(3000, lambda: designer.status_bar.showMessage(f"总行数: {self.total_rows}"))
+        
+        # 更新UI状态
+        designer.update_pagination_controls(self.current_page, self.total_pages, self.is_full_data_mode)
+
+    def _refresh_all_data_and_views(self, designer):
+        """一个统一的方法，用于在结构或数据发生重大变化后刷新所有内容。"""
+        # 重新获取总行数等信息
+        self.total_rows, _ = self._model.get_total_row_count(self.current_table_name)
+        self.total_pages = (self.total_rows + self.page_size - 1) // self.page_size
+        if self.total_pages == 0: self.total_pages = 1
+        
+        # 如果当前页超出范围（例如，删除数据后），则重置为第一页
+        if self.current_page > self.total_pages:
+            self.current_page = 1
+            self.is_full_data_mode = False # 强制返回分页模式
+
+        # 根据当前模式刷新页面数据或全量数据
+        if self.is_full_data_mode:
+            self._model.load_from_db(self.current_table_name)
+            headers = self._model._original_df.columns.tolist()
+            data = self._model._original_df.values.tolist()
+            designer.set_data(headers, data)
+        else:
+            self._load_page_data(designer)
+
+        # 刷新分析用的全量数据和字段列表
+        self._load_full_data_for_analysis(designer)
+        
+        # 刷新结构视图
+        schema, _ = self._model.get_table_schema(self.current_table_name)
+        designer.set_schema(schema)
+        
+        # 更新UI控件状态
+        designer.update_pagination_controls(self.current_page, self.total_pages, self.is_full_data_mode)
+        designer.status_bar.showMessage(f"总行数: {self.total_rows}") # 确保刷新后总行数显示正确

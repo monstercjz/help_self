@@ -3,7 +3,7 @@ from PySide6.QtWidgets import (
     QDialog, QVBoxLayout, QTabWidget, QWidget, QTableView,
     QAbstractItemView, QHeaderView, QPushButton, QHBoxLayout,
     QListWidget, QInputDialog, QMessageBox, QLineEdit, QFileDialog,
-    QLabel, QStyle, QMenu, QStatusBar
+    QLabel, QStyle, QMenu, QStatusBar, QComboBox, QTextEdit
 )
 from PySide6.QtGui import QStandardItemModel, QStandardItem, QAction
 from PySide6.QtCore import Signal, Qt, QSortFilterProxyModel, QTimer
@@ -18,11 +18,14 @@ class TableDesignerView(QDialog):
     rename_column_requested = Signal(str, str) # 保留，但稍后会修改
     change_column_requested = Signal(str, str, str) # old_name, new_name, new_type
     add_row_requested = Signal()
-    delete_row_requested = Signal(list)
+    delete_row_requested = Signal(list) # 保持这个信号，但其触发时机和参数会改变
+    rows_deleted_in_view = Signal(int) # 新增信号，表示视图中删除了多少行
     save_data_requested = Signal(object)
     import_requested = Signal(str)
     export_requested = Signal(str)
     page_changed = Signal(int) # direction: 1 for next, -1 for prev
+    analysis_requested = Signal(str) # column name
+    toggle_full_data_mode_requested = Signal()
 
     def __init__(self, table_name, parent=None):
         super().__init__(parent)
@@ -50,6 +53,12 @@ class TableDesignerView(QDialog):
         structure_layout = QVBoxLayout(self.structure_tab)
         self.setup_structure_tab(structure_layout)
         self.tabs.addTab(self.structure_tab, "结构")
+
+        # --- Analysis Tab ---
+        self.analysis_tab = QWidget()
+        analysis_layout = QVBoxLayout(self.analysis_tab)
+        self.setup_analysis_tab(analysis_layout)
+        self.tabs.addTab(self.analysis_tab, "数据分析")
 
         layout.addWidget(self.tabs)
 
@@ -129,6 +138,14 @@ class TableDesignerView(QDialog):
         self.next_page_button.setIcon(self.style().standardIcon(QStyle.SP_ArrowRight))
         self.next_page_button.clicked.connect(lambda: self.page_changed.emit(1))
         pagination_layout.addWidget(self.next_page_button)
+
+        pagination_layout.addStretch()
+
+        self.toggle_full_data_button = QPushButton("加载全部数据")
+        self.toggle_full_data_button.setCheckable(True)
+        self.toggle_full_data_button.clicked.connect(self.toggle_full_data_mode_requested)
+        pagination_layout.addWidget(self.toggle_full_data_button)
+
         layout.addLayout(pagination_layout)
 
     def setup_structure_tab(self, layout):
@@ -157,6 +174,23 @@ class TableDesignerView(QDialog):
         self.column_list_widget.setContextMenuPolicy(Qt.CustomContextMenu)
         self.column_list_widget.customContextMenuRequested.connect(self._show_structure_context_menu)
         layout.addWidget(self.column_list_widget)
+
+    def setup_analysis_tab(self, layout):
+        """设置数据分析选项卡的用户界面。"""
+        # --- Top control bar ---
+        top_bar_layout = QHBoxLayout()
+        top_bar_layout.addWidget(QLabel("选择分析字段:"))
+        self.analysis_column_combo = QComboBox()
+        self.analysis_column_combo.currentTextChanged.connect(self.analysis_requested)
+        top_bar_layout.addWidget(self.analysis_column_combo)
+        top_bar_layout.addStretch()
+        layout.addLayout(top_bar_layout)
+
+        # --- Analysis Result Display ---
+        self.analysis_result_display = QTextEdit()
+        self.analysis_result_display.setReadOnly(True)
+        self.analysis_result_display.setFontFamily("Courier New") # Use a monospaced font
+        layout.addWidget(self.analysis_result_display)
 
     def set_data(self, headers, data):
         self.data_table_model.clear()
@@ -214,11 +248,15 @@ class TableDesignerView(QDialog):
         
         # 将代理模型的索引映射到源模型索引
         source_indexes = [self.proxy_model.mapToSource(index) for index in selected_proxy_indexes]
-        rows_to_delete = sorted(list(set(index.row() for index in source_indexes)), reverse=True)
+        rows_to_delete_count = len(source_indexes) # 记录删除的行数
         
-        # 直接在源模型上操作
-        for row in rows_to_delete:
-            self.data_table_model.removeRow(row)
+        # 直接在源模型上操作，从后往前删，避免索引变化导致错误
+        for index in sorted(source_indexes, key=lambda x: x.row(), reverse=True):
+            self.data_table_model.removeRow(index.row())
+        
+        # 通知控制器行已删除
+        self.rows_deleted_in_view.emit(rows_to_delete_count)
+        self.setWindowTitle(f"设计表: {self.table_name} (有未保存的更改)") # 立即更新标题
 
     def _on_save_data(self):
         source_model = self.proxy_model.sourceModel()
@@ -300,8 +338,35 @@ class TableDesignerView(QDialog):
         """在状态栏显示一条临时消息。"""
         self.status_bar.showMessage(message, timeout)
 
-    def update_pagination_controls(self, current_page, total_pages):
+    def populate_analysis_columns(self, columns):
+        """填充分析字段的下拉列表。"""
+        self.analysis_column_combo.blockSignals(True)
+        self.analysis_column_combo.clear()
+        self.analysis_column_combo.addItems(columns)
+        self.analysis_column_combo.blockSignals(False)
+
+    def display_analysis_result(self, result_text):
+        """显示分析结果。"""
+        self.analysis_result_display.setText(result_text)
+
+    def update_pagination_controls(self, current_page, total_pages, is_full_data_mode):
         """更新分页控件的状态和标签。"""
+        is_paginated = total_pages > 1 and not is_full_data_mode
+
         self.page_label.setText(f"第 {current_page} / {total_pages} 页")
+        self.page_label.setVisible(is_paginated)
+        self.prev_page_button.setVisible(is_paginated)
+        self.next_page_button.setVisible(is_paginated)
+
         self.prev_page_button.setEnabled(current_page > 1)
         self.next_page_button.setEnabled(current_page < total_pages)
+
+        # 只有在全量模式下才允许保存
+        self.save_data_button.setEnabled(is_full_data_mode)
+        if not is_full_data_mode and total_pages > 1:
+            self.save_data_button.setToolTip("请点击“加载全部数据”以进行编辑和保存。")
+        else:
+            self.save_data_button.setToolTip("")
+
+        self.toggle_full_data_button.setText("返回分页模式" if is_full_data_mode else "加载全部数据")
+        self.toggle_full_data_button.setChecked(is_full_data_mode)
