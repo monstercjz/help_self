@@ -225,6 +225,15 @@ class TableDesignerView(QDialog):
         self.values_fields_list.setSelectionMode(QAbstractItemView.ExtendedSelection) # 允许多选和拖放
         center_v_layout.addWidget(self.values_fields_list)
 
+        # 聚合函数选择
+        agg_func_layout = QHBoxLayout()
+        agg_func_layout.addWidget(QLabel("聚合函数:"))
+        self.agg_func_combo = QComboBox()
+        self.agg_func_combo.addItems(["求和 (sum)", "平均值 (mean)", "计数 (count)", "最小值 (min)", "最大值 (max)"])
+        self.agg_func_combo.setCurrentText("求和 (sum)") # 默认选择求和
+        agg_func_layout.addWidget(self.agg_func_combo)
+        center_v_layout.addLayout(agg_func_layout)
+
         # 分析按钮
         self.analyze_button = QPushButton("执行分析")
         self.analyze_button.clicked.connect(self._on_analyze_data) # 连接到新的槽函数
@@ -405,15 +414,18 @@ class TableDesignerView(QDialog):
         columns = [self.columns_fields_list.item(i).text() for i in range(self.columns_fields_list.count())]
         values = [self.values_fields_list.item(i).text() for i in range(self.values_fields_list.count())]
         
-        # 暂时只支持默认聚合函数 'sum'，后续可以扩展UI让用户选择
-        # 这里需要一个更复杂的结构来存储值字段和其对应的聚合函数
-        # 暂时简化为只传递字段名，聚合函数在控制器中默认处理
-        
+        # 获取选定的聚合函数
+        selected_agg_func_text = self.agg_func_combo.currentText()
+        # 从 "求和 (sum)" 中提取 "sum"
+        import re
+        match = re.search(r'\((.*?)\)', selected_agg_func_text)
+        aggfunc = match.group(1) if match else "sum" # 默认仍为sum
+
         pivot_config = {
             "rows": rows,
             "columns": columns,
             "values": values,
-            "aggfunc": "sum" # 默认聚合函数
+            "aggfunc": aggfunc
         }
         self.pivot_table_requested.emit(pivot_config)
 
@@ -436,7 +448,10 @@ class TableDesignerView(QDialog):
             headers = result.columns.tolist()
             self.analysis_result_model.setHorizontalHeaderLabels(headers)
             
-            for r_idx, row_data in result.iterrows():
+            # 将DataFrame中的NaN值替换为空字符串，提高显示效果
+            result_filled = result.fillna('')
+            
+            for r_idx, row_data in result_filled.iterrows():
                 row_items = [QStandardItem(str(item)) for item in row_data]
                 self.analysis_result_model.appendRow(row_items)
             
