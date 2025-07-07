@@ -144,17 +144,33 @@ class MultidimTableModel(QObject):
         except Exception as e:
             return False, str(e)
 
-    def load_from_db(self, table_name: str):
-        """从数据库加载指定表的数据。"""
+    def load_from_db(self, table_name: str, limit: int = -1, offset: int = 0):
+        """从数据库加载指定表的数据，支持分页。"""
         try:
             if not self.conn: return False, "数据库未连接。"
-            self._df = pd.read_sql(f'SELECT * FROM "{table_name}"', self.conn)
-            self._original_df = self._df.copy()
+            
+            query = f'SELECT * FROM "{table_name}"'
+            if limit > 0:
+                query += f" LIMIT {limit} OFFSET {offset}"
+
+            self._df = pd.read_sql(query, self.conn)
+            self._original_df = self._df.copy() # 在分页模式下，original_df只包含当前页数据
             self.active_table = table_name
             self.data_changed.emit()
             return True, None
         except Exception as e:
             return False, str(e)
+
+    def get_total_row_count(self, table_name: str):
+        """获取表的总行数。"""
+        try:
+            if not self.conn: return 0, "数据库未连接。"
+            cursor = self.conn.cursor()
+            cursor.execute(f'SELECT COUNT(*) FROM "{table_name}"')
+            count = cursor.fetchone()[0]
+            return count, None
+        except Exception as e:
+            return 0, str(e)
 
     def add_row(self, data: dict):
         """向DataFrame中添加新的一行。"""

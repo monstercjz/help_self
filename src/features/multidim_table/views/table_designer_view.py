@@ -2,7 +2,8 @@
 from PySide6.QtWidgets import (
     QDialog, QVBoxLayout, QTabWidget, QWidget, QTableView,
     QAbstractItemView, QHeaderView, QPushButton, QHBoxLayout,
-    QListWidget, QInputDialog, QMessageBox, QLineEdit
+    QListWidget, QInputDialog, QMessageBox, QLineEdit, QFileDialog,
+    QLabel
 )
 from PySide6.QtGui import QStandardItemModel, QStandardItem
 from PySide6.QtCore import Signal, Qt, QSortFilterProxyModel
@@ -19,6 +20,9 @@ class TableDesignerView(QDialog):
     add_row_requested = Signal()
     delete_row_requested = Signal(list)
     save_data_requested = Signal(object)
+    import_requested = Signal(str)
+    export_requested = Signal(str)
+    page_changed = Signal(int) # direction: 1 for next, -1 for prev
 
     def __init__(self, table_name, parent=None):
         super().__init__(parent)
@@ -61,6 +65,14 @@ class TableDesignerView(QDialog):
         top_bar_layout.addWidget(self.delete_row_button)
         
         top_bar_layout.addStretch()
+
+        self.import_button = QPushButton("导入CSV")
+        self.import_button.clicked.connect(self._on_import)
+        top_bar_layout.addWidget(self.import_button)
+
+        self.export_button = QPushButton("导出CSV")
+        self.export_button.clicked.connect(self._on_export)
+        top_bar_layout.addWidget(self.export_button)
         
         self.save_data_button = QPushButton("保存更改")
         self.save_data_button.clicked.connect(self._on_save_data)
@@ -90,6 +102,20 @@ class TableDesignerView(QDialog):
 
         self.data_table_view.setModel(self.proxy_model)
         layout.addWidget(self.data_table_view)
+
+        # --- Pagination bar ---
+        pagination_layout = QHBoxLayout()
+        self.prev_page_button = QPushButton("上一页")
+        self.prev_page_button.clicked.connect(lambda: self.page_changed.emit(-1))
+        pagination_layout.addWidget(self.prev_page_button)
+
+        self.page_label = QLabel("第 1 / 1 页")
+        pagination_layout.addWidget(self.page_label)
+
+        self.next_page_button = QPushButton("下一页")
+        self.next_page_button.clicked.connect(lambda: self.page_changed.emit(1))
+        pagination_layout.addWidget(self.next_page_button)
+        layout.addLayout(pagination_layout)
 
     def setup_structure_tab(self, layout):
         # --- Top button bar ---
@@ -204,3 +230,19 @@ class TableDesignerView(QDialog):
     def _on_filter_text_changed(self, text):
         """当筛选文本框内容改变时，更新代理模型的筛选条件。"""
         self.proxy_model.setFilterRegularExpression(text)
+
+    def _on_import(self):
+        file_path, _ = QFileDialog.getOpenFileName(self, "导入文件", "", "支持的文件 (*.csv *.xlsx)")
+        if file_path:
+            self.import_requested.emit(file_path)
+
+    def _on_export(self):
+        file_path, _ = QFileDialog.getSaveFileName(self, "导出文件", f"{self.table_name}", "Excel 文件 (*.xlsx);;CSV 文件 (*.csv)")
+        if file_path:
+            self.export_requested.emit(file_path)
+
+    def update_pagination_controls(self, current_page, total_pages):
+        """更新分页控件的状态和标签。"""
+        self.page_label.setText(f"第 {current_page} / {total_pages} 页")
+        self.prev_page_button.setEnabled(current_page > 1)
+        self.next_page_button.setEnabled(current_page < total_pages)
