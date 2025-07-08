@@ -59,8 +59,13 @@ def setup_logging():
     log_level = getattr(logging, log_level_str, logging.INFO)
 
     # 步骤3: 配置日志系统
+    # 【修改】将日志文件输出到用户主目录下的特定子目录
+    log_dir = os.path.join(os.path.expanduser('~'), APP_NAME_DEFAULT, 'logs')
+    os.makedirs(log_dir, exist_ok=True) # 确保日志目录存在
+    log_file_path = os.path.join(log_dir, LOG_FILE)
+
     file_handler = logging.handlers.RotatingFileHandler(
-        LOG_FILE, 
+        log_file_path,
         maxBytes=2 * 1024 * 1024,
         backupCount=5,
         encoding='utf-8',
@@ -96,7 +101,15 @@ class ApplicationOrchestrator:
 
         # --- 1.1 基础环境准备 ---
         # 计算所有资源文件的绝对路径，以避免在不同工作目录下出现问题
-        project_root = os.path.dirname(os.path.abspath(__file__))
+        if getattr(sys, 'frozen', False) and hasattr(sys, '_MEIPASS'):
+            # 如果是PyInstaller打包的单文件模式，使用_MEIPASS作为基础路径
+            project_root = sys._MEIPASS
+            logging.info(f"  - 检测到PyInstaller环境，使用_MEIPASS: {project_root}")
+        else:
+            # 否则，使用当前文件所在目录作为基础路径
+            project_root = os.path.dirname(os.path.abspath(__file__))
+            logging.info(f"  - 非PyInstaller环境，使用当前文件路径: {project_root}")
+
         self.config_path = os.path.join(project_root, CONFIG_FILE)
         self.db_path = os.path.join(project_root, DB_FILE)
         self.png_icon_path = os.path.join(project_root, PNG_ICON_FILE)

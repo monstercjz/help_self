@@ -16,21 +16,55 @@ class PluginManager:
         """
         使用 walk_packages 递归地发现并加载所有在 src.features 包下的插件。
         """
-        import src.features
+        import os
+        import sys
+        import importlib.util # 【新增】导入 importlib.util
+
         logging.info("[STEP 2.1] PluginManager: 开始扫描 'src/features' 目录以发现插件...")
-        
-        for module_info in pkgutil.walk_packages(path=src.features.__path__, prefix=src.features.__name__ + '.'):
-            try:
-                module = importlib.import_module(module_info.name)
-                for item_name in dir(module):
-                    item = getattr(module, item_name)
-                    if isinstance(item, type) and issubclass(item, IFeaturePlugin) and item is not IFeaturePlugin:
-                        if not any(isinstance(p, item) for p in self.plugins):
-                            plugin_instance = item()
-                            self.plugins.append(plugin_instance)
-                            logging.info(f"  - 插件已发现并加载: {plugin_instance.name()} (from {module_info.name})")
-            except Exception as e:
-                logging.error(f"加载插件模块 {module_info.name} 时失败: {e}", exc_info=True)
+
+        if getattr(sys, 'frozen', False) and hasattr(sys, '_MEIPASS'):
+            # PyInstaller 打包环境
+            plugins_root_path = os.path.join(sys._MEIPASS, 'src', 'features')
+            logging.info(f"  - 检测到PyInstaller环境，扫描插件路径: {plugins_root_path}")
+            if os.path.exists(plugins_root_path):
+                for plugin_dir in os.listdir(plugins_root_path):
+                    plugin_path = os.path.join(plugins_root_path, plugin_dir)
+                    plugin_main_file = os.path.join(plugin_path, 'plugin.py')
+                    if os.path.isdir(plugin_path) and os.path.exists(plugin_main_file):
+                        try:
+                            # 动态加载插件模块
+                            spec = importlib.util.spec_from_file_location(f"src.features.{plugin_dir}.plugin", plugin_main_file)
+                            if spec and spec.loader:
+                                module = importlib.util.module_from_spec(spec)
+                                sys.modules[spec.name] = module
+                                spec.loader.exec_module(module)
+                                
+                                for item_name in dir(module):
+                                    item = getattr(module, item_name)
+                                    if isinstance(item, type) and issubclass(item, IFeaturePlugin) and item is not IFeaturePlugin:
+                                        if not any(isinstance(p, item) for p in self.plugins):
+                                            plugin_instance = item()
+                                            self.plugins.append(plugin_instance)
+                                            logging.info(f"  - 插件已发现并加载: {plugin_instance.name()} (from {plugin_dir}/plugin.py)")
+                        except Exception as e:
+                            logging.error(f"加载插件模块 {plugin_dir}/plugin.py 时失败: {e}", exc_info=True)
+            else:
+                logging.warning(f"  - PyInstaller环境下未找到插件目录: {plugins_root_path}")
+        else:
+            # 开发环境
+            import src.features
+            for module_info in pkgutil.walk_packages(path=src.features.__path__, prefix=src.features.__name__ + '.'):
+                try:
+                    module = importlib.import_module(module_info.name)
+                    for item_name in dir(module):
+                        item = getattr(module, item_name)
+                        if isinstance(item, type) and issubclass(item, IFeaturePlugin) and item is not IFeaturePlugin:
+                            if not any(isinstance(p, item) for p in self.plugins):
+                                plugin_instance = item()
+                                self.plugins.append(plugin_instance)
+                                logging.info(f"  - 插件已发现并加载: {plugin_instance.name()} (from {module_info.name})")
+                except Exception as e:
+                    logging.error(f"加载插件模块 {module_info.name} 时失败: {e}", exc_info=True)
         logging.info("[STEP 2.1] PluginManager: 插件扫描和加载完成。")
 
 
