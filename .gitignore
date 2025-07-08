@@ -5,3 +5,4 @@
 history.db
 launcher_apps.json
 *.json
+*.db
