@@ -6,3 +6,6 @@ history.db
 launcher_apps.json
 *.json
 *.db
+build/
+dist/
+*.spec
