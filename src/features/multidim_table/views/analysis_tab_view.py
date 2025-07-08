@@ -1,6 +1,7 @@
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QListWidget,
-    QAbstractItemView, QComboBox, QPushButton, QTableView, QMessageBox
+    QAbstractItemView, QComboBox, QPushButton, QTableView, QMessageBox,
+    QSplitter, QSizePolicy
 )
 from PySide6.QtGui import QStandardItemModel, QStandardItem
 from PySide6.QtCore import Signal, Qt, QSortFilterProxyModel
@@ -11,7 +12,7 @@ class AnalysisTabView(QWidget):
     """
     数据分析选项卡视图，用于进行数据透视和分析。
     """
-    pivot_table_requested = Signal(object) # 新增信号，用于发送透视表配置
+    pivot_table_requested = Signal(object)
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -19,8 +20,22 @@ class AnalysisTabView(QWidget):
 
     def _setup_ui(self):
         layout = QVBoxLayout(self)
-        main_h_layout = QHBoxLayout()
+        
+        # 顶部工具栏，包含切换设置面板的按钮
+        top_toolbar_layout = QHBoxLayout()
+        self.toggle_settings_button = QPushButton("显示/隐藏设置面板")
+        self.toggle_settings_button.clicked.connect(self._toggle_settings_panel)
+        top_toolbar_layout.addWidget(self.toggle_settings_button)
+        top_toolbar_layout.addStretch()
+        layout.addLayout(top_toolbar_layout)
 
+        # 使用 QSplitter 来管理设置面板和分析结果的布局
+        self.splitter = QSplitter(Qt.Horizontal)
+        
+        # --- 设置面板 ---
+        self.settings_panel = QWidget()
+        settings_layout = QVBoxLayout(self.settings_panel)
+        
         # 左侧：可用字段列表
         left_v_layout = QVBoxLayout()
         left_v_layout.addWidget(QLabel("可用字段:"))
@@ -30,7 +45,7 @@ class AnalysisTabView(QWidget):
         self.available_fields_list.setDefaultDropAction(Qt.MoveAction)
         self.available_fields_list.setSelectionMode(QAbstractItemView.ExtendedSelection)
         left_v_layout.addWidget(self.available_fields_list)
-        main_h_layout.addLayout(left_v_layout)
+        settings_layout.addLayout(left_v_layout, 2) # 设置伸展因子为2
 
         # 中间：行、列、值字段区域
         center_v_layout = QVBoxLayout()
@@ -65,24 +80,26 @@ class AnalysisTabView(QWidget):
         self.values_fields_list.setSelectionMode(QAbstractItemView.ExtendedSelection)
         center_v_layout.addWidget(self.values_fields_list)
 
-        # 聚合函数选择
-        agg_func_layout = QHBoxLayout()
-        agg_func_layout.addWidget(QLabel("聚合函数:"))
+        settings_layout.addLayout(center_v_layout, 1) # 设置伸展因子为1
+        self.splitter.addWidget(self.settings_panel)
+
+        # --- 分析结果显示 ---
+        self.analysis_result_view_container = QWidget()
+        right_v_layout = QVBoxLayout(self.analysis_result_view_container)
+
+        # 聚合函数选择和分析按钮（移动到这里）
+        agg_func_and_analyze_layout = QHBoxLayout()
+        agg_func_and_analyze_layout.addWidget(QLabel("聚合函数:"))
         self.agg_func_combo = QComboBox()
         self.agg_func_combo.addItems(["求和 (sum)", "平均值 (mean)", "计数 (count)", "最小值 (min)", "最大值 (max)"])
         self.agg_func_combo.setCurrentText("求和 (sum)")
-        agg_func_layout.addWidget(self.agg_func_combo)
-        center_v_layout.addLayout(agg_func_layout)
-
-        # 分析按钮
+        agg_func_and_analyze_layout.addWidget(self.agg_func_combo)
         self.analyze_button = QPushButton("执行分析")
         self.analyze_button.clicked.connect(self._on_analyze_data)
-        center_v_layout.addWidget(self.analyze_button)
+        agg_func_and_analyze_layout.addWidget(self.analyze_button)
+        agg_func_and_analyze_layout.addStretch()
+        right_v_layout.addLayout(agg_func_and_analyze_layout)
 
-        main_h_layout.addLayout(center_v_layout)
-
-        # 右侧：分析结果显示
-        right_v_layout = QVBoxLayout()
         right_v_layout.addWidget(QLabel("分析结果:"))
         
         self.analysis_result_view = QTableView()
@@ -98,9 +115,29 @@ class AnalysisTabView(QWidget):
         self.analysis_result_view.setAlternatingRowColors(True)
         
         right_v_layout.addWidget(self.analysis_result_view)
-        main_h_layout.addLayout(right_v_layout)
+        self.splitter.addWidget(self.analysis_result_view_container)
 
-        layout.addLayout(main_h_layout)
+        self.initial_sizes_set = False
+        self.showEvent = self._initial_show_event
+
+        layout.addWidget(self.splitter)
+
+    def _initial_show_event(self, event):
+        """在窗口首次显示时设置 QSplitter 的初始大小。"""
+        if not self.initial_sizes_set:
+            self.splitter.setSizes([self.width() // 3, self.width() * 2 // 3])
+            self.initial_sizes_set = True
+        super().showEvent(event)
+
+    def _toggle_settings_panel(self):
+        """切换设置面板的可见性。"""
+        is_visible = self.settings_panel.isVisible()
+        if is_visible:
+            self.settings_panel.hide()
+            self.splitter.setSizes([0, self.splitter.width()])
+        else:
+            self.settings_panel.show()
+            self.splitter.setSizes([self.splitter.width() // 3, self.splitter.width() * 2 // 3])
 
     def _on_analyze_data(self):
         """收集透视表配置并发出信号。"""
