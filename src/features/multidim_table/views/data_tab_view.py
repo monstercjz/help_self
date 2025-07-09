@@ -8,6 +8,14 @@ from PySide6.QtCore import Signal, Qt, QSortFilterProxyModel
 import pandas as pd
 from src.features.multidim_table.widgets.custom_delegate import CustomItemDelegate
 
+class RowNumberProxyModel(QSortFilterProxyModel):
+    """一个自定义的代理模型，以确保垂直表头始终显示正确的行号。"""
+    def headerData(self, section: int, orientation: Qt.Orientation, role: int = Qt.DisplayRole):
+        if orientation == Qt.Vertical and role == Qt.DisplayRole:
+            # 始终返回视图中的行号（section + 1），忽略源模型的排序
+            return str(section + 1)
+        return super().headerData(section, orientation, role)
+
 class DataTabView(QWidget):
     """
     数据编辑选项卡视图，用于显示和编辑表格数据。
@@ -74,7 +82,7 @@ class DataTabView(QWidget):
 
         self.data_table_model = QStandardItemModel()
         
-        self.proxy_model = QSortFilterProxyModel()
+        self.proxy_model = RowNumberProxyModel()
         self.proxy_model.setSourceModel(self.data_table_model)
         self.proxy_model.setFilterCaseSensitivity(Qt.CaseInsensitive)
         self.proxy_model.setFilterKeyColumn(-1)

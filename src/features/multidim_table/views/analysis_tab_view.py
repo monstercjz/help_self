@@ -8,6 +8,14 @@ from PySide6.QtCore import Signal, Qt, QSortFilterProxyModel
 import pandas as pd
 import re
 
+class RowNumberProxyModel(QSortFilterProxyModel):
+    """一个自定义的代理模型，以确保垂直表头始终显示正确的行号。"""
+    def headerData(self, section: int, orientation: Qt.Orientation, role: int = Qt.DisplayRole):
+        if orientation == Qt.Vertical and role == Qt.DisplayRole:
+            # 始终返回视图中的行号（section + 1），忽略源模型的排序
+            return str(section + 1)
+        return super().headerData(section, orientation, role)
+
 class AnalysisTabView(QWidget):
     """
     数据分析选项卡视图，用于进行数据透视和分析。
@@ -121,7 +129,7 @@ class AnalysisTabView(QWidget):
         
         # 必须先创建模型，再创建使用模型的控件
         self.analysis_result_model = QStandardItemModel()
-        self.analysis_result_proxy_model = QSortFilterProxyModel()
+        self.analysis_result_proxy_model = RowNumberProxyModel()
 
         # 添加筛选框
         self.analysis_filter_input = QLineEdit()
