@@ -1,7 +1,9 @@
 # src/features/multidim_table/controllers/multidim_table_controller.py
 import os
 import pandas as pd
+import sys
 from PySide6.QtCore import QObject, QSettings, QTimer
+from PySide6.QtWidgets import QFileDialog
 from src.features.multidim_table.models.multidim_table_model import MultidimTableModel
 from src.features.multidim_table.services.data_service import DataService
 from src.features.multidim_table.views.db_management_view import DbManagementView
@@ -11,7 +13,7 @@ from src.features.multidim_table.views.statistics_tab_view import StatisticsTabV
 
 class MultidimTableController(QObject):
     """
-    多维表格的控制器，负责协调模型和所有视图。
+    多维表格的控制器，负责协调模型和所有视图。![1752058308567](images/multidim_table_controller/1752058308567.png)![1752058310795](images/multidim_table_controller/1752058310795.png)![1752058326203](images/multidim_table_controller/1752058326203.png)![1752058332085](images/multidim_table_controller/1752058332085.png)
     """
     def __init__(self, model: MultidimTableModel, db_view: DbManagementView):
         super().__init__()
@@ -29,6 +31,7 @@ class MultidimTableController(QObject):
         self.analysis_df = pd.DataFrame() # 用于分析的全量数据
         self.last_analysis_result_df = pd.DataFrame() # 用于存储上次分析结果
         self.db_filter_criteria = {'column': None, 'value': None} # 数据库筛选条件
+        self.current_stats_config_path = self._get_resource_path(os.path.join("assets", "statistics_config.json"))
 
         self._connect_signals()
         self._db_view.set_current_db(None) # Initially no db is open
@@ -128,7 +131,8 @@ class MultidimTableController(QObject):
         
         # 连接统计计算信号
         designer.statistics_tab_view.calculate_button.clicked.connect(self._on_calculate_statistics_requested)
-        designer.statistics_tab_view.config_button.clicked.connect(self._on_open_statistics_config)
+        designer.statistics_tab_view.load_config_button.clicked.connect(self._on_load_statistics_config)
+        designer.statistics_tab_view.edit_config_button.clicked.connect(self._on_open_statistics_config)
 
         # 连接数据库筛选信号
         data_tab = designer.data_tab_view
@@ -140,7 +144,8 @@ class MultidimTableController(QObject):
         """加载第一页数据和分析所需的全量数据，并初始化UI。"""
         self._load_page_data(designer)
         self._load_full_data_for_analysis(designer)
-        self._load_statistics_data(designer) # 加载统计数据
+        self._load_statistics_data(designer) # 初始化统计UI
+        designer.statistics_tab_view.set_config_path(self.current_stats_config_path)
 
         # 填充数据库筛选字段下拉框
         schema, err = self._model.get_table_schema(self.current_table_name)
@@ -524,7 +529,7 @@ class MultidimTableController(QObject):
             designer.show_error("计算失败", "未选择任何表格。")
             return
 
-        success, result_df, err = self._data_service.get_custom_statistics(self.current_table_name)
+        success, result_df, err = self._data_service.get_custom_statistics(self.current_table_name, self.current_stats_config_path)
         
         if success:
             designer.statistics_tab_view.display_statistics_data(result_df)
@@ -533,22 +538,50 @@ class MultidimTableController(QObject):
             designer.show_error("计算失败", err)
             designer.statistics_tab_view.display_statistics_data(pd.DataFrame())
 
+    def _on_load_statistics_config(self):
+        """
+        打开文件对话框，让用户选择一个新的统计配置文件。
+        """
+        designer = self._get_current_designer_view()
+        if not designer:
+            return
+            
+        file_path, _ = QFileDialog.getOpenFileName(
+            designer,
+            "选择统计配置文件",
+            "",
+            "JSON Files (*.json)"
+        )
+        if file_path:
+            self.current_stats_config_path = file_path
+            designer.statistics_tab_view.set_config_path(file_path)
+            designer.show_status_message(f"已加载新配置: {os.path.basename(file_path)}", 4000)
+
     def _on_open_statistics_config(self):
         """
-        打开统计配置文件以供用户编辑。
+        打开当前加载的统计配置文件以供用户编辑。
         """
         try:
-            config_path = os.path.join(os.path.dirname(__file__), "..", "assets", "statistics_config.json")
-            if os.path.exists(config_path):
-                os.startfile(config_path)
+            if os.path.exists(self.current_stats_config_path):
+                os.startfile(self.current_stats_config_path)
             else:
                 designer = self._get_current_designer_view()
                 if designer:
-                    designer.show_error("错误", "配置文件 'statistics_config.json' 不存在。")
+                    designer.show_error("错误", f"配置文件 '{self.current_stats_config_path}' 不存在。")
         except Exception as e:
             designer = self._get_current_designer_view()
             if designer:
                 designer.show_error("打开失败", f"无法打开配置文件: {e}")
+
+    def _get_resource_path(self, relative_path):
+        """获取资源的绝对路径，兼容开发环境和PyInstaller打包环境。"""
+        if getattr(sys, 'frozen', False):
+            # 如果是打包后的 exe
+            base_path = sys._MEIPASS
+        else:
+            # 如果是正常的开发环境
+            base_path = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+        return os.path.join(base_path, relative_path)
 
     def _refresh_all_data_and_views(self, designer):
         """一个统一的方法，用于在结构或数据发生重大变化后刷新所有内容。"""

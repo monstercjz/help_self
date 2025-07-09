@@ -1,5 +1,5 @@
 # src/features/multidim_table/views/statistics_tab_view.py
-from PySide6.QtWidgets import QVBoxLayout, QWidget, QTableView, QHeaderView, QPushButton, QHBoxLayout
+from PySide6.QtWidgets import QVBoxLayout, QWidget, QTableView, QHeaderView, QPushButton, QHBoxLayout, QLabel, QSizePolicy
 from PySide6.QtCore import QAbstractTableModel, Qt, QModelIndex
 import pandas as pd
 
@@ -50,17 +50,21 @@ class StatisticsTabView(QWidget):
     def _setup_ui(self):
         layout = QVBoxLayout(self)
 
-        # 创建按钮
-        self.calculate_button = QPushButton("执行计算")
+        # --- 顶部控制区 ---
+        top_control_layout = QHBoxLayout()
         
-        self.config_button = QPushButton("配置统计")
+        self.config_path_label = QLabel("当前配置: (默认)")
+        self.config_path_label.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
+        
+        self.load_config_button = QPushButton("加载配置")
+        self.edit_config_button = QPushButton("编辑当前配置")
+        self.calculate_button = QPushButton("执行计算")
 
-        # 按钮布局
-        button_layout = QHBoxLayout()
-        button_layout.addStretch()
-        button_layout.addWidget(self.config_button)
-        button_layout.addWidget(self.calculate_button)
-        button_layout.addStretch()
+        top_control_layout.addWidget(self.config_path_label)
+        top_control_layout.addStretch()
+        top_control_layout.addWidget(self.load_config_button)
+        top_control_layout.addWidget(self.edit_config_button)
+        top_control_layout.addWidget(self.calculate_button)
 
         self.table_view = QTableView()
         self.table_model = PandasTableModel()
@@ -70,8 +74,13 @@ class StatisticsTabView(QWidget):
         self.table_view.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
         self.table_view.verticalHeader().setSectionResizeMode(QHeaderView.ResizeToContents)
 
-        layout.addLayout(button_layout)
+        layout.addLayout(top_control_layout)
         layout.addWidget(self.table_view)
+
+    def set_config_path(self, path: str):
+        """更新显示的配置文件路径。"""
+        self.config_path_label.setText(f"当前配置: {path}")
+        self.config_path_label.setToolTip(path) # 完整路径作为提示
 
     def display_statistics_data(self, dataframe: pd.DataFrame):
         """

@@ -64,13 +64,13 @@ class DataService:
         except Exception as e:
             return False, None, str(e)
 
-    def get_custom_statistics(self, table_name: str) -> tuple[bool, pd.DataFrame | None, str | None]:
+    def get_custom_statistics(self, table_name: str, config_path: str) -> tuple[bool, pd.DataFrame | None, str | None]:
         """
-        根据外部配置文件动态生成并执行统计查询。
+        根据指定的外部配置文件动态生成并执行查询。
+        支持 'statistics' 和 'filter' 两种查询类型。
         """
-        config_path = os.path.join(os.path.dirname(__file__), "..", "assets", "statistics_config.json")
         if not os.path.exists(config_path):
-            return False, None, "统计配置文件 'statistics_config.json' 未找到。"
+            return False, None, f"配置文件 '{os.path.basename(config_path)}' 未找到。"
 
         try:
             with open(config_path, 'r', encoding='utf-8') as f:
@@ -78,10 +78,22 @@ class DataService:
         except Exception as e:
             return False, None, f"读取或解析配置文件失败: {e}"
 
-        schema, err = self._model.get_table_schema(table_name)
-        if err:
-            return False, None, f"无法获取表结构: {err}"
+        query_type = config.get("query_type", "statistics") # 默认为旧的统计模式
 
+        if query_type == "statistics":
+            return self._execute_statistics_query(table_name, config)
+        elif query_type == "filter":
+            return self._execute_filter_query(table_name, config)
+        elif query_type == "group_by_aggregate":
+            return self._execute_group_by_aggregate_query(table_name, config)
+        else:
+            return False, None, f"不支持的查询类型: '{query_type}'"
+
+    def _execute_statistics_query(self, table_name: str, config: dict) -> tuple[bool, pd.DataFrame | None, str | None]:
+        """执行 'statistics' 类型的查询。"""
+        schema, err = self._model.get_table_schema(table_name)
+        if err: return False, None, f"无法获取表结构: {err}"
+        
         table_columns = {col['name'] for col in schema}
         required_cols = set(config.get("required_columns", []))
 
@@ -89,39 +101,101 @@ class DataService:
             missing_cols = ", ".join(required_cols - table_columns)
             return False, None, f"当前表缺少必要的列: {missing_cols}。"
 
-        # 构建查询
         base_cols_str = ", ".join([f'"{col}"' for col in required_cols])
         calc_cols_str = ", ".join([f'{col["formula"]} AS "{col["name"]}"' for col in config.get("calculated_columns", [])])
-        
         all_cols_str = f"{base_cols_str}, {calc_cols_str}" if calc_cols_str else base_cols_str
-        
         where_clause = " AND ".join([f'"{col}" IS NOT NULL' for col in required_cols])
-
-        # 构建总计行
         summary_row_name = config.get("summary_row_name", "总计")
         group_by_col = config.get("group_by_column", "id")
-        
-        null_cols_count = len(required_cols) -1 + len(config.get("calculated_columns", [])) - len(config.get("aggregation_columns", []))
+        null_cols_count = len(required_cols) - 1 + len(config.get("calculated_columns", [])) - len(config.get("aggregation_columns", []))
         null_placeholders = ", ".join(["NULL"] * null_cols_count)
-        
         agg_cols_str = ", ".join([f'{col["formula"]}' for col in config.get("aggregation_columns", [])])
 
         sql_query = f"""
-        SELECT {all_cols_str}, 1 AS sort_order
-        FROM "{table_name}"
-        WHERE {where_clause}
+        SELECT {all_cols_str}, 1 AS sort_order FROM "{table_name}" WHERE {where_clause}
         UNION ALL
-        SELECT '{summary_row_name}', {null_placeholders}, {agg_cols_str}, 2
-        FROM "{table_name}"
-        WHERE {where_clause}
+        SELECT '{summary_row_name}', {null_placeholders}, {agg_cols_str}, 2 FROM "{table_name}" WHERE {where_clause}
         ORDER BY sort_order, "{group_by_col}";
         """
-
         try:
             stats_df = pd.read_sql(sql_query, self._model.conn)
             if 'sort_order' in stats_df.columns:
                 stats_df = stats_df.drop(columns=['sort_order'])
             return True, stats_df, None
         except Exception as e:
-            return False, None, f"执行动态统计查询失败: {e}"
+            return False, None, f"执行统计查询失败: {e}"
 
+    def _execute_filter_query(self, table_name: str, config: dict) -> tuple[bool, pd.DataFrame | None, str | None]:
+        """执行 'filter' 类型的查询。"""
+        display_cols = config.get("display_columns", ["*"])
+        filters = config.get("filters", [])
+
+        if not filters:
+            return False, None, "筛选查询需要至少一个筛选条件。"
+
+        display_cols_str = ", ".join([f'"{col}"' for col in display_cols])
+        
+        where_conditions = []
+        for f in filters:
+            col, op, val = f.get("column"), f.get("operator"), f.get("value")
+            if not all([col, op, val is not None]):
+                return False, None, f"筛选器格式错误: {f}"
+            
+            # 对字符串值进行转义处理
+            if isinstance(val, str):
+                # 正确处理SQL字符串中的单引号转义
+                val_str = "'" + val.replace("'", "''") + "'"
+            else:
+                val_str = str(val)
+            where_conditions.append(f'"{col}" {op} {val_str}')
+        
+        where_clause = " AND ".join(where_conditions)
+
+        sql_query = f"SELECT {display_cols_str} FROM \"{table_name}\" WHERE {where_clause};"
+
+        try:
+            result_df = pd.read_sql(sql_query, self._model.conn)
+            return True, result_df, None
+        except Exception as e:
+            return False, None, f"执行筛选查询失败: {e}"
+
+
+    def _execute_group_by_aggregate_query(self, table_name: str, config: dict) -> tuple[bool, pd.DataFrame | None, str | None]:
+        """执行 'group_by_aggregate' 类型的查询。"""
+        group_by_columns = config.get("group_by_columns", [])
+        aggregations = config.get("aggregations", [])
+
+        if not group_by_columns and not aggregations:
+            return False, None, "分组聚合查询需要指定分组列或聚合函数。"
+
+        group_by_cols_str = ", ".join([f'"{col}"' for col in group_by_columns])
+        
+        select_parts = []
+        if group_by_columns:
+            select_parts.append(group_by_cols_str)
+        
+        agg_parts = []
+        for agg in aggregations:
+            name = agg.get("name")
+            func = agg.get("function")
+            col = agg.get("column")
+            if not all([name, func, col]):
+                return False, None, f"聚合函数格式错误: {agg}"
+            agg_parts.append(f'{func.upper()}("{col}") AS "{name}"')
+        
+        if agg_parts:
+            select_parts.append(", ".join(agg_parts))
+        
+        select_clause = ", ".join(select_parts)
+        
+        group_by_clause = ""
+        if group_by_columns:
+            group_by_clause = f"GROUP BY {group_by_cols_str}"
+
+        sql_query = f"SELECT {select_clause} FROM \"{table_name}\" {group_by_clause};"
+
+        try:
+            result_df = pd.read_sql(sql_query, self._model.conn)
+            return True, result_df, None
+        except Exception as e:
+            return False, None, f"执行分组聚合查询失败: {e}"
