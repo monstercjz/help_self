@@ -466,6 +466,7 @@ class MultidimTableController(QObject):
             self._load_page_data(designer)
 
         # 刷新分析用的全量数据和字段列表
+        designer.clear_analysis_config() # 先清空旧的配置
         self._load_full_data_for_analysis(designer)
         
         # 刷新结构视图

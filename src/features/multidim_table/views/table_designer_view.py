@@ -122,6 +122,10 @@ class TableDesignerView(QDialog):
     def display_analysis_result(self, result):
         self.analysis_tab_view.display_analysis_result(result)
 
+    def clear_analysis_config(self):
+        """清空分析配置区域。"""
+        self.analysis_tab_view.clear_pivot_config_fields()
+
     def update_pagination_controls(self, current_page, total_pages, is_full_data_mode):
         self.data_tab_view.update_pagination_controls(current_page, total_pages, is_full_data_mode)
 

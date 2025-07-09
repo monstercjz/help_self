@@ -1,9 +1,9 @@
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QListWidget,
     QAbstractItemView, QComboBox, QPushButton, QTableView, QMessageBox,
-    QSplitter, QSizePolicy
+    QSplitter, QSizePolicy, QMenu
 )
-from PySide6.QtGui import QStandardItemModel, QStandardItem
+from PySide6.QtGui import QStandardItemModel, QStandardItem, QAction, QGuiApplication
 from PySide6.QtCore import Signal, Qt, QSortFilterProxyModel
 import pandas as pd
 import re
@@ -113,6 +113,8 @@ class AnalysisTabView(QWidget):
         self.analysis_result_view.setSortingEnabled(True)
         self.analysis_result_view.horizontalHeader().setStretchLastSection(True)
         self.analysis_result_view.setAlternatingRowColors(True)
+        self.analysis_result_view.setContextMenuPolicy(Qt.CustomContextMenu)
+        self.analysis_result_view.customContextMenuRequested.connect(self._show_analysis_context_menu)
         
         right_v_layout.addWidget(self.analysis_result_view)
         self.splitter.addWidget(self.analysis_result_view_container)
@@ -162,6 +164,12 @@ class AnalysisTabView(QWidget):
         self.available_fields_list.clear()
         self.available_fields_list.addItems(columns)
 
+    def clear_pivot_config_fields(self):
+        """清空所有用于透视表配置的字段列表。"""
+        self.rows_fields_list.clear()
+        self.columns_fields_list.clear()
+        self.values_fields_list.clear()
+
     def display_analysis_result(self, result):
         """
         显示分析结果。
@@ -191,3 +199,48 @@ class AnalysisTabView(QWidget):
             self.analysis_result_model.setHorizontalHeaderLabels(["未知结果类型"])
             item = QStandardItem(str(result))
             self.analysis_result_model.appendRow(item)
+
+    def _show_analysis_context_menu(self, position):
+        """显示分析结果表格的右键菜单。"""
+        menu = QMenu()
+        index = self.analysis_result_view.indexAt(position)
+
+        if not index.isValid():
+            return
+
+        # 传递当前点击的索引
+        copy_cell_action = QAction("复制单元格内容", self)
+        copy_cell_action.triggered.connect(lambda: self._copy_selected_cell(index))
+        menu.addAction(copy_cell_action)
+
+        # 复制行的逻辑保持不变，因为它依赖于行选择
+        if self.analysis_result_view.selectionModel().hasSelection():
+            copy_row_action = QAction("复制整行内容", self)
+            copy_row_action.triggered.connect(self._copy_selected_row)
+            menu.addAction(copy_row_action)
+
+        menu.exec(self.analysis_result_view.viewport().mapToGlobal(position))
+
+    def _copy_selected_cell(self, index):
+        """复制指定索引单元格的内容到剪贴板。"""
+        if index.isValid():
+            text = index.data()
+            QGuiApplication.clipboard().setText(text)
+
+    def _copy_selected_row(self):
+        """复制选中行的所有内容到剪贴板，以制表符分隔。"""
+        selected_indexes = self.analysis_result_view.selectionModel().selectedRows()
+        if not selected_indexes:
+            return
+        
+        # 我们只处理第一行选择，因为通常选择行为是SelectRows
+        proxy_row_index = selected_indexes[0]
+        source_row_index = self.analysis_result_proxy_model.mapToSource(proxy_row_index)
+        
+        row_data = []
+        for col in range(self.analysis_result_model.columnCount()):
+            item = self.analysis_result_model.item(source_row_index.row(), col)
+            if item:
+                row_data.append(item.text())
+        
+        QGuiApplication.clipboard().setText("\t".join(row_data))
