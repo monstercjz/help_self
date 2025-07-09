@@ -1,7 +1,7 @@
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QListWidget,
     QAbstractItemView, QComboBox, QPushButton, QTableView, QMessageBox,
-    QSplitter, QSizePolicy, QMenu
+    QSplitter, QSizePolicy, QMenu, QLineEdit
 )
 from PySide6.QtGui import QStandardItemModel, QStandardItem, QAction, QGuiApplication
 from PySide6.QtCore import Signal, Qt, QSortFilterProxyModel
@@ -102,10 +102,20 @@ class AnalysisTabView(QWidget):
 
         right_v_layout.addWidget(QLabel("分析结果:"))
         
-        self.analysis_result_view = QTableView()
+        # 必须先创建模型，再创建使用模型的控件
         self.analysis_result_model = QStandardItemModel()
         self.analysis_result_proxy_model = QSortFilterProxyModel()
+
+        # 添加筛选框
+        self.analysis_filter_input = QLineEdit()
+        self.analysis_filter_input.setPlaceholderText("在此输入以筛选分析结果...")
+        self.analysis_filter_input.textChanged.connect(self.analysis_result_proxy_model.setFilterRegularExpression)
+        right_v_layout.addWidget(self.analysis_filter_input)
+        
+        self.analysis_result_view = QTableView()
         self.analysis_result_proxy_model.setSourceModel(self.analysis_result_model)
+        self.analysis_result_proxy_model.setFilterKeyColumn(-1)  # 确保可以筛选所有列
+        self.analysis_result_proxy_model.setFilterCaseSensitivity(Qt.CaseInsensitive) # 不区分大小写
         self.analysis_result_view.setModel(self.analysis_result_proxy_model)
         
         self.analysis_result_view.setEditTriggers(QAbstractItemView.NoEditTriggers)
