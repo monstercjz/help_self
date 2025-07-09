@@ -6,6 +6,7 @@ from PySide6.QtWidgets import (
 from PySide6.QtGui import QStandardItemModel, QStandardItem, QAction
 from PySide6.QtCore import Signal, Qt, QSortFilterProxyModel
 import pandas as pd
+from src.features.multidim_table.widgets.custom_delegate import CustomItemDelegate
 
 class DataTabView(QWidget):
     """
@@ -105,11 +106,15 @@ class DataTabView(QWidget):
 
         layout.addLayout(pagination_layout)
 
-    def set_data(self, headers, data):
+    def set_data(self, headers, data, schema=None):
         self.data_table_model.clear()
         self.data_table_model.setHorizontalHeaderLabels(headers)
         for row_data in data:
             self.add_data_row(row_data)
+        
+        if schema:
+            delegate = CustomItemDelegate(schema, self.data_table_view)
+            self.data_table_view.setItemDelegate(delegate)
 
     def add_data_row(self, row_data):
         row_items = [QStandardItem(str(item)) for item in row_data]

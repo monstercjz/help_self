@@ -85,8 +85,8 @@ class TableDesignerView(QDialog):
         )
 
     # 以下方法将直接调用相应子视图的方法
-    def set_data(self, headers, data):
-        self.data_tab_view.set_data(headers, data)
+    def set_data(self, headers, data, schema=None):
+        self.data_tab_view.set_data(headers, data, schema)
 
     def add_data_row(self, row_data):
         self.data_tab_view.add_data_row(row_data)

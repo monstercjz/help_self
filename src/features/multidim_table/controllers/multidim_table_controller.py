@@ -136,8 +136,12 @@ class MultidimTableController(QObject):
         # 标题已在视图中更新，这里不再重复
 
     def _on_add_row(self, designer):
-        headers = [designer.data_tab_view.data_table_model.horizontalHeaderItem(i).text() for i in range(designer.data_tab_view.data_table_model.columnCount())]
-        add_dialog = AddDataDialog(headers, designer)
+        schema, err = self._model.get_table_schema(self.current_table_name)
+        if err:
+            designer.show_error("错误", f"无法获取表结构: {err}")
+            return
+
+        add_dialog = AddDataDialog(schema, designer)
         if add_dialog.exec():
             new_data = add_dialog.get_data()
             designer.add_data_row(list(new_data.values()))
@@ -263,6 +267,7 @@ class MultidimTableController(QObject):
 
             headers = imported_df.columns.tolist()
             data = imported_df.values.tolist()
+            # 导入时，我们没有schema信息，所以委托不会被激活，这是符合预期的
             designer.set_data(headers, data)
 
             self.total_rows = len(imported_df)
@@ -316,7 +321,7 @@ class MultidimTableController(QObject):
 
         headers = self._model._original_df.columns.tolist()
         data = self._model._original_df.values.tolist()
-        designer.set_data(headers, data)
+        designer.set_data(headers, data, schema)
         designer.set_schema(schema)
         designer.update_pagination_controls(self.current_page, self.total_pages, self.is_full_data_mode)
         designer.status_bar.showMessage(f"总行数: {self.total_rows}")
@@ -415,7 +420,8 @@ class MultidimTableController(QObject):
         self._model.load_from_db(self.current_table_name)  # limit=-1 默认加载全部
         headers = self._model._original_df.columns.tolist()
         data = self._model._original_df.values.tolist()
-        designer.set_data(headers, data)
+        schema, _ = self._model.get_table_schema(self.current_table_name)
+        designer.set_data(headers, data, schema)
         self.total_rows = len(self._model._original_df)
         designer.status_bar.showMessage(f"总行数: {self.total_rows}")
 
@@ -448,7 +454,8 @@ class MultidimTableController(QObject):
             self._model.load_from_db(self.current_table_name)
             headers = self._model._original_df.columns.tolist()
             data = self._model._original_df.values.tolist()
-            designer.set_data(headers, data)
+            schema, _ = self._model.get_table_schema(self.current_table_name)
+            designer.set_data(headers, data, schema)
         else:
             self._load_page_data(designer)
 
