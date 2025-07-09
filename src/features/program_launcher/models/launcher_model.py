@@ -150,27 +150,36 @@ class LauncherModel(QObject):
         self.save_data()
         self.data_changed.emit()
 
-    def add_program(self, group_id: str, name: str, path: str):
+    def add_program(self, group_id: str, name: str, path: str, run_as_admin: bool = False):
         program_id = str(uuid.uuid4())
         self.data["programs"][program_id] = {
-            "id": program_id, "group_id": group_id, "name": name, "path": path,
+            "id": program_id,
+            "group_id": group_id,
+            "name": name,
+            "path": path,
+            "run_as_admin": run_as_admin,
             "order": len(self.get_programs_in_group(group_id))
         }
         self.save_data()
         self.data_changed.emit()
 
-    def edit_program(self, program_id: str, new_group_id: str, new_name: str, new_path: str):
+    def edit_program(self, program_id: str, new_group_id: str, new_name: str, new_path: str, new_run_as_admin: bool):
         if program_id in self.data['programs']:
             program = self.data['programs'][program_id]
-            # 如果分组发生了变化，需要调整两个分组的order
-            if program['group_id'] != new_group_id:
-                self.move_program(program_id, new_group_id, 9999) # 移动到新分组末尾
+            
+            # 检查分组是否变化
+            if program.get('group_id') != new_group_id:
+                self.move_program(program_id, new_group_id, 9999)  # 移动到新分组末尾
+            
+            # 更新所有属性
             program['group_id'] = new_group_id
             program['name'] = new_name
             program['path'] = new_path
+            program['run_as_admin'] = new_run_as_admin
+            
             self.save_data()
             self.data_changed.emit()
-            logging.info(f"程序已编辑: ID={program_id}, Name={new_name}")
+            logging.info(f"程序已编辑: ID={program_id}, Name={new_name}, Admin={new_run_as_admin}")
 
     def delete_program(self, program_id: str):
         program_to_delete = self.data['programs'].pop(program_id, None)

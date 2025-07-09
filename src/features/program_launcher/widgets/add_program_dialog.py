@@ -1,8 +1,8 @@
 # desktop_center/src/features/program_launcher/widgets/add_program_dialog.py
 import os
 from PySide6.QtWidgets import (QDialog, QVBoxLayout, QLineEdit, QDialogButtonBox, QLabel,
-                               QFormLayout, QComboBox, QPushButton, QHBoxLayout, QFileDialog,
-                               QMessageBox)
+                                 QFormLayout, QComboBox, QPushButton, QHBoxLayout, QFileDialog,
+                                 QMessageBox, QCheckBox)
 from PySide6.QtCore import Slot, QFileInfo
 
 class AddProgramDialog(QDialog):
@@ -40,6 +40,10 @@ class AddProgramDialog(QDialog):
         path_layout.addWidget(self.path_edit)
         path_layout.addWidget(self.browse_btn)
 
+        # 以管理员身份运行
+        self.run_as_admin_checkbox = QCheckBox("以管理员身份运行")
+        self.run_as_admin_checkbox.setToolTip("如果勾选，程序将尝试以提升的权限启动。")
+
         # 对话框按钮
         self.button_box = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
         self.ok_button = self.button_box.button(QDialogButtonBox.StandardButton.Ok)
@@ -49,6 +53,7 @@ class AddProgramDialog(QDialog):
         if self.is_edit_mode:
             self.name_edit.setText(program_to_edit.get('name', ''))
             self.path_edit.setText(program_to_edit.get('path', ''))
+            self.run_as_admin_checkbox.setChecked(program_to_edit.get('run_as_admin', False))
             group_id_to_select = program_to_edit.get('group_id')
         elif default_group_id:
             group_id_to_select = default_group_id
@@ -64,6 +69,7 @@ class AddProgramDialog(QDialog):
         layout.addRow(QLabel("所属分组:"), self.group_combo)
         layout.addRow(QLabel("程序名称:"), self.name_edit)
         layout.addRow(QLabel("文件路径:"), path_layout)
+        layout.addRow(self.run_as_admin_checkbox)
         layout.addRow(self.button_box)
 
         # -- 连接信号 --
@@ -125,9 +131,10 @@ class AddProgramDialog(QDialog):
 
         self.accept()
 
-    def get_program_details(self) -> tuple[str, str, str]:
+    def get_program_details(self) -> tuple[str, str, str, bool]:
         """获取用户输入的程序详情。"""
         group_id = self.group_combo.currentData()
         program_name = self.name_edit.text().strip()
         file_path = self.path_edit.text().strip()
-        return group_id, program_name, file_path
+        run_as_admin = self.run_as_admin_checkbox.isChecked()
+        return group_id, program_name, file_path, run_as_admin

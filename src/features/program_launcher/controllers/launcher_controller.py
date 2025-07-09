@@ -3,6 +3,7 @@ import logging
 import os
 import subprocess
 import sys
+import ctypes
 from PySide6.QtWidgets import QFileDialog, QMessageBox, QDialog
 from PySide6.QtCore import QObject, Slot
 
@@ -83,28 +84,62 @@ class LauncherController(QObject):
         if dialog.exec() == QDialog.DialogCode.Accepted:
             details = dialog.get_program_details()
             if details:
-                gid, name, path = details
-                self.model.add_program(gid, name, path)
+                gid, name, path, run_as_admin = details
+                self.model.add_program(gid, name, path, run_as_admin)
                 self.context.notification_service.show("成功", f"程序 '{name}' 已添加。")
     @Slot(str)
     def launch_program(self, program_id: str):
         program = self.model.get_program_by_id(program_id)
-        if program and os.path.exists(program['path']):
-            try:
-                # 使用 startfile 在 Windows 上更健壮，对于非 .exe 文件（如快捷方式）也能更好地工作
-                if sys.platform == "win32":
-                    os.startfile(program['path'])
-                else:
-                    subprocess.Popen([program['path']])
-                
-                self.context.notification_service.show(
-                    title="程序已启动", message=f"{program['name']} 正在启动。"
-                )
-            except Exception as e:
-                logging.error(f"Failed to launch program {program['name']} ({program['path']}): {e}")
-                QMessageBox.critical(self.view, "启动失败", f"无法启动程序：\n{program['path']}\n\n错误: {e}")
-        else:
+        if not program:
+            QMessageBox.warning(self.view, "启动失败", "未找到该程序。")
+            return
+        
+        program_path = program.get('path')
+        program_name = program.get('name', '未知程序')
+
+        if not program_path or not os.path.exists(program_path):
             QMessageBox.warning(self.view, "启动失败", "程序路径不存在或已被移动，请编辑或删除此条目。")
+            return
+
+        try:
+            run_as_admin = program.get('run_as_admin', False)
+            
+            if sys.platform == "win32":
+                if run_as_admin:
+                    logging.info(f"Attempting to launch '{program_name}' with admin rights.")
+                    # 使用 ShellExecuteW 以管理员权限运行
+                    # 返回值 > 32 表示成功，否则表示失败（例如用户取消UAC）
+                    result = ctypes.windll.shell32.ShellExecuteW(
+                        None, "runas", program_path, None, None, 1
+                    )
+                    if result > 32:
+                        self.context.notification_service.show(
+                            title="程序已启动", message=f"'{program_name}' 正在以管理员权限启动。"
+                        )
+                    else:
+                        # 常见错误代码：ERROR_CANCELLED (1223)，表示用户拒绝了UAC请求
+                        logging.warning(f"Admin launch for '{program_name}' was cancelled or failed. Code: {result}")
+                        self.context.notification_service.show(
+                            title="启动取消", message=f"'{program_name}' 的管理员权限请求已被取消。", level="warning"
+                        )
+                else:
+                    logging.info(f"Attempting to launch '{program_name}' with normal rights.")
+                    os.startfile(program_path)
+                    self.context.notification_service.show(
+                        title="程序已启动", message=f"'{program_name}' 正在启动。"
+                    )
+            else:
+                # 对于非 Windows 系统，管理员权限通常需要 sudo，这需要交互式密码。
+                # 这里只做简单处理，实际可能需要更复杂的方案。
+                if run_as_admin:
+                    logging.warning("在非 Windows 平台上请求管理员权限，尝试直接启动。")
+                subprocess.Popen([program_path])
+                self.context.notification_service.show(
+                    title="程序已启动", message=f"'{program_name}' 正在启动。"
+                )
+        except Exception as e:
+            logging.error(f"启动程序失败 {program_name} ({program_path}): {e}")
+            QMessageBox.critical(self.view, "启动失败", f"无法启动程序：\n{program_path}\n\n错误: {e}")
     @Slot(str, str)
     def edit_item(self, item_id: str, item_type: str):
         if item_type == 'group':
@@ -122,9 +157,11 @@ class LauncherController(QObject):
             all_groups = self.model.get_all_data().get('groups', [])
             dialog = AddProgramDialog(all_groups, program_to_edit=program_to_edit, parent=self.view)
             if dialog.exec() == QDialog.DialogCode.Accepted:
-                new_group_id, new_name, new_path = dialog.get_program_details()
-                self.model.edit_program(item_id, new_group_id, new_name, new_path)
-                self.context.notification_service.show("成功", f"程序 '{new_name}' 已更新。")
+                details = dialog.get_program_details()
+                if details:
+                    new_group_id, new_name, new_path, run_as_admin = details
+                    self.model.edit_program(item_id, new_group_id, new_name, new_path, run_as_admin)
+                    self.context.notification_service.show("成功", f"程序 '{new_name}' 已更新。")
     @Slot(str, str)
     def delete_item(self, item_id: str, item_type: str):
         if item_type == 'group': self._handle_delete_group(item_id)
