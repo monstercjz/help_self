@@ -9,7 +9,7 @@ class NotificationService:
     负责管理和显示桌面弹窗通知的核心服务。
     此版本使用系统的原生通知功能，通过 'plyer' 库实现。
     """
-    def __init__(self, app_name: str, app_icon: str, config_service: ConfigService):
+    def __init__(self, app_name: str, app_icon: str, config_service: ConfigService, app_id: str = None):
         """
         初始化通知服务。
 
@@ -17,11 +17,13 @@ class NotificationService:
             app_name (str): 应用程序的名称，将显示在通知中。
             app_icon (str): 指向应用程序图标文件的路径 (.ico for Windows)。
             config_service (ConfigService): 配置服务实例。
+            app_id (str, optional): 应用程序的唯一ID (AUMID)，用于Windows通知。
         """
         self.app_name = app_name
         self.app_icon = app_icon
         self.config_service = config_service
-        logging.info("通知服务 (NotificationService) 初始化完成。")
+        self.app_id = app_id
+        logging.info(f"通知服务 (NotificationService) 初始化完成。App ID: {self.app_id}")
 
     def show(self, title: str, message: str, level: str = 'INFO'):
         """
@@ -48,10 +50,12 @@ class NotificationService:
             timeout_str = self.config_service.get_value("InfoService", "popup_timeout", "10")
             timeout = int(timeout_str) if timeout_str.isdigit() else 10
             
+            # 【核心修复】在Windows上，plyer的 'app_name' 参数实际上被用作 AppUserModelID
+            # 因此，我们传递 self.app_id 而不是 self.app_name
             notification.notify(
                 title=title,
                 message=message,
-                app_name=self.app_name,
+                app_name=self.app_id or self.app_name, # 优先使用ID
                 app_icon=icon_path,
                 timeout=timeout
             )

@@ -6,6 +6,13 @@ import configparser
 from PySide6.QtWidgets import QApplication, QMessageBox
 from PySide6.QtGui import QIcon 
 import ctypes # 【新增】导入 ctypes 用于Windows AppUserModelID
+if sys.platform == "win32":
+    try:
+        import pythoncom
+        from win32com.shell import shell, shellcon
+    except ImportError:
+        logging.warning("pywin32 is not installed, cannot create Start Menu shortcut.")
+        pythoncom = None
 import logging.handlers
 
 # --- 1. 导入项目核心模块 ---
@@ -34,7 +41,7 @@ PNG_ICON_FILE = 'icon.png'  # 用于窗口、托盘等
 ICO_ICON_FILE = 'icon.ico'  # 专门用于Windows原生通知
 
 # 【新增】定义一个唯一的应用程序用户模型ID
-APP_USER_MODEL_ID = "com.YourCompany.DesktopCenter.v1"
+APP_USER_MODEL_ID = "Cj.DesktopCenter.DesktopControlMonitoringCenter"
 
 
 def setup_logging():
@@ -127,15 +134,17 @@ class ApplicationOrchestrator:
                 logging.info(f"  - Windows AppUserModelID '{APP_USER_MODEL_ID}' 已设置。")
             except Exception as e:
                 logging.warning(f"  - 无法设置Windows AppUserModelID: {e}")
-
         # 设置QApplication的全局图标，这将影响任务栏图标
-        self.app.setWindowIcon(QIcon(self.png_icon_path)) 
+        self.app.setWindowIcon(QIcon(self.png_icon_path))
         self.app.setQuitOnLastWindowClosed(False) # 确保关闭主窗口时应用不退出
         logging.info("  - Qt Application实例初始化完成。")
 
         # --- 1.3 初始化核心后台服务 ---
         # 这些服务不依赖UI，是应用的基础数据和配置提供者
         self.config_service = ConfigService(self.config_path)
+        # 【修复】在config_service初始化后调用快捷方式创建，因为快捷方式需要读取app_name
+        if sys.platform == "win32":
+            self._create_shortcut()
         try:
             self.db_service = DatabaseService(self.db_path)
             self.db_service.init_db()
@@ -148,7 +157,8 @@ class ApplicationOrchestrator:
         self.notification_service = NotificationService(
             app_name=app_name,
             app_icon=self.ico_icon_path,
-            config_service=self.config_service
+            config_service=self.config_service,
+            app_id=APP_USER_MODEL_ID
         )
         # 【新增】实例化 WebhookService 具体配置参数应该在插件平台设置
         self.webhook_service = WebhookService()
@@ -253,6 +263,56 @@ class ApplicationOrchestrator:
         self.db_service.close()
         
         logging.info("[STEP 6.5] 应用程序关闭流程结束。")
+
+    def _create_shortcut(self):
+        """
+        为应用在开始菜单创建或更新快捷方式，并绑定AUMID。
+        这是让非打包应用正确显示在Windows通知中心设置的关键。
+        """
+        if not (sys.platform == "win32" and pythoncom):
+            return
+
+        try:
+            from win32com.propsys import propsys, pscon
+
+            app_name = self.config_service.get_value("General", "app_name", APP_NAME_DEFAULT)
+            programs_path = shell.SHGetFolderPath(0, shellcon.CSIDL_PROGRAMS, None, 0)
+            shortcut_path = os.path.join(programs_path, f"{app_name}.lnk")
+
+            if os.path.exists(shortcut_path):
+                logging.info(f"Existing Start Menu shortcut found at: {shortcut_path}. Attempting to remove it.")
+                try:
+                    os.remove(shortcut_path)
+                    logging.info("Existing shortcut removed successfully.")
+                except Exception as e:
+                    logging.warning(f"Failed to remove existing shortcut: {e}")
+                    # 如果无法删除现有快捷方式，我们仍然尝试创建新的，可能会覆盖或失败
+
+            target = sys.executable
+            script_path = os.path.abspath(__file__)
+            work_dir = os.path.dirname(script_path)
+            icon = self.ico_icon_path
+
+            shortcut = pythoncom.CoCreateInstance(
+                shell.CLSID_ShellLink, None,
+                pythoncom.CLSCTX_INPROC_SERVER, shell.IID_IShellLink
+            )
+            shortcut.SetPath(target)
+            shortcut.SetArguments(f'"{script_path}"')
+            shortcut.SetWorkingDirectory(work_dir)
+            shortcut.SetIconLocation(icon, 0)
+
+            prop_store = shortcut.QueryInterface(propsys.IID_IPropertyStore)
+            PKEY_AppUserModel_ID = pscon.PKEY_AppUserModel_ID
+            prop_store.SetValue(PKEY_AppUserModel_ID, propsys.PROPVARIANTType(APP_USER_MODEL_ID))
+            prop_store.Commit()
+
+            persist_file = shortcut.QueryInterface(pythoncom.IID_IPersistFile)
+            persist_file.Save(shortcut_path, 0)
+            logging.info(f"Successfully created Start Menu shortcut with AUMID at {shortcut_path}")
+
+        except Exception as e:
+            logging.error(f"Failed to create Start Menu shortcut: {e}", exc_info=True)
 
 
 if __name__ == '__main__':
