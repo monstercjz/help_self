@@ -1,6 +1,6 @@
 from PySide6.QtWidgets import (
     QDialog, QVBoxLayout, QTabWidget, QWidget,
-    QMessageBox, QStatusBar
+    QMessageBox, QStatusBar, QComboBox, QHBoxLayout, QLabel
 )
 from PySide6.QtCore import Signal, Qt
 
@@ -26,6 +26,7 @@ class TableDesignerView(QDialog):
     page_changed = Signal(int)
     toggle_full_data_mode_requested = Signal()
     pivot_table_requested = Signal(object)
+    switch_table_requested = Signal(str)
 
     def __init__(self, table_name, parent=None):
         super().__init__(parent)
@@ -40,6 +41,15 @@ class TableDesignerView(QDialog):
 
     def _setup_ui(self):
         layout = QVBoxLayout(self)
+
+        # --- Table Switcher ---
+        switcher_layout = QHBoxLayout()
+        switcher_layout.addWidget(QLabel("切换表:"))
+        self.table_switcher_combo = QComboBox()
+        switcher_layout.addWidget(self.table_switcher_combo)
+        switcher_layout.addStretch()
+        layout.addLayout(switcher_layout)
+
         self.tabs = QTabWidget()
         
         # --- Data Tab ---
@@ -62,6 +72,9 @@ class TableDesignerView(QDialog):
         layout.addWidget(self.status_bar)
 
     def _connect_signals(self):
+        # 连接 Table Switcher
+        self.table_switcher_combo.currentTextChanged.connect(self._on_table_switched)
+
         # 连接 DataTabView 的信号到 TableDesignerView 的转发信号
         self.data_tab_view.add_row_requested.connect(self.add_row_requested)
         self.data_tab_view.rows_deleted_in_view.connect(self.rows_deleted_in_view)
@@ -111,6 +124,19 @@ class TableDesignerView(QDialog):
 
     def update_pagination_controls(self, current_page, total_pages, is_full_data_mode):
         self.data_tab_view.update_pagination_controls(current_page, total_pages, is_full_data_mode)
+
+    def set_table_list(self, tables: list[str], current_table: str):
+        """填充表切换下拉框。"""
+        self.table_switcher_combo.blockSignals(True)
+        self.table_switcher_combo.clear()
+        self.table_switcher_combo.addItems(tables)
+        self.table_switcher_combo.setCurrentText(current_table)
+        self.table_switcher_combo.blockSignals(False)
+
+    def _on_table_switched(self, table_name: str):
+        """当用户从下拉框选择一个新表时触发。"""
+        if table_name and table_name != self.table_name:
+            self.switch_table_requested.emit(table_name)
 
     # 移除不再需要的旧方法
     # def _on_add_column(self): pass

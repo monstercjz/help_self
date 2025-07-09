@@ -91,6 +91,11 @@ class MultidimTableController(QObject):
         self._load_designer_style(designer)
         self._connect_designer_signals(designer, table_name)
         self._initialize_designer_data_and_ui(designer)
+        
+        # 填充表切换下拉框
+        all_tables, _ = self._model.get_table_list()
+        designer.set_table_list(all_tables, table_name)
+
         designer.exec()
 
     def _load_designer_style(self, designer: TableDesignerView):
@@ -114,6 +119,7 @@ class MultidimTableController(QObject):
         designer.save_data_requested.connect(lambda df: self._on_save_data(table_name, df))
         designer.import_requested.connect(lambda path: self._on_import_data(designer, path))
         designer.export_requested.connect(lambda path: self._on_export_data(designer, path))
+        designer.switch_table_requested.connect(lambda new_table: self._on_switch_table(designer, new_table))
 
     def _initialize_designer_data_and_ui(self, designer: TableDesignerView):
         """加载第一页数据和分析所需的全量数据，并初始化UI。"""
@@ -469,3 +475,21 @@ class MultidimTableController(QObject):
         # 更新UI控件状态
         designer.update_pagination_controls(self.current_page, self.total_pages, self.is_full_data_mode)
         designer.status_bar.showMessage(f"总行数: {self.total_rows}") # 确保刷新后总行数显示正确
+
+    def _on_switch_table(self, designer: TableDesignerView, new_table_name: str):
+        """处理在设计器内部切换表的请求。"""
+        # 1. 更新控制器状态
+        self.current_table_name = new_table_name
+        self.current_page = 1
+        self.is_full_data_mode = False # 切换后重置为分页模式
+
+        # 2. 更新设计器本身的 table_name 和窗口标题
+        designer.table_name = new_table_name
+        designer.setWindowTitle(f"设计表: {new_table_name}")
+
+        # 3. 重新加载所有数据和视图
+        self._refresh_all_data_and_views(designer)
+
+        # 4. 更新下拉框的当前选项（虽然它已经变了，但为了状态同步）
+        all_tables, _ = self._model.get_table_list()
+        designer.set_table_list(all_tables, new_table_name)
