@@ -155,18 +155,35 @@ class MultidimTableModel(QObject):
         except Exception as e:
             return False, str(e)
 
-    def save_to_db(self):
-        """将当前数据保存到数据库。"""
-        if self.active_table is None:
+    def replace_table_data_transaction(self, table_name: str, dataframe: pd.DataFrame) -> tuple[bool, str | None]:
+        """
+        在一个事务中，安全地替换一个表的所有数据。
+        此方法首先删除表中的所有现有行，然后插入DataFrame中的新行。
+        """
+        if table_name is None:
             return False, "没有活动的表。"
-        if self._original_df.empty:
-            return False, "没有数据可保存。"
-        
+        if dataframe.empty:
+            # 允许保存一个空表（即清空表）
+            pass
+
+        cursor = self.conn.cursor()
         try:
             if not self.conn: return False, "数据库未连接。"
-            self._original_df.to_sql(self.active_table, self.conn, if_exists='replace', index=False)
+            
+            cursor.execute("BEGIN TRANSACTION;")
+            
+            # 1. 清空表
+            cursor.execute(f'DELETE FROM "{table_name}";')
+            
+            # 2. 插入新数据
+            dataframe.to_sql(table_name, self.conn, if_exists='append', index=False)
+            
+            # 3. 提交事务
+            self.conn.commit()
+            
             return True, None
         except Exception as e:
+            self.conn.rollback()
             return False, str(e)
 
     def load_from_db(self, table_name: str, limit: int = -1, offset: int = 0):

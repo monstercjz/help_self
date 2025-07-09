@@ -3,6 +3,7 @@ import os
 import pandas as pd
 from PySide6.QtCore import QObject, QSettings, QTimer
 from src.features.multidim_table.models.multidim_table_model import MultidimTableModel
+from src.features.multidim_table.services.data_service import DataService
 from src.features.multidim_table.views.db_management_view import DbManagementView
 from src.features.multidim_table.views.table_designer_view import TableDesignerView
 from src.features.multidim_table.views.add_data_dialog import AddDataDialog
@@ -15,6 +16,7 @@ class MultidimTableController(QObject):
         super().__init__()
         self._model = model
         self._db_view = db_view
+        self._data_service = DataService(self._model)
         
         # 分页状态
         self.page_size = 100  # 每页显示100条
@@ -174,9 +176,7 @@ class MultidimTableController(QObject):
             self._db_view.show_error("保存失败", "请先点击“加载全部数据”再进行保存。")
             return
 
-        self._model.active_table = table_name
-        self._model._original_df = dataframe
-        success, err = self._model.save_to_db()
+        success, err = self._data_service.save_table_data(table_name, dataframe)
         if not success:
             self._db_view.show_error("保存失败", f"无法保存数据: {err}")
         else:
@@ -348,32 +348,10 @@ class MultidimTableController(QObject):
 
         try:
             series = self.analysis_df[column_name]
-            result_text = self._generate_column_analysis_report(column_name, series)
+            result_text = self._data_service.generate_column_analysis_report(series)
             designer.display_analysis_result(result_text)
         except Exception as e:
             designer.display_analysis_result(f"分析时发生错误: {e}")
-
-    def _generate_column_analysis_report(self, column_name: str, series: pd.Series) -> str:
-        """生成字段分析报告的文本。"""
-        result_text = f"--- 对字段 '{column_name}' 的分析 ---\n\n"
-        if pd.api.types.is_numeric_dtype(series):
-            stats = series.describe()
-            result_text += "基本描述性统计:\n"
-            result_text += "---------------------\n"
-            result_text += f"总数 (Count):    {stats.get('count', 'N/A')}\n"
-            result_text += f"平均值 (Mean):     {stats.get('mean', 'N/A'):.2f}\n"
-            result_text += f"标准差 (Std):    {stats.get('std', 'N/A'):.2f}\n"
-            result_text += f"最小值 (Min):      {stats.get('min', 'N/A')}\n"
-            result_text += f"25% (Q1):        {stats.get('25%', 'N/A')}\n"
-            result_text += f"50% (Median):    {stats.get('50%', 'N/A')}\n"
-            result_text += f"75% (Q3):        {stats.get('75%', 'N/A')}\n"
-            result_text += f"最大值 (Max):      {stats.get('max', 'N/A')}\n"
-        else:
-            counts = series.value_counts()
-            result_text += "值的频率分布:\n"
-            result_text += "---------------------\n"
-            result_text += counts.to_string()
-        return result_text
 
     def _on_pivot_table_requested(self, pivot_config: dict):
         """处理透视表分析请求。"""
@@ -385,7 +363,7 @@ class MultidimTableController(QObject):
             designer.display_analysis_result("请先加载数据进行分析。")
             return
 
-        success, result_df, err = self._model.create_pivot_table_from_df(self.analysis_df, pivot_config)
+        success, result_df, err = self._data_service.create_pivot_table(self.analysis_df, pivot_config)
         if success:
             processed_df = self._process_pivot_table_dataframe(result_df, pivot_config)
             designer.display_analysis_result(processed_df)  # 直接传递DataFrame
