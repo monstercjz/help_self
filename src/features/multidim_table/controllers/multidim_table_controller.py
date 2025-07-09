@@ -93,6 +93,11 @@ class MultidimTableController(QObject):
             return
         self.total_pages = (self.total_rows + self.page_size - 1) // self.page_size
         if self.total_pages == 0: self.total_pages = 1
+        
+        # 如果已经有打开的设计器窗口，先关闭它
+        current_designer = self._get_current_designer_view()
+        if current_designer:
+            current_designer.close() # 关闭旧的对话框
 
         designer = TableDesignerView(table_name, self._db_view)
         self._load_designer_style(designer)
@@ -102,8 +107,10 @@ class MultidimTableController(QObject):
         # 填充表切换下拉框
         all_tables, _ = self._model.get_table_list()
         designer.set_table_list(all_tables, table_name)
-
-        designer.exec()
+        
+        # 使用 show() 而不是 exec()，避免阻塞，允许同时存在多个窗口（如果需要）
+        # 但这里我们希望是切换，所以旧的关闭，新的显示
+        designer.show()
 
     def _load_designer_style(self, designer: TableDesignerView):
         """为表设计器对话框应用独立的暗色样式。"""

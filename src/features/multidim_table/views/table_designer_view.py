@@ -68,7 +68,7 @@ class TableDesignerView(QDialog):
 
         # --- Statistics Tab ---
         self.statistics_tab_view = StatisticsTabView(self)
-        self.tabs.addTab(self.statistics_tab_view, "统计结果")
+        self.tabs.addTab(self.statistics_tab_view, "自定义统计")
 
         layout.addWidget(self.tabs)
 
@@ -146,12 +146,17 @@ class TableDesignerView(QDialog):
         self.table_switcher_combo.blockSignals(True)
         self.table_switcher_combo.clear()
         self.table_switcher_combo.addItems(tables)
-        self.table_switcher_combo.setCurrentText(current_table)
+        # 使用索引设置当前选中项，更可靠
+        index = self.table_switcher_combo.findText(current_table)
+        if index != -1:
+            self.table_switcher_combo.setCurrentIndex(index)
         self.table_switcher_combo.blockSignals(False)
 
     def _on_table_switched(self, table_name: str):
         """当用户从下拉框选择一个新表时触发。"""
-        if table_name and table_name != self.table_name:
+        if table_name: # 确保不是空字符串
+            # 即使是当前表名，也发出信号，让控制器决定是否需要重新加载
+            self.table_name = table_name # 更新当前表名
             self.switch_table_requested.emit(table_name)
 
     def _load_window_state(self):
