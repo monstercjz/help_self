@@ -106,7 +106,7 @@ class MultidimTableController(QObject):
         designer.page_changed.connect(self._on_page_changed)
         designer.pivot_table_requested.connect(self._on_pivot_table_requested)
         designer.toggle_full_data_mode_requested.connect(self._on_toggle_full_data_mode)
-        designer.add_column_requested.connect(lambda col_name: self._on_add_column(designer, table_name, col_name))
+        designer.add_column_requested.connect(lambda name, type: self._on_add_column(designer, table_name, name, type))
         designer.delete_column_requested.connect(lambda col_name: self._on_delete_column(designer, table_name, col_name))
         designer.change_column_requested.connect(lambda old_name, new_name, new_type: self._on_change_column(designer, table_name, old_name, new_name, new_type))
         designer.add_row_requested.connect(lambda: self._on_add_row(designer))
@@ -162,8 +162,8 @@ class MultidimTableController(QObject):
         else:
             designer.show_error("删除失败", f"无法删除字段: {err}")
 
-    def _on_add_column(self, designer, table_name, column_name):
-        success, err = self._model.add_column(table_name, column_name)
+    def _on_add_column(self, designer, table_name, column_name, column_type):
+        success, err = self._model.add_column(table_name, column_name, column_type)
         if success:
             # 重新加载数据和结构
             self._refresh_all_data_and_views(designer)

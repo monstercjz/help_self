@@ -5,12 +5,13 @@ from PySide6.QtWidgets import (
 from PySide6.QtGui import QAction
 from PySide6.QtCore import Signal, Qt
 from .edit_column_dialog import EditColumnDialog
+from .add_column_dialog import AddColumnDialog
 
 class StructureTabView(QWidget):
     """
     表结构选项卡视图，用于管理表的字段。
     """
-    add_column_requested = Signal(str)
+    add_column_requested = Signal(str, str) # name, type
     delete_column_requested = Signal(str)
     change_column_requested = Signal(str, str, str) # old_name, new_name, new_type
 
@@ -54,9 +55,13 @@ class StructureTabView(QWidget):
             self.column_list_widget.addItem(f"{col['name']} ({col['type']})")
 
     def _on_add_column(self):
-        col_name, ok = QInputDialog.getText(self, "添加字段", "请输入新字段名:")
-        if ok and col_name:
-            self.add_column_requested.emit(col_name)
+        dialog = AddColumnDialog(self)
+        if dialog.exec():
+            name, type = dialog.get_values()
+            if name:
+                self.add_column_requested.emit(name, type)
+            else:
+                QMessageBox.warning(self, "警告", "字段名不能为空。")
 
     def _on_delete_column(self):
         selected_item = self.column_list_widget.currentItem()

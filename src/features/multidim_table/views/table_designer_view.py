@@ -15,7 +15,7 @@ class TableDesignerView(QDialog):
     作为主视图，协调数据、结构和分析三个标签页。
     """
     # 原始信号，现在将由子视图发出，并在此处转发
-    add_column_requested = Signal(str)
+    add_column_requested = Signal(str, str) # name, type
     delete_column_requested = Signal(str)
     change_column_requested = Signal(str, str, str) # old_name, new_name, new_type
     add_row_requested = Signal()
