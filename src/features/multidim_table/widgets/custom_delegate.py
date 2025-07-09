@@ -1,4 +1,5 @@
 # src/features/multidim_table/widgets/custom_delegate.py
+import re
 from PySide6.QtWidgets import (
     QStyledItemDelegate, QLineEdit, QComboBox, QDateTimeEdit
 )
@@ -28,7 +29,14 @@ class CustomItemDelegate(QStyledItemDelegate):
             editor = QComboBox(parent)
             editor.addItems(["True", "False"])
             return editor
-        
+        elif col_type and col_type.startswith('ENUM'):
+            editor = QComboBox(parent)
+            match = re.match(r"ENUM\((.*)\)", col_type, re.IGNORECASE)
+            if match:
+                options = [opt.strip() for opt in match.group(1).split(',')]
+                editor.addItems(options)
+            return editor
+
         # 对于所有其他类型，使用默认的编辑器
         return super().createEditor(parent, option, index)
 

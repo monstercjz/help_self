@@ -239,7 +239,8 @@ class MultidimTableModel(QObject):
         try:
             if not self.conn: return False, "数据库未连接。"
             cursor = self.conn.cursor()
-            cursor.execute(f'ALTER TABLE "{table_name}" ADD COLUMN "{column_name}" {column_type}')
+            # 将类型用引号括起来，以支持包含特殊字符的类型名，如 ENUM(A,B,C)
+            cursor.execute(f'ALTER TABLE "{table_name}" ADD COLUMN "{column_name}" "{column_type}"')
             self.conn.commit()
             return True, None
         except Exception as e:
@@ -305,9 +306,11 @@ class MultidimTableModel(QObject):
                 name = col[1]
                 ctype = col[2]
                 if name == column_name:
-                    new_columns_defs.append(f'"{name}" {new_type}')
+                    # 为新类型加上引号
+                    new_columns_defs.append(f'"{name}" "{new_type}"')
                 else:
-                    new_columns_defs.append(f'"{name}" {ctype}')
+                    # 为旧类型也加上引号，以防万一
+                    new_columns_defs.append(f'"{name}" "{ctype}"')
                 column_names.append(f'"{name}"')
 
             new_table_name = f"{table_name}_new"

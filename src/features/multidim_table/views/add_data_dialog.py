@@ -1,4 +1,5 @@
 # src/features/multidim_table/views/add_data_dialog.py
+import re
 from PySide6.QtWidgets import (
     QDialog, QVBoxLayout, QFormLayout, QLineEdit,
     QDialogButtonBox, QDateTimeEdit, QComboBox
@@ -34,6 +35,12 @@ class AddDataDialog(QDialog):
             elif field_type == 'BOOLEAN':
                 editor = QComboBox(self)
                 editor.addItems(["True", "False"])
+            elif field_type.startswith('ENUM'):
+                editor = QComboBox(self)
+                match = re.match(r"ENUM\((.*)\)", field_type, re.IGNORECASE)
+                if match:
+                    options = [opt.strip() for opt in match.group(1).split(',')]
+                    editor.addItems(options)
             elif field_type in ['INTEGER', 'REAL', 'NUMERIC']:
                 editor = QLineEdit(self) # 简单起见，数字也用行编辑器，可根据需求改为QSpinBox
             else: # TEXT, BLOB, etc.
