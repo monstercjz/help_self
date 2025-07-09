@@ -2,7 +2,7 @@ from PySide6.QtWidgets import (
     QDialog, QVBoxLayout, QTabWidget, QWidget,
     QMessageBox, QStatusBar, QComboBox, QHBoxLayout, QLabel
 )
-from PySide6.QtCore import Signal, Qt
+from PySide6.QtCore import Signal, Qt, QSettings
 
 # 导入新的标签视图
 from .data_tab_view import DataTabView
@@ -32,12 +32,12 @@ class TableDesignerView(QDialog):
         super().__init__(parent)
         self.table_name = table_name
         self.setWindowTitle(f"设计表: {table_name}")
-        self.setMinimumSize(900, 700)
         
         self.setWindowFlags(self.windowFlags() | Qt.WindowMinimizeButtonHint | Qt.WindowMaximizeButtonHint)
         
         self._setup_ui()
         self._connect_signals()
+        self._load_window_state()
 
     def _setup_ui(self):
         layout = QVBoxLayout(self)
@@ -141,6 +141,22 @@ class TableDesignerView(QDialog):
         """当用户从下拉框选择一个新表时触发。"""
         if table_name and table_name != self.table_name:
             self.switch_table_requested.emit(table_name)
+
+    def _load_window_state(self):
+        """加载窗口的大小和位置。"""
+        settings = QSettings("MyCompany", "MultidimTableApp")
+        geometry = settings.value(f"geometry/{self.table_name}")
+        if geometry:
+            self.restoreGeometry(geometry)
+        else:
+            # 如果没有保存的几何信息，设置一个默认大小
+            self.resize(1280, 800)
+
+    def closeEvent(self, event):
+        """在关闭事件中保存窗口的大小和位置。"""
+        settings = QSettings("MyCompany", "MultidimTableApp")
+        settings.setValue(f"geometry/{self.table_name}", self.saveGeometry())
+        super().closeEvent(event)
 
     # 移除不再需要的旧方法
     # def _on_add_column(self): pass
