@@ -1,5 +1,7 @@
 # src/features/multidim_table/services/data_service.py
 import pandas as pd
+import json
+import os
 from src.features.multidim_table.models.multidim_table_model import MultidimTableModel
 
 class DataService:
@@ -61,3 +63,65 @@ class DataService:
             return True, result_df, None
         except Exception as e:
             return False, None, str(e)
+
+    def get_custom_statistics(self, table_name: str) -> tuple[bool, pd.DataFrame | None, str | None]:
+        """
+        根据外部配置文件动态生成并执行统计查询。
+        """
+        config_path = os.path.join(os.path.dirname(__file__), "..", "assets", "statistics_config.json")
+        if not os.path.exists(config_path):
+            return False, None, "统计配置文件 'statistics_config.json' 未找到。"
+
+        try:
+            with open(config_path, 'r', encoding='utf-8') as f:
+                config = json.load(f)
+        except Exception as e:
+            return False, None, f"读取或解析配置文件失败: {e}"
+
+        schema, err = self._model.get_table_schema(table_name)
+        if err:
+            return False, None, f"无法获取表结构: {err}"
+
+        table_columns = {col['name'] for col in schema}
+        required_cols = set(config.get("required_columns", []))
+
+        if not required_cols.issubset(table_columns):
+            missing_cols = ", ".join(required_cols - table_columns)
+            return False, None, f"当前表缺少必要的列: {missing_cols}。"
+
+        # 构建查询
+        base_cols_str = ", ".join([f'"{col}"' for col in required_cols])
+        calc_cols_str = ", ".join([f'{col["formula"]} AS "{col["name"]}"' for col in config.get("calculated_columns", [])])
+        
+        all_cols_str = f"{base_cols_str}, {calc_cols_str}" if calc_cols_str else base_cols_str
+        
+        where_clause = " AND ".join([f'"{col}" IS NOT NULL' for col in required_cols])
+
+        # 构建总计行
+        summary_row_name = config.get("summary_row_name", "总计")
+        group_by_col = config.get("group_by_column", "id")
+        
+        null_cols_count = len(required_cols) -1 + len(config.get("calculated_columns", [])) - len(config.get("aggregation_columns", []))
+        null_placeholders = ", ".join(["NULL"] * null_cols_count)
+        
+        agg_cols_str = ", ".join([f'{col["formula"]}' for col in config.get("aggregation_columns", [])])
+
+        sql_query = f"""
+        SELECT {all_cols_str}, 1 AS sort_order
+        FROM "{table_name}"
+        WHERE {where_clause}
+        UNION ALL
+        SELECT '{summary_row_name}', {null_placeholders}, {agg_cols_str}, 2
+        FROM "{table_name}"
+        WHERE {where_clause}
+        ORDER BY sort_order, "{group_by_col}";
+        """
+
+        try:
+            stats_df = pd.read_sql(sql_query, self._model.conn)
+            if 'sort_order' in stats_df.columns:
+                stats_df = stats_df.drop(columns=['sort_order'])
+            return True, stats_df, None
+        except Exception as e:
+            return False, None, f"执行动态统计查询失败: {e}"
+

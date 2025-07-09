@@ -7,6 +7,7 @@ from src.features.multidim_table.services.data_service import DataService
 from src.features.multidim_table.views.db_management_view import DbManagementView
 from src.features.multidim_table.views.table_designer_view import TableDesignerView
 from src.features.multidim_table.views.add_data_dialog import AddDataDialog
+from src.features.multidim_table.views.statistics_tab_view import StatisticsTabView # 导入新的统计标签页视图
 
 class MultidimTableController(QObject):
     """
@@ -125,6 +126,10 @@ class MultidimTableController(QObject):
         designer.export_requested.connect(lambda path: self._on_export_data(designer, path))
         designer.switch_table_requested.connect(lambda new_table: self._on_switch_table(designer, new_table))
         
+        # 连接统计计算信号
+        designer.statistics_tab_view.calculate_button.clicked.connect(self._on_calculate_statistics_requested)
+        designer.statistics_tab_view.config_button.clicked.connect(self._on_open_statistics_config)
+
         # 连接数据库筛选信号
         data_tab = designer.data_tab_view
         data_tab.apply_db_filter_button.clicked.connect(self._on_apply_db_filter)
@@ -135,7 +140,8 @@ class MultidimTableController(QObject):
         """加载第一页数据和分析所需的全量数据，并初始化UI。"""
         self._load_page_data(designer)
         self._load_full_data_for_analysis(designer)
-        
+        self._load_statistics_data(designer) # 加载统计数据
+
         # 填充数据库筛选字段下拉框
         schema, err = self._model.get_table_schema(self.current_table_name)
         if not err:
@@ -498,6 +504,51 @@ class MultidimTableController(QObject):
         if self.total_pages == 0:
             self.total_pages = 1
         self._load_page_data(designer)
+
+    def _load_statistics_data(self, designer: TableDesignerView):
+        """
+        初始化统计标签页，清空旧数据。
+        """
+        # 清空视图，等待用户点击按钮进行计算
+        designer.statistics_tab_view.display_statistics_data(pd.DataFrame())
+
+    def _on_calculate_statistics_requested(self):
+        """
+        响应“执行计算”按钮的点击事件，调用服务层执行查询。
+        """
+        designer = self._get_current_designer_view()
+        if not designer:
+            return
+
+        if not self.current_table_name:
+            designer.show_error("计算失败", "未选择任何表格。")
+            return
+
+        success, result_df, err = self._data_service.get_custom_statistics(self.current_table_name)
+        
+        if success:
+            designer.statistics_tab_view.display_statistics_data(result_df)
+            designer.show_status_message("统计计算完成。", 3000)
+        else:
+            designer.show_error("计算失败", err)
+            designer.statistics_tab_view.display_statistics_data(pd.DataFrame())
+
+    def _on_open_statistics_config(self):
+        """
+        打开统计配置文件以供用户编辑。
+        """
+        try:
+            config_path = os.path.join(os.path.dirname(__file__), "..", "assets", "statistics_config.json")
+            if os.path.exists(config_path):
+                os.startfile(config_path)
+            else:
+                designer = self._get_current_designer_view()
+                if designer:
+                    designer.show_error("错误", "配置文件 'statistics_config.json' 不存在。")
+        except Exception as e:
+            designer = self._get_current_designer_view()
+            if designer:
+                designer.show_error("打开失败", f"无法打开配置文件: {e}")
 
     def _refresh_all_data_and_views(self, designer):
         """一个统一的方法，用于在结构或数据发生重大变化后刷新所有内容。"""

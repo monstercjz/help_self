@@ -3,11 +3,13 @@ from PySide6.QtWidgets import (
     QMessageBox, QStatusBar, QComboBox, QHBoxLayout, QLabel
 )
 from PySide6.QtCore import Signal, Qt, QSettings
+import pandas as pd # 导入 pandas
 
 # 导入新的标签视图
 from .data_tab_view import DataTabView
 from .structure_tab_view import StructureTabView
 from .analysis_tab_view import AnalysisTabView
+from .statistics_tab_view import StatisticsTabView
 
 class TableDesignerView(QDialog):
     """
@@ -63,6 +65,10 @@ class TableDesignerView(QDialog):
         # --- Analysis Tab ---
         self.analysis_tab_view = AnalysisTabView(self)
         self.tabs.addTab(self.analysis_tab_view, "数据分析")
+
+        # --- Statistics Tab ---
+        self.statistics_tab_view = StatisticsTabView(self)
+        self.tabs.addTab(self.statistics_tab_view, "统计结果")
 
         layout.addWidget(self.tabs)
 
@@ -121,6 +127,12 @@ class TableDesignerView(QDialog):
 
     def display_analysis_result(self, result):
         self.analysis_tab_view.display_analysis_result(result)
+
+    def display_statistics_data(self, dataframe: pd.DataFrame):
+        """
+        将统计数据传递给统计标签页显示。
+        """
+        self.statistics_tab_view.display_statistics_data(dataframe)
 
     def clear_analysis_config(self):
         """清空分析配置区域。"""
