@@ -106,12 +106,12 @@ class AnalysisTabView(QWidget):
         custom_analysis_layout = QHBoxLayout(custom_analysis_group)
         custom_analysis_layout.setContentsMargins(0, 10, 0, 0)
 
-        custom_analysis_layout.addWidget(QLabel("自定义分析语句:"))
+        custom_analysis_layout.addWidget(QLabel("自定义条件查询:"))
         self.custom_analysis_input = QLineEdit()
-        self.custom_analysis_input.setPlaceholderText("例如:属性 == '冰' and 评分 == '20'")
+        self.custom_analysis_input.setPlaceholderText("对上方结果或原始数据进行筛选, 如: 属性 == '玄' and 门派 == '天龙' and 角色名_10")
         custom_analysis_layout.addWidget(self.custom_analysis_input)
 
-        self.custom_analyze_button = QPushButton("执行自定义分析")
+        self.custom_analyze_button = QPushButton("执行条件查询")
         self.custom_analyze_button.clicked.connect(self._on_custom_analyze_data)
         custom_analysis_layout.addWidget(self.custom_analyze_button)
         right_v_layout.addWidget(custom_analysis_group)

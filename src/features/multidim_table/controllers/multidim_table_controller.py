@@ -26,6 +26,7 @@ class MultidimTableController(QObject):
         self.current_table_name = None
         self.is_full_data_mode = False
         self.analysis_df = pd.DataFrame() # 用于分析的全量数据
+        self.last_analysis_result_df = pd.DataFrame() # 用于存储上次分析结果
 
         self._connect_signals()
         self._db_view.set_current_db(None) # Initially no db is open
@@ -378,21 +379,11 @@ class MultidimTableController(QObject):
         success, result_df, err = self._data_service.create_pivot_table(self.analysis_df, pivot_config)
         if success:
             processed_df = self._process_pivot_table_dataframe(result_df, pivot_config)
+            self.last_analysis_result_df = processed_df.copy() # 存储结果
             designer.display_analysis_result(processed_df)  # 直接传递DataFrame
         else:
+            self.last_analysis_result_df = pd.DataFrame() # 清空历史结果
             designer.display_analysis_result(f"透视表分析失败: {err}")  # 传递错误信息字符串
-
-    def _process_pivot_table_dataframe(self, df: pd.DataFrame, pivot_config: dict) -> pd.DataFrame:
-        """处理透视表结果DataFrame，包括索引重置和多级列扁平化。"""
-        if pivot_config.get("rows"):
-            df = df.reset_index()
-            if len(pivot_config["rows"]) == 1:
-                df.rename(columns={df.columns[0]: pivot_config["rows"][0]}, inplace=True)
-
-        if isinstance(df.columns, pd.MultiIndex):
-            df.columns = ['_'.join(col).strip() if isinstance(col, tuple) else str(col) for col in df.columns.values]
-            df.columns = [col.rstrip('_') for col in df.columns]
-        return df
 
     def _on_custom_analysis_requested(self, query: str):
         """处理自定义分析请求。"""
@@ -400,15 +391,33 @@ class MultidimTableController(QObject):
         if not designer:
             return
 
-        if self.analysis_df.empty:
-            designer.display_analysis_result("请先加载数据进行分析。")
+        # 决定是在原始数据上查询还是在上次分析结果上查询
+        if not self.last_analysis_result_df.empty:
+            df_to_query = self.last_analysis_result_df
+            source_info = "当前分析结果"
+        elif not self.analysis_df.empty:
+            df_to_query = self.analysis_df
+            source_info = "原始数据"
+        else:
+            designer.display_analysis_result("请先加载数据或执行分析。")
             return
 
-        success, result, err = self._data_service.execute_custom_analysis(self.analysis_df, query)
+        success, result, err = self._data_service.execute_custom_analysis(df_to_query, query)
         if success:
             designer.display_analysis_result(result)
+            designer.show_status_message(f"已在“{source_info}”上执行查询", 4000)
         else:
             designer.display_analysis_result(f"自定义分析失败: {err}")
+
+    def _process_pivot_table_dataframe(self, df: pd.DataFrame, pivot_config: dict) -> pd.DataFrame:
+        """处理透视表结果DataFrame，包括索引重置和多级列扁平化。"""
+        if pivot_config.get("rows"):
+            df = df.reset_index()
+
+        if isinstance(df.columns, pd.MultiIndex):
+            df.columns = ['_'.join(map(str, col)).strip() if isinstance(col, tuple) else str(col) for col in df.columns.values]
+            df.columns = [col.rstrip('_') for col in df.columns]
+        return df
 
     def _load_last_db(self):
         """加载上次成功打开的数据库。"""
@@ -484,6 +493,7 @@ class MultidimTableController(QObject):
 
         # 刷新分析用的全量数据和字段列表
         designer.clear_analysis_config() # 先清空旧的配置
+        self.last_analysis_result_df = pd.DataFrame() # 清空分析结果
         self._load_full_data_for_analysis(designer)
         
         # 刷新结构视图
