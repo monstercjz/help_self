@@ -115,6 +115,8 @@ class DataTabView(QWidget):
         if schema:
             delegate = CustomItemDelegate(schema, self.data_table_view)
             self.data_table_view.setItemDelegate(delegate)
+        
+        self.data_table_view.resizeColumnsToContents()
 
     def add_data_row(self, row_data):
         row_items = [QStandardItem(str(item)) for item in row_data]
