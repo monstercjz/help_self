@@ -1,10 +1,11 @@
 # src/features/multidim_table/controllers/multidim_table_controller.py
+import os
+import pandas as pd
 from PySide6.QtCore import QObject, QSettings, QTimer
 from src.features.multidim_table.models.multidim_table_model import MultidimTableModel
 from src.features.multidim_table.views.db_management_view import DbManagementView
 from src.features.multidim_table.views.table_designer_view import TableDesignerView
 from src.features.multidim_table.views.add_data_dialog import AddDataDialog
-import pandas as pd
 
 class MultidimTableController(QObject):
     """
@@ -84,18 +85,22 @@ class MultidimTableController(QObject):
         self.total_pages = (self.total_rows + self.page_size - 1) // self.page_size
         if self.total_pages == 0: self.total_pages = 1
 
-        # 创建并显示表设计器对话框
         designer = TableDesignerView(table_name, self._db_view)
-        
-        # 为对话框应用独立的暗色样式
-        import os
+        self._load_designer_style(designer)
+        self._connect_designer_signals(designer, table_name)
+        self._initialize_designer_data_and_ui(designer)
+        designer.exec()
+
+    def _load_designer_style(self, designer: TableDesignerView):
+        """为表设计器对话框应用独立的暗色样式。"""
         qss_path = os.path.join(os.path.dirname(__file__), "..", "assets", "style.qss")
         if os.path.exists(qss_path):
             with open(qss_path, "r", encoding="utf-8") as f:
                 style = f.read()
                 designer.setStyleSheet(style)
 
-        # 连接设计器信号
+    def _connect_designer_signals(self, designer: TableDesignerView, table_name: str):
+        """连接表设计器视图的信号。"""
         designer.page_changed.connect(self._on_page_changed)
         designer.pivot_table_requested.connect(self._on_pivot_table_requested)
         designer.toggle_full_data_mode_requested.connect(self._on_toggle_full_data_mode)
@@ -108,11 +113,10 @@ class MultidimTableController(QObject):
         designer.import_requested.connect(lambda path: self._on_import_data(designer, path))
         designer.export_requested.connect(lambda path: self._on_export_data(designer, path))
 
-        # 加载第一页数据和分析所需的全量数据
+    def _initialize_designer_data_and_ui(self, designer: TableDesignerView):
+        """加载第一页数据和分析所需的全量数据，并初始化UI。"""
         self._load_page_data(designer)
         self._load_full_data_for_analysis(designer)
-        
-        designer.exec()
 
     def _on_rows_deleted_in_view(self, designer, deleted_count):
         """响应视图中行被删除的信号，更新控制器状态和UI。"""
@@ -177,23 +181,37 @@ class MultidimTableController(QObject):
             self._db_view.show_error("保存失败", f"无法保存数据: {err}")
         else:
             # 找到对应的designer并显示状态消息
-            for widget in self._db_view.parent().findChildren(TableDesignerView):
-                if widget.isVisible() and widget.table_name == table_name:
-                    widget.show_status_message("数据保存成功！", 4000) # 显示4秒
-                    widget.setWindowTitle(f"设计表: {table_name}") # 移除未保存提示
-                    # 保存后刷新数据
-                    self._refresh_all_data_and_views(widget)
-                    # 临时消息消失后，确保总行数持久显示
-                    QTimer.singleShot(4000, lambda: widget.status_bar.showMessage(f"总行数: {self.total_rows}"))
-                    break
+            self._update_designer_after_save(table_name)
+
+    def _update_designer_after_save(self, table_name):
+        """保存数据后，更新对应的TableDesignerView的状态。"""
+        designer = self._get_current_designer_view(table_name)
+        if designer:
+            designer.show_status_message("数据保存成功！", 4000)  # 显示4秒
+            designer.setWindowTitle(f"设计表: {table_name}")  # 移除未保存提示
+            # 保存后刷新数据
+            self._refresh_all_data_and_views(designer)
+            # 临时消息消失后，确保总行数持久显示
+            QTimer.singleShot(4000, lambda: designer.status_bar.showMessage(f"总行数: {self.total_rows}"))
+
+    def _get_current_designer_view(self, table_name=None):
+        """
+        获取当前可见的TableDesignerView实例。
+        如果提供了table_name，则返回与该表名匹配的视图。
+        """
+        for widget in self._db_view.parent().findChildren(TableDesignerView):
+            if widget.isVisible():
+                if table_name is None or widget.table_name == table_name:
+                    return widget
+        return None
 
     def _on_rename_table(self, old_name, new_name):
         success, err = self._model.rename_table(old_name, new_name)
         if not success:
             self._db_view.show_error("重命名失败", f"无法重命名表: {err}")
 
-    def _on_change_column(self, designer, table_name, old_name, new_name, new_type):
-        # 检查字段类型是否改变
+    def _on_change_column(self, designer: TableDesignerView, table_name: str, old_name: str, new_name: str, new_type: str):
+        """处理字段名称或类型的更改请求。"""
         schema, _ = self._model.get_table_schema(table_name)
         old_type = next((col['type'] for col in schema if col['name'] == old_name), None)
 
@@ -201,90 +219,90 @@ class MultidimTableController(QObject):
         name_changed = (old_name != new_name)
 
         if not type_changed and not name_changed:
-            return # 没有变化
+            return  # 没有变化
 
         final_success = True
-        error_message = ""
+        error_messages = []
 
-        # 1. 如果类型改变，则重建表
         if type_changed:
-            success, err = self._model.change_column_type(table_name, old_name, new_type)
+            success, err = self._handle_column_type_change(table_name, old_name, new_type)
             if not success:
                 final_success = False
-                error_message += f"更改类型失败: {err}\n"
-        
-        # 2. 如果名称改变，则重命名
-        # 如果类型已改变，新名称应在新表上操作，但我们的模型已处理
-        # 如果类型未改变，则在原表上操作
-        if name_changed and final_success:
-            # 如果类型也变了，重命名操作需要针对新列名
-            current_name = old_name if not type_changed else old_name
-            success, err = self._model.rename_column(table_name, current_name, new_name)
-            if not success:
-                final_success = False
-                error_message += f"重命名失败: {err}\n"
+                error_messages.append(f"更改类型失败: {err}")
 
-        # 3. 刷新UI
+        if name_changed and final_success:
+            success, err = self._handle_column_name_change(table_name, old_name, new_name)
+            if not success:
+                final_success = False
+                error_messages.append(f"重命名失败: {err}")
+
         if final_success:
             self._refresh_all_data_and_views(designer)
         else:
-            designer.show_error("修改字段失败", error_message)
+            designer.show_error("修改字段失败", "\n".join(error_messages))
+
+    def _handle_column_type_change(self, table_name: str, column_name: str, new_type: str) -> tuple[bool, str]:
+        """处理字段类型更改的逻辑。"""
+        return self._model.change_column_type(table_name, column_name, new_type)
+
+    def _handle_column_name_change(self, table_name: str, old_name: str, new_name: str) -> tuple[bool, str]:
+        """处理字段名称更改的逻辑。"""
+        return self._model.rename_column(table_name, old_name, new_name)
 
     def _on_rename_column(self, designer, table_name, old_name, new_name):
         # 此方法已被 _on_change_column 替代
         pass
 
-    def _on_import_data(self, designer, file_path):
+    def _on_import_data(self, designer: TableDesignerView, file_path: str):
+        """处理数据导入请求。"""
         try:
-            if file_path.endswith('.csv'):
-                imported_df = pd.read_csv(file_path)
-            elif file_path.endswith('.xlsx'):
-                imported_df = pd.read_excel(file_path)
-            else:
-                designer.show_error("导入失败", "不支持的文件格式。")
+            imported_df = self._load_dataframe_from_file(file_path)
+            if imported_df is None:
+                designer.show_error("导入失败", "不支持的文件格式或文件读取失败。")
                 return
 
-            # 将导入的数据加载到UI，但不立即保存
             headers = imported_df.columns.tolist()
             data = imported_df.values.tolist()
             designer.set_data(headers, data)
-            
-            # 强制同步总行数状态
+
             self.total_rows = len(imported_df)
-            self.is_full_data_mode = True # 导入后即为全量模式
-            self.total_pages = 1 # 全量模式只有一页
+            self.is_full_data_mode = True  # 导入后即为全量模式
+            self.total_pages = 1  # 全量模式只有一页
             designer.update_pagination_controls(1, 1, True)
             designer.status_bar.showMessage(f"总行数: {self.total_rows}")
-
-            # 提醒用户需要手动保存
             designer.setWindowTitle(f"设计表: {designer.table_name} (导入未保存)")
+            designer.show_status_message("数据已导入，请手动保存以应用更改。", 5000)
         except Exception as e:
             designer.show_error("导入失败", f"无法从文件加载数据: {e}")
 
-    def _on_export_data(self, designer, file_path):
-        try:
-            # 从UI获取当前显示的数据（可能是筛选或排序后的）
-            current_df = designer.get_data()
-            
-            if file_path.endswith('.csv'):
-                current_df.to_csv(file_path, index=False)
-            elif file_path.endswith('.xlsx'):
-                current_df.to_excel(file_path, index=False)
-            else:
-                # 如果用户没有在文件名中指定扩展名，默认使用.xlsx
-                if not any(file_path.endswith(ext) for ext in ['.csv', '.xlsx']):
-                    file_path += '.xlsx'
-                    current_df.to_excel(file_path, index=False)
-                else:
-                    designer.show_error("导出失败", "不支持的文件格式。")
-                    return
-            
-            designer.show_status_message(f"成功导出到 {file_path}", 5000)
-            # 临时消息消失后，确保总行数持久显示
-            QTimer.singleShot(5000, lambda: designer.status_bar.showMessage(f"总行数: {self.total_rows}"))
+    def _load_dataframe_from_file(self, file_path: str) -> pd.DataFrame | None:
+        """根据文件扩展名加载DataFrame。"""
+        if file_path.endswith('.csv'):
+            return pd.read_csv(file_path)
+        elif file_path.endswith('.xlsx'):
+            return pd.read_excel(file_path)
+        return None
 
+    def _on_export_data(self, designer: TableDesignerView, file_path: str):
+        """处理数据导出请求。"""
+        try:
+            current_df = designer.get_data()
+            self._save_dataframe_to_file(current_df, file_path)
+            designer.show_status_message(f"成功导出到 {file_path}", 5000)
+            QTimer.singleShot(5000, lambda: designer.status_bar.showMessage(f"总行数: {self.total_rows}"))
         except Exception as e:
             designer.show_error("导出失败", f"无法将数据保存到文件: {e}")
+
+    def _save_dataframe_to_file(self, dataframe: pd.DataFrame, file_path: str):
+        """根据文件扩展名保存DataFrame。"""
+        if file_path.endswith('.csv'):
+            dataframe.to_csv(file_path, index=False)
+        elif file_path.endswith('.xlsx'):
+            dataframe.to_excel(file_path, index=False)
+        else:
+            # 如果用户没有在文件名中指定扩展名，默认使用.xlsx
+            file_path += '.xlsx'
+            dataframe.to_excel(file_path, index=False)
 
     def _load_page_data(self, designer):
         """加载并显示当前页的数据。"""
@@ -310,10 +328,9 @@ class MultidimTableController(QObject):
             self.current_page = new_page
             # 找到当前打开的设计器窗口并更新它
             # 注意：这是一个简化的实现，假设只有一个设计器窗口
-            for widget in self._db_view.parent().findChildren(TableDesignerView):
-                if widget.isVisible() and widget.table_name == self.current_table_name:
-                    self._load_page_data(widget)
-                    break
+            designer = self._get_current_designer_view()
+            if designer:
+                self._load_page_data(designer)
 
     def _load_full_data_for_analysis(self, designer):
         """在后台加载全量数据用于分析。"""
@@ -323,55 +340,44 @@ class MultidimTableController(QObject):
         except Exception as e:
             designer.show_error("分析数据加载失败", str(e))
 
-    def _on_analyze_column(self, column_name):
+    def _on_analyze_column(self, column_name: str):
         """当用户选择一个字段进行分析时调用。"""
-        if column_name not in self.analysis_df.columns:
-            return
-
-        # 找到对应的designer
-        designer = None
-        for widget in self._db_view.parent().findChildren(TableDesignerView):
-            if widget.isVisible() and widget.table_name == self.current_table_name:
-                designer = widget
-                break
-        if not designer:
+        designer = self._get_current_designer_view()
+        if not designer or column_name not in self.analysis_df.columns:
             return
 
         try:
             series = self.analysis_df[column_name]
-            result_text = f"--- 对字段 '{column_name}' 的分析 ---\n\n"
-
-            # 判断是数值型还是类别型
-            if pd.api.types.is_numeric_dtype(series):
-                stats = series.describe()
-                result_text += "基本描述性统计:\n"
-                result_text += "---------------------\n"
-                result_text += f"总数 (Count):    {stats['count']}\n"
-                result_text += f"平均值 (Mean):     {stats['mean']:.2f}\n"
-                result_text += f"标准差 (Std):    {stats['std']:.2f}\n"
-                result_text += f"最小值 (Min):      {stats['min']}\n"
-                result_text += f"25% (Q1):        {stats['25%']}\n"
-                result_text += f"50% (Median):    {stats['50%']}\n"
-                result_text += f"75% (Q3):        {stats['75%']}\n"
-                result_text += f"最大值 (Max):      {stats['max']}\n"
-            else:
-                # 对非数值型数据进行值计数
-                counts = series.value_counts()
-                result_text += "值的频率分布:\n"
-                result_text += "---------------------\n"
-                result_text += counts.to_string()
-
+            result_text = self._generate_column_analysis_report(column_name, series)
             designer.display_analysis_result(result_text)
         except Exception as e:
             designer.display_analysis_result(f"分析时发生错误: {e}")
-    
-    def _on_pivot_table_requested(self, pivot_config):
+
+    def _generate_column_analysis_report(self, column_name: str, series: pd.Series) -> str:
+        """生成字段分析报告的文本。"""
+        result_text = f"--- 对字段 '{column_name}' 的分析 ---\n\n"
+        if pd.api.types.is_numeric_dtype(series):
+            stats = series.describe()
+            result_text += "基本描述性统计:\n"
+            result_text += "---------------------\n"
+            result_text += f"总数 (Count):    {stats.get('count', 'N/A')}\n"
+            result_text += f"平均值 (Mean):     {stats.get('mean', 'N/A'):.2f}\n"
+            result_text += f"标准差 (Std):    {stats.get('std', 'N/A'):.2f}\n"
+            result_text += f"最小值 (Min):      {stats.get('min', 'N/A')}\n"
+            result_text += f"25% (Q1):        {stats.get('25%', 'N/A')}\n"
+            result_text += f"50% (Median):    {stats.get('50%', 'N/A')}\n"
+            result_text += f"75% (Q3):        {stats.get('75%', 'N/A')}\n"
+            result_text += f"最大值 (Max):      {stats.get('max', 'N/A')}\n"
+        else:
+            counts = series.value_counts()
+            result_text += "值的频率分布:\n"
+            result_text += "---------------------\n"
+            result_text += counts.to_string()
+        return result_text
+
+    def _on_pivot_table_requested(self, pivot_config: dict):
         """处理透视表分析请求。"""
-        designer = None
-        for widget in self._db_view.parent().findChildren(TableDesignerView):
-            if widget.isVisible() and widget.table_name == self.current_table_name:
-                designer = widget
-                break
+        designer = self._get_current_designer_view()
         if not designer:
             return
 
@@ -381,29 +387,25 @@ class MultidimTableController(QObject):
 
         success, result_df, err = self._model.create_pivot_table_from_df(self.analysis_df, pivot_config)
         if success:
-            # 如果有行字段，将索引重置为列，以便在UI中显示
-            if pivot_config["rows"]:
-                result_df = result_df.reset_index()
-                # 如果有多个行字段，reset_index会创建多列，列名就是行字段名
-                # 如果只有一个行字段，确保其列名正确
-                if len(pivot_config["rows"]) == 1:
-                    result_df.rename(columns={result_df.columns[0]: pivot_config["rows"][0]}, inplace=True)
-            
-            # 处理多级列索引，将其扁平化
-            if isinstance(result_df.columns, pd.MultiIndex):
-                # 将多级列名连接成单级字符串，例如 ('评分', '角色名') -> '评分_角色名'
-                # 如果只有一级，例如 ('评分',) -> '评分'
-                result_df.columns = ['_'.join(col).strip() if isinstance(col, tuple) else str(col) for col in result_df.columns.values]
-                # 移除可能由空值字段引起的尾部下划线
-                result_df.columns = [col.rstrip('_') for col in result_df.columns]
-            
-            designer.display_analysis_result(result_df) # 直接传递DataFrame
+            processed_df = self._process_pivot_table_dataframe(result_df, pivot_config)
+            designer.display_analysis_result(processed_df)  # 直接传递DataFrame
         else:
-            designer.display_analysis_result(f"透视表分析失败: {err}") # 传递错误信息字符串
+            designer.display_analysis_result(f"透视表分析失败: {err}")  # 传递错误信息字符串
+
+    def _process_pivot_table_dataframe(self, df: pd.DataFrame, pivot_config: dict) -> pd.DataFrame:
+        """处理透视表结果DataFrame，包括索引重置和多级列扁平化。"""
+        if pivot_config.get("rows"):
+            df = df.reset_index()
+            if len(pivot_config["rows"]) == 1:
+                df.rename(columns={df.columns[0]: pivot_config["rows"][0]}, inplace=True)
+
+        if isinstance(df.columns, pd.MultiIndex):
+            df.columns = ['_'.join(col).strip() if isinstance(col, tuple) else str(col) for col in df.columns.values]
+            df.columns = [col.rstrip('_') for col in df.columns]
+        return df
 
     def _load_last_db(self):
         """加载上次成功打开的数据库。"""
-        import os
         settings = QSettings("MyCompany", "MultidimTableApp")
         last_db_path = settings.value("last_db_path")
         if last_db_path and os.path.exists(last_db_path):
@@ -412,49 +414,44 @@ class MultidimTableController(QObject):
     def _on_toggle_full_data_mode(self):
         """切换全量数据加载模式。"""
         self.is_full_data_mode = not self.is_full_data_mode
-        
-        # 找到当前的设计器窗口
-        designer = None
-        for widget in self._db_view.parent().findChildren(TableDesignerView):
-            if widget.isVisible() and widget.table_name == self.current_table_name:
-                designer = widget
-                break
+
+        designer = self._get_current_designer_view()
         if not designer:
             return
 
         if self.is_full_data_mode:
-            # 加载所有数据
-            self._model.load_from_db(self.current_table_name) # limit=-1 默认加载全部
-            headers = self._model._original_df.columns.tolist()
-            data = self._model._original_df.values.tolist()
-            designer.set_data(headers, data)
-            
-            # 强制同步总行数状态
-            self.total_rows = len(self._model._original_df)
-            designer.status_bar.showMessage(f"总行数: {self.total_rows}")
+            self._load_full_data_into_designer(designer)
             designer.show_status_message("已加载全部数据，现在可以编辑和保存。", 5000)
-            # 临时消息消失后，确保总行数持久显示
             QTimer.singleShot(5000, lambda: designer.status_bar.showMessage(f"总行数: {self.total_rows}"))
-            designer.setWindowTitle(f"设计表: {designer.table_name}") # 切换到全量模式时，移除未保存提示
+            designer.setWindowTitle(f"设计表: {designer.table_name}")
         else:
-            # 返回分页模式
-            self.current_page = 1
-            # 重新获取总行数和总页数，确保与数据库同步
-            self.total_rows, err = self._model.get_total_row_count(self.current_table_name)
-            if err:
-                designer.show_error("错误", f"无法获取总行数: {err}")
-                return
-            self.total_pages = (self.total_rows + self.page_size - 1) // self.page_size
-            if self.total_pages == 0: self.total_pages = 1
-
-            self._load_page_data(designer)
+            self._return_to_paginated_mode(designer)
             designer.show_status_message("已返回分页浏览模式。", 3000)
-            # 临时消息消失后，确保总行数持久显示
             QTimer.singleShot(3000, lambda: designer.status_bar.showMessage(f"总行数: {self.total_rows}"))
-            designer.setWindowTitle(f"设计表: {designer.table_name}") # 移除未保存提示
-        
-        # 更新UI状态
+            designer.setWindowTitle(f"设计表: {designer.table_name}")
+
         designer.update_pagination_controls(self.current_page, self.total_pages, self.is_full_data_mode)
+
+    def _load_full_data_into_designer(self, designer: TableDesignerView):
+        """将全量数据加载到设计器视图。"""
+        self._model.load_from_db(self.current_table_name)  # limit=-1 默认加载全部
+        headers = self._model._original_df.columns.tolist()
+        data = self._model._original_df.values.tolist()
+        designer.set_data(headers, data)
+        self.total_rows = len(self._model._original_df)
+        designer.status_bar.showMessage(f"总行数: {self.total_rows}")
+
+    def _return_to_paginated_mode(self, designer: TableDesignerView):
+        """返回分页浏览模式。"""
+        self.current_page = 1
+        self.total_rows, err = self._model.get_total_row_count(self.current_table_name)
+        if err:
+            designer.show_error("错误", f"无法获取总行数: {err}")
+            return
+        self.total_pages = (self.total_rows + self.page_size - 1) // self.page_size
+        if self.total_pages == 0:
+            self.total_pages = 1
+        self._load_page_data(designer)
 
     def _refresh_all_data_and_views(self, designer):
         """一个统一的方法，用于在结构或数据发生重大变化后刷新所有内容。"""
