@@ -13,6 +13,7 @@ class AnalysisTabView(QWidget):
     数据分析选项卡视图，用于进行数据透视和分析。
     """
     pivot_table_requested = Signal(object)
+    custom_analysis_requested = Signal(str)
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -100,6 +101,22 @@ class AnalysisTabView(QWidget):
         agg_func_and_analyze_layout.addStretch()
         right_v_layout.addLayout(agg_func_and_analyze_layout)
 
+        # --- 自定义分析 ---
+        custom_analysis_group = QWidget()
+        custom_analysis_layout = QHBoxLayout(custom_analysis_group)
+        custom_analysis_layout.setContentsMargins(0, 10, 0, 0)
+
+        custom_analysis_layout.addWidget(QLabel("自定义分析语句:"))
+        self.custom_analysis_input = QLineEdit()
+        self.custom_analysis_input.setPlaceholderText("例如:属性 == '冰' and 评分 == '20'")
+        custom_analysis_layout.addWidget(self.custom_analysis_input)
+
+        self.custom_analyze_button = QPushButton("执行自定义分析")
+        self.custom_analyze_button.clicked.connect(self._on_custom_analyze_data)
+        custom_analysis_layout.addWidget(self.custom_analyze_button)
+        right_v_layout.addWidget(custom_analysis_group)
+
+
         right_v_layout.addWidget(QLabel("分析结果:"))
         
         # 必须先创建模型，再创建使用模型的控件
@@ -168,6 +185,14 @@ class AnalysisTabView(QWidget):
             "aggfunc": aggfunc
         }
         self.pivot_table_requested.emit(pivot_config)
+
+    def _on_custom_analyze_data(self):
+        """获取自定义分析语句并发出信号。"""
+        query = self.custom_analysis_input.text()
+        if not query:
+            QMessageBox.warning(self, "警告", "自定义分析语句不能为空。")
+            return
+        self.custom_analysis_requested.emit(query)
 
     def populate_analysis_columns(self, columns):
         """填充可用字段列表。"""

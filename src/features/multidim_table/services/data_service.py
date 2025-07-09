@@ -45,3 +45,19 @@ class DataService:
         以安全的方式保存整个DataFrame到指定的表中（清空后插入）。
         """
         return self._model.replace_table_data_transaction(table_name, dataframe)
+
+    def execute_custom_analysis(self, df: pd.DataFrame, query: str) -> tuple[bool, pd.DataFrame | None, str | None]:
+        """
+        使用 df.query() 执行自定义分析语句。
+        为了安全，我们使用 pandas 自带的 query 功能，它比 eval 更受限。
+        """
+        try:
+            # 为了让 query 更直观，允许用户直接使用 df
+            # 但实际执行时 df.query() 的上下文就是 df 本身，所以我们替换掉它
+            if 'df.' in query:
+                query = query.replace('df.', '')
+
+            result_df = df.query(query, engine='python')
+            return True, result_df, None
+        except Exception as e:
+            return False, None, str(e)

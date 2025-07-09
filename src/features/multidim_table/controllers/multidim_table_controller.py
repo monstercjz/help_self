@@ -110,6 +110,7 @@ class MultidimTableController(QObject):
         """连接表设计器视图的信号。"""
         designer.page_changed.connect(self._on_page_changed)
         designer.pivot_table_requested.connect(self._on_pivot_table_requested)
+        designer.analysis_tab_view.custom_analysis_requested.connect(self._on_custom_analysis_requested)
         designer.toggle_full_data_mode_requested.connect(self._on_toggle_full_data_mode)
         designer.add_column_requested.connect(lambda name, type: self._on_add_column(designer, table_name, name, type))
         designer.delete_column_requested.connect(lambda col_name: self._on_delete_column(designer, table_name, col_name))
@@ -392,6 +393,22 @@ class MultidimTableController(QObject):
             df.columns = ['_'.join(col).strip() if isinstance(col, tuple) else str(col) for col in df.columns.values]
             df.columns = [col.rstrip('_') for col in df.columns]
         return df
+
+    def _on_custom_analysis_requested(self, query: str):
+        """处理自定义分析请求。"""
+        designer = self._get_current_designer_view()
+        if not designer:
+            return
+
+        if self.analysis_df.empty:
+            designer.display_analysis_result("请先加载数据进行分析。")
+            return
+
+        success, result, err = self._data_service.execute_custom_analysis(self.analysis_df, query)
+        if success:
+            designer.display_analysis_result(result)
+        else:
+            designer.display_analysis_result(f"自定义分析失败: {err}")
 
     def _load_last_db(self):
         """加载上次成功打开的数据库。"""
