@@ -27,6 +27,7 @@ class MultidimTableController(QObject):
         self.is_full_data_mode = False
         self.analysis_df = pd.DataFrame() # 用于分析的全量数据
         self.last_analysis_result_df = pd.DataFrame() # 用于存储上次分析结果
+        self.db_filter_criteria = {'column': None, 'value': None} # 数据库筛选条件
 
         self._connect_signals()
         self._db_view.set_current_db(None) # Initially no db is open
@@ -79,6 +80,7 @@ class MultidimTableController(QObject):
         self.current_table_name = table_name
         self.current_page = 1
         self.is_full_data_mode = False # 每次打开都重置为分页模式
+        self.db_filter_criteria = {'column': None, 'value': None} # 重置筛选条件
         
         # 获取总行数和总页数
         self.total_rows, err = self._model.get_total_row_count(table_name)
@@ -122,11 +124,23 @@ class MultidimTableController(QObject):
         designer.import_requested.connect(lambda path: self._on_import_data(designer, path))
         designer.export_requested.connect(lambda path: self._on_export_data(designer, path))
         designer.switch_table_requested.connect(lambda new_table: self._on_switch_table(designer, new_table))
+        
+        # 连接数据库筛选信号
+        data_tab = designer.data_tab_view
+        data_tab.apply_db_filter_button.clicked.connect(self._on_apply_db_filter)
+        data_tab.clear_db_filter_button.clicked.connect(self._on_clear_db_filter)
+        data_tab.filter_by_cell_requested.connect(self._on_filter_by_cell)
 
     def _initialize_designer_data_and_ui(self, designer: TableDesignerView):
         """加载第一页数据和分析所需的全量数据，并初始化UI。"""
         self._load_page_data(designer)
         self._load_full_data_for_analysis(designer)
+        
+        # 填充数据库筛选字段下拉框
+        schema, err = self._model.get_table_schema(self.current_table_name)
+        if not err:
+            columns = [col['name'] for col in schema]
+            designer.data_tab_view.set_db_filter_columns(columns)
 
     def _on_rows_deleted_in_view(self, designer, deleted_count):
         """响应视图中行被删除的信号，更新控制器状态和UI。"""
@@ -320,7 +334,16 @@ class MultidimTableController(QObject):
     def _load_page_data(self, designer):
         """加载并显示当前页的数据。"""
         offset = (self.current_page - 1) * self.page_size
-        data_success, data_err = self._model.load_from_db(self.current_table_name, limit=self.page_size, offset=offset)
+        filter_col = self.db_filter_criteria['column']
+        filter_val = self.db_filter_criteria['value']
+        
+        data_success, data_err = self._model.load_from_db(
+            self.current_table_name, 
+            limit=self.page_size, 
+            offset=offset,
+            filter_column=filter_col,
+            filter_value=filter_val
+        )
         schema, schema_err = self._model.get_table_schema(self.current_table_name)
 
         if not data_success or schema_err:
@@ -348,6 +371,7 @@ class MultidimTableController(QObject):
     def _load_full_data_for_analysis(self, designer):
         """在后台加载全量数据用于分析。"""
         try:
+            # 分析时，我们忽略数据库筛选，总是加载全量数据
             self.analysis_df = pd.read_sql(f'SELECT * FROM "{self.current_table_name}"', self._model.conn)
             designer.populate_analysis_columns(self.analysis_df.columns.tolist())
         except Exception as e:
@@ -449,7 +473,9 @@ class MultidimTableController(QObject):
 
     def _load_full_data_into_designer(self, designer: TableDesignerView):
         """将全量数据加载到设计器视图。"""
-        self._model.load_from_db(self.current_table_name)  # limit=-1 默认加载全部
+        filter_col = self.db_filter_criteria['column']
+        filter_val = self.db_filter_criteria['value']
+        self._model.load_from_db(self.current_table_name, filter_column=filter_col, filter_value=filter_val)
         headers = self._model._original_df.columns.tolist()
         data = self._model._original_df.values.tolist()
         schema, _ = self._model.get_table_schema(self.current_table_name)
@@ -460,6 +486,10 @@ class MultidimTableController(QObject):
     def _return_to_paginated_mode(self, designer: TableDesignerView):
         """返回分页浏览模式。"""
         self.current_page = 1
+        # 清除筛选条件并重新获取总数
+        self.db_filter_criteria = {'column': None, 'value': None}
+        designer.data_tab_view.clear_db_filter_inputs()
+        
         self.total_rows, err = self._model.get_total_row_count(self.current_table_name)
         if err:
             designer.show_error("错误", f"无法获取总行数: {err}")
@@ -472,7 +502,9 @@ class MultidimTableController(QObject):
     def _refresh_all_data_and_views(self, designer):
         """一个统一的方法，用于在结构或数据发生重大变化后刷新所有内容。"""
         # 重新获取总行数等信息
-        self.total_rows, _ = self._model.get_total_row_count(self.current_table_name)
+        filter_col = self.db_filter_criteria['column']
+        filter_val = self.db_filter_criteria['value']
+        self.total_rows, _ = self._model.get_total_row_count(self.current_table_name, filter_column=filter_col, filter_value=filter_val)
         self.total_pages = (self.total_rows + self.page_size - 1) // self.page_size
         if self.total_pages == 0: self.total_pages = 1
         
@@ -483,11 +515,7 @@ class MultidimTableController(QObject):
 
         # 根据当前模式刷新页面数据或全量数据
         if self.is_full_data_mode:
-            self._model.load_from_db(self.current_table_name)
-            headers = self._model._original_df.columns.tolist()
-            data = self._model._original_df.values.tolist()
-            schema, _ = self._model.get_table_schema(self.current_table_name)
-            designer.set_data(headers, data, schema)
+            self._load_full_data_into_designer(designer)
         else:
             self._load_page_data(designer)
 
@@ -504,20 +532,63 @@ class MultidimTableController(QObject):
         designer.update_pagination_controls(self.current_page, self.total_pages, self.is_full_data_mode)
         designer.status_bar.showMessage(f"总行数: {self.total_rows}") # 确保刷新后总行数显示正确
 
+    def _on_apply_db_filter(self):
+        """应用数据库层面的筛选。"""
+        designer = self._get_current_designer_view()
+        if not designer:
+            return
+            
+        column, value = designer.data_tab_view.get_db_filter()
+        self.db_filter_criteria['column'] = column
+        self.db_filter_criteria['value'] = value
+        
+        # 应用筛选后，总是回到第一页
+        self.current_page = 1
+        self.is_full_data_mode = False # 筛选时强制分页
+        self._refresh_all_data_and_views(designer)
+        designer.show_status_message(f"已应用筛选: {column} LIKE '%{value}%'", 4000)
+        QTimer.singleShot(4000, lambda: designer.status_bar.showMessage(f"总行数: {self.total_rows} (筛选后)"))
+
+    def _on_clear_db_filter(self):
+        """清除数据库层面的筛选。"""
+        designer = self._get_current_designer_view()
+        if not designer:
+            return
+            
+        self.db_filter_criteria['column'] = None
+        self.db_filter_criteria['value'] = None
+        designer.data_tab_view.clear_db_filter_inputs()
+        
+        # 清除筛选后，回到第一页
+        self.current_page = 1
+        self.is_full_data_mode = False
+        self._refresh_all_data_and_views(designer)
+        designer.show_status_message("数据库筛选已清除", 3000)
+        QTimer.singleShot(3000, lambda: designer.status_bar.showMessage(f"总行数: {self.total_rows}"))
+
+    def _on_filter_by_cell(self, column_name, value):
+        """处理通过右键菜单发起的单元格筛选请求。"""
+        designer = self._get_current_designer_view()
+        if not designer:
+            return
+        
+        # 1. 更新UI上的筛选输入框
+        designer.data_tab_view.update_db_filter_inputs(column_name, value)
+        
+        # 2. 直接调用应用筛选的逻辑
+        self._on_apply_db_filter()
+
     def _on_switch_table(self, designer: TableDesignerView, new_table_name: str):
-        """处理在设计器内部切换表的请求。"""
-        # 1. 更新控制器状态
+        """当用户从下拉框切换表格时调用。"""
+        if new_table_name == self.current_table_name:
+            return
+
+        # 更新当前表名并重新加载所有内容
         self.current_table_name = new_table_name
         self.current_page = 1
-        self.is_full_data_mode = False # 切换后重置为分页模式
-
-        # 2. 更新设计器本身的 table_name 和窗口标题
-        designer.table_name = new_table_name
-        designer.setWindowTitle(f"设计表: {new_table_name}")
-
-        # 3. 重新加载所有数据和视图
+        self.is_full_data_mode = False
         self._refresh_all_data_and_views(designer)
-
-        # 4. 更新下拉框的当前选项（虽然它已经变了，但为了状态同步）
+        
+        # 更新下拉框的当前选项
         all_tables, _ = self._model.get_table_list()
         designer.set_table_list(all_tables, new_table_name)

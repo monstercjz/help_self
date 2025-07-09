@@ -1,9 +1,9 @@
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QTableView, QAbstractItemView,
     QPushButton, QHBoxLayout, QLineEdit, QFileDialog, QLabel,
-    QStyle, QMenu, QMessageBox
+    QStyle, QMenu, QMessageBox, QComboBox
 )
-from PySide6.QtGui import QStandardItemModel, QStandardItem, QAction
+from PySide6.QtGui import QStandardItemModel, QStandardItem, QAction, QGuiApplication
 from PySide6.QtCore import Signal, Qt, QSortFilterProxyModel
 import pandas as pd
 from src.features.multidim_table.widgets.custom_delegate import CustomItemDelegate
@@ -27,6 +27,7 @@ class DataTabView(QWidget):
     export_requested = Signal(str)
     page_changed = Signal(int)
     toggle_full_data_mode_requested = Signal()
+    filter_by_cell_requested = Signal(str, str) # column_name, value
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -71,6 +72,23 @@ class DataTabView(QWidget):
         self.filter_input.setPlaceholderText("在此输入以筛选数据...")
         self.filter_input.textChanged.connect(self._on_filter_text_changed)
         layout.addWidget(self.filter_input)
+
+        # --- Database Filter bar ---
+        db_filter_layout = QHBoxLayout()
+        db_filter_layout.addWidget(QLabel("数据库筛选:"))
+        self.db_filter_column_combo = QComboBox()
+        db_filter_layout.addWidget(self.db_filter_column_combo)
+        self.db_filter_value_input = QLineEdit()
+        self.db_filter_value_input.setPlaceholderText("输入筛选值...")
+        db_filter_layout.addWidget(self.db_filter_value_input)
+        
+        self.apply_db_filter_button = QPushButton("应用")
+        db_filter_layout.addWidget(self.apply_db_filter_button)
+
+        self.clear_db_filter_button = QPushButton("清除")
+        db_filter_layout.addWidget(self.clear_db_filter_button)
+
+        layout.addLayout(db_filter_layout)
 
         # --- Table View for Editing ---
         self.data_table_view = QTableView()
@@ -126,6 +144,27 @@ class DataTabView(QWidget):
         
         self.data_table_view.resizeColumnsToContents()
 
+    def set_db_filter_columns(self, columns):
+        """设置数据库筛选下拉框的字段列表。"""
+        self.db_filter_column_combo.clear()
+        self.db_filter_column_combo.addItems(columns)
+
+    def get_db_filter(self):
+        """获取当前数据库筛选的字段和值。"""
+        column = self.db_filter_column_combo.currentText()
+        value = self.db_filter_value_input.text()
+        return column, value
+
+    def clear_db_filter_inputs(self):
+        """清空数据库筛选的输入。"""
+        self.db_filter_column_combo.setCurrentIndex(0)
+        self.db_filter_value_input.clear()
+
+    def update_db_filter_inputs(self, column, value):
+        """更新数据库筛选的输入框。"""
+        self.db_filter_column_combo.setCurrentText(column)
+        self.db_filter_value_input.setText(value)
+
     def add_data_row(self, row_data):
         row_items = [QStandardItem(str(item)) for item in row_data]
         self.data_table_model.appendRow(row_items)
@@ -180,16 +219,63 @@ class DataTabView(QWidget):
     def _show_data_context_menu(self, position):
         menu = QMenu()
         
+        # 获取当前点击的索引
+        proxy_index = self.data_table_view.indexAt(position)
+        if not proxy_index.isValid():
+            return
+
+        # 添加新行总是可用
         add_action = QAction("添加新行", self)
         add_action.triggered.connect(self.add_row_requested)
         menu.addAction(add_action)
+        menu.addSeparator()
 
+        # 复制和筛选操作
+        copy_cell_action = QAction("复制单元格", self)
+        copy_cell_action.triggered.connect(lambda: self._copy_cell_data(proxy_index))
+        menu.addAction(copy_cell_action)
+
+        copy_row_action = QAction("复制行", self)
+        copy_row_action.triggered.connect(lambda: self._copy_row_data(proxy_index))
+        menu.addAction(copy_row_action)
+        
+        menu.addSeparator()
+
+        filter_action = QAction("以此值筛选", self)
+        filter_action.triggered.connect(lambda: self._filter_by_cell(proxy_index))
+        menu.addAction(filter_action)
+
+        menu.addSeparator()
+
+        # 删除操作（仅当有行被选中时）
         if self.data_table_view.selectionModel().hasSelection():
             delete_action = QAction("删除选中行", self)
             delete_action.triggered.connect(self._on_delete_row)
             menu.addAction(delete_action)
             
         menu.exec(self.data_table_view.viewport().mapToGlobal(position))
+
+    def _copy_cell_data(self, proxy_index):
+        """复制单元格数据到剪贴板。"""
+        cell_data = self.proxy_model.data(proxy_index, Qt.DisplayRole)
+        QGuiApplication.clipboard().setText(cell_data)
+
+    def _copy_row_data(self, proxy_index):
+        """复制整行数据到剪贴板。"""
+        source_index = self.proxy_model.mapToSource(proxy_index)
+        row = source_index.row()
+        num_cols = self.data_table_model.columnCount()
+        row_data = [self.data_table_model.item(row, col).text() for col in range(num_cols)]
+        QGuiApplication.clipboard().setText("\t".join(row_data))
+
+    def _filter_by_cell(self, proxy_index):
+        """根据单元格内容进行筛选。"""
+        source_index = self.proxy_model.mapToSource(proxy_index)
+        column_index = source_index.column()
+        column_name = self.data_table_model.horizontalHeaderItem(column_index).text()
+        cell_value = self.data_table_model.item(source_index.row(), column_index).text()
+        
+        self.filter_by_cell_requested.emit(column_name, cell_value)
 
     def update_pagination_controls(self, current_page, total_pages, is_full_data_mode):
         is_paginated = total_pages > 1 and not is_full_data_mode

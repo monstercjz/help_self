@@ -186,29 +186,52 @@ class MultidimTableModel(QObject):
             self.conn.rollback()
             return False, str(e)
 
-    def load_from_db(self, table_name: str, limit: int = -1, offset: int = 0):
-        """从数据库加载指定表的数据，支持分页。"""
+    def load_from_db(self, table_name: str, limit: int = -1, offset: int = 0, filter_column: str = None, filter_value: str = None):
+        """从数据库加载指定表的数据，支持分页和筛选。"""
         try:
             if not self.conn: return False, "数据库未连接。"
             
+            params = []
             query = f'SELECT * FROM "{table_name}"'
+            
+            where_clauses = []
+            if filter_column and filter_value:
+                # 使用 LIKE 进行模糊匹配
+                where_clauses.append(f'"{filter_column}" LIKE ?')
+                params.append(f'%{filter_value}%')
+
+            if where_clauses:
+                query += " WHERE " + " AND ".join(where_clauses)
+
             if limit > 0:
                 query += f" LIMIT {limit} OFFSET {offset}"
 
-            self._df = pd.read_sql(query, self.conn)
-            self._original_df = self._df.copy() # 在分页模式下，original_df只包含当前页数据
+            self._df = pd.read_sql(query, self.conn, params=params)
+            self._original_df = self._df.copy()
             self.active_table = table_name
             self.data_changed.emit()
             return True, None
         except Exception as e:
             return False, str(e)
 
-    def get_total_row_count(self, table_name: str):
-        """获取表的总行数。"""
+    def get_total_row_count(self, table_name: str, filter_column: str = None, filter_value: str = None):
+        """获取表的总行数，支持筛选。"""
         try:
             if not self.conn: return 0, "数据库未连接。"
+            
+            params = []
+            query = f'SELECT COUNT(*) FROM "{table_name}"'
+            
+            where_clauses = []
+            if filter_column and filter_value:
+                where_clauses.append(f'"{filter_column}" LIKE ?')
+                params.append(f'%{filter_value}%')
+
+            if where_clauses:
+                query += " WHERE " + " AND ".join(where_clauses)
+
             cursor = self.conn.cursor()
-            cursor.execute(f'SELECT COUNT(*) FROM "{table_name}"')
+            cursor.execute(query, params)
             count = cursor.fetchone()[0]
             return count, None
         except Exception as e:
