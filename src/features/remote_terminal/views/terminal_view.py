@@ -50,12 +50,12 @@ class TerminalView(QWidget):
 
         # Config Loader
         config_layout = QHBoxLayout()
-        self.load_config_button = QPushButton("Load Config")
+        self.load_config_button = QPushButton("加载配置")
         self.config_combo = QComboBox()
         self.config_combo.setPlaceholderText("Select a Configuration")
-        self.add_button = QPushButton("Add")
-        self.edit_button = QPushButton("Edit")
-        self.delete_button = QPushButton("Delete")
+        self.add_button = QPushButton("添加")
+        self.edit_button = QPushButton("编辑")
+        self.delete_button = QPushButton("删除")
         self.edit_button.setEnabled(False)
         self.delete_button.setEnabled(False)
 
@@ -67,8 +67,8 @@ class TerminalView(QWidget):
 
         # Connection Buttons
         button_layout = QHBoxLayout()
-        self.connect_button = QPushButton("Connect")
-        self.disconnect_button = QPushButton("Disconnect")
+        self.connect_button = QPushButton("连接远程SSH")
+        self.disconnect_button = QPushButton("断开连接")
         self.disconnect_button.setEnabled(False)
         button_layout.addWidget(self.connect_button)
         button_layout.addWidget(self.disconnect_button)
