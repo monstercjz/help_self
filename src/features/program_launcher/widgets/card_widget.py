@@ -46,6 +46,16 @@ class CardWidget(QFrame):
         layout.addWidget(self.name_label)
         layout.addStretch()
 
+    def enterEvent(self, event):
+        """鼠标进入时，将光标设置为手形"""
+        self.setCursor(Qt.CursorShape.PointingHandCursor)
+        super().enterEvent(event)
+
+    def leaveEvent(self, event):
+        """鼠标离开时，恢复默认光标"""
+        self.unsetCursor()  # 恢复默认光标
+        super().leaveEvent(event)
+
     def mousePressEvent(self, event: QMouseEvent):
         if event.button() == Qt.MouseButton.LeftButton:
             self.drag_start_position = event.position().toPoint()
