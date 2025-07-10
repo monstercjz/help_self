@@ -1,13 +1,15 @@
 # src/features/ssh_client/controllers/SshClientController.py
 import uuid
 import logging
-import json # 新增导入json模块
+import json
+import os # 导入os模块
+
 from PySide6.QtCore import QObject, Signal, QThread
 
 from ..models import SshConnectionModel
 from ..views import SshClientView
 from ..services import SshService
-from src.core.context import ApplicationContext # 修正导入名称
+from src.core.context import ApplicationContext
 
 class SshClientController(QObject):
     """
@@ -35,6 +37,15 @@ class SshClientController(QObject):
         self.connection_threads = {} # {session_id: SshConnectionThread} 存储活跃的连接线程
         self.logger = logging.getLogger(self.__class__.__name__)
 
+        # 从全局配置服务获取SSH连接配置文件的路径
+        # 默认路径为插件目录下的connections.json
+        default_connections_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'connections.json')
+        self.connections_file_path = self.context.config_service.get_value(
+            "ssh_client", "connections_file_path", default_connections_file
+        )
+        self.logger.info(f"SSH连接配置文件路径: {self.connections_file_path}")
+
+        self.view.set_connections_file_path(self.connections_file_path) # 初始化视图中的路径显示
         self._connect_signals()
         self._load_connections()
 
@@ -66,16 +77,21 @@ class SshClientController(QObject):
         self.removeSessionWidget.connect(self.view.remove_session_widget)
         self.appendSessionOutput.connect(self.view.append_session_output)
         self.showErrorMessage.connect(self.view.show_error_message)
+        self.view.connectionsFilePathChanged.connect(self._on_connections_file_path_changed) # 连接视图的信号
 
     def _load_connections(self):
-        """从配置服务加载所有SSH连接。"""
-        # 使用ConfigService的通用方法读取JSON字符串
-        connections_json = self.context.config_service.get_value("ssh_client", "connections", "{}")
-        try:
-            connections_data = json.loads(connections_json) # 移除内部导入
-        except json.JSONDecodeError:
-            self.logger.error("加载SSH连接配置时JSON解析失败，使用空配置。")
-            connections_data = {}
+        """从插件自己的配置文件加载所有SSH连接。"""
+        connections_data = {}
+        if os.path.exists(self.connections_file_path):
+            try:
+                with open(self.connections_file_path, 'r', encoding='utf-8') as f:
+                    connections_data = json.load(f)
+            except json.JSONDecodeError:
+                self.logger.error(f"加载SSH连接配置时JSON解析失败，文件: {self.connections_file_path}，使用空配置。")
+            except IOError as e:
+                self.logger.error(f"读取SSH连接配置文件失败: {self.connections_file_path}, 错误: {e}")
+        else:
+            self.logger.info(f"SSH连接配置文件不存在: {self.connections_file_path}，将创建新文件。")
 
         for conn_id, data in connections_data.items():
             connection = SshConnectionModel.from_dict(data)
@@ -84,13 +100,16 @@ class SshClientController(QObject):
         self.logger.info(f"加载了 {len(self.connections)} 个SSH连接。")
 
     def _save_connections(self):
-        """将所有SSH连接保存到配置服务。"""
+        """将所有SSH连接保存到插件自己的配置文件。"""
         connections_data = {conn_id: conn.to_dict() for conn_id, conn in self.connections.items()}
-        # 将字典序列化为JSON字符串并保存
-        connections_json = json.dumps(connections_data)
-        self.context.config_service.set_option("ssh_client", "connections", connections_json)
-        self.context.config_service.save_config() # 确保配置被写入文件
-        self.logger.info(f"保存了 {len(self.connections)} 个SSH连接。")
+        try:
+            # 确保目录存在
+            os.makedirs(os.path.dirname(self.connections_file_path), exist_ok=True)
+            with open(self.connections_file_path, 'w', encoding='utf-8') as f:
+                json.dump(connections_data, f, indent=4)
+            self.logger.info(f"保存了 {len(self.connections)} 个SSH连接到 {self.connections_file_path}。")
+        except IOError as e:
+            self.logger.error(f"写入SSH连接配置文件失败: {self.connections_file_path}, 错误: {e}")
 
     def _on_add_connection_requested(self):
         """处理添加连接请求。"""
@@ -225,6 +244,19 @@ class SshClientController(QObject):
         """SFTP传输失败。"""
         self.appendSessionOutput.emit(session_id, f"\nSFTP传输失败: {error_message}\n")
         self.showErrorMessage.emit("SFTP传输失败", error_message)
+
+
+    def _on_connections_file_path_changed(self, new_path: str):
+        """
+        处理SSH连接配置文件路径变更的信号。
+        """
+        self.logger.info(f"SSH连接配置文件路径已从 '{self.connections_file_path}' 更改为 '{new_path}'。")
+        self.connections_file_path = new_path
+        self.context.config_service.set_option("ssh_client", "connections_file_path", new_path)
+        self.context.config_service.save_config() # 保存到全局配置
+        self.connections.clear() # 清空当前连接
+        self._load_connections() # 重新加载新路径下的连接
+        self.showErrorMessage.emit("配置更新", f"SSH连接配置文件路径已更新为:\n{new_path}\n连接已重新加载。")
 
 
 class SshConnectionThread(QThread):
