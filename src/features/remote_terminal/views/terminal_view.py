@@ -2,7 +2,7 @@ from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel,
                                QLineEdit, QPushButton, QTextEdit, QTreeView,
                                QSplitter, QAbstractItemView, QMenu, QGroupBox)
 from PySide6.QtCore import Signal, Qt, QEvent, QModelIndex
-from PySide6.QtGui import QFont, QStandardItemModel, QStandardItem, QTextCursor, QAction
+from PySide6.QtGui import QFont, QStandardItemModel, QStandardItem, QTextCursor, QAction, QIcon
 from ansi2html import Ansi2HTMLConverter
 
 class TerminalView(QWidget):
@@ -30,14 +30,23 @@ class TerminalView(QWidget):
         """Initializes the UI components."""
         main_layout = QVBoxLayout(self)
         main_layout.setContentsMargins(15, 0, 15, 15)
-        main_layout.setSpacing(0)
+        main_layout.setSpacing(10)
 
         # Global Top Toolbar (always visible)
         top_toolbar = QWidget()
+        top_toolbar.setObjectName("Top_toolbar")
+        top_toolbar.setStyleSheet("#Top_toolbar { background-color: #F8F8F8; border-top: 1px solid #E0E0E0; border-bottom: 1px solid #E0E0E0; }")
+        top_toolbar.setContentsMargins(15, 10, 15, 10)
+        top_toolbar.setFixedHeight(60)
+
         top_bar_layout = QHBoxLayout(top_toolbar)
         top_bar_layout.setContentsMargins(5, 2, 5, 2)
-        self.load_button = QPushButton("加载库")
-        self.add_button = QPushButton("添加连接")
+        self.load_button = QPushButton("⚙️ 加载库")
+        self.load_button.setToolTip("设置配置文件")
+        self.load_button.setMinimumHeight(30)
+        self.add_button = QPushButton(QIcon.fromTheme("list-add"), " 添加连接")
+        self.add_button.setToolTip("添加新连接")
+        self.add_button.setMinimumHeight(30)
         self.db_path_label = QLabel("数据库: 未加载")
         self.db_path_label.setWordWrap(True)
         
@@ -131,6 +140,7 @@ class TerminalView(QWidget):
         self.command_input.setFont(font)
         self.command_input.setStyleSheet("background-color: #1e1e1e; color: #d4d4d4;")
         self.command_input.setEnabled(False)
+        self.command_input.setMinimumHeight(30)
 
         right_layout.addLayout(terminal_buttons_layout)
         
@@ -144,7 +154,7 @@ class TerminalView(QWidget):
         content_group_box = QGroupBox()
         content_group_box.setStyleSheet("""
             QGroupBox {   
-                margin-top: 10px;
+                margin-top: 1px; /* 与上方的距离 */
 
                 /* --- 以下是新增的边框设置 --- */
                 border: 1px solid #E0E0E0; /* 设置2px实线边框，颜色为#eea00f */
@@ -287,6 +297,16 @@ class TerminalView(QWidget):
                 display_text = f"{conn['name']} ({conn['username']}@{conn['hostname']}:{conn['port']})"
                 conn_item = QStandardItem(display_text)
                 conn_item.setData(conn) # Store the full dict
+                
+                # Set the tooltip for the connection item
+                tooltip_text = (
+                    f"名称: {conn.get('name', 'N/A')}\n"
+                    f"主机: {conn.get('hostname', 'N/A')}\n"
+                    f"端口: {conn.get('port', 'N/A')}\n"
+                    f"用户: {conn.get('username', 'N/A')}"
+                )
+                conn_item.setData(tooltip_text, Qt.ToolTipRole)
+                
                 group_item.appendRow(conn_item)
         self.tree_view.expandAll()
 
