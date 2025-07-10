@@ -2,23 +2,23 @@ from PySide6.QtCore import QObject, Slot
 from PySide6.QtWidgets import QFileDialog, QMessageBox
 from src.features.remote_terminal.views.terminal_view import TerminalView
 from src.features.remote_terminal.services.ssh_service import SSHService, ConnectionStatus
-from src.features.remote_terminal.models.connection_model import ConnectionModel
+from src.features.remote_terminal.models.connection_repository import ConnectionRepository
 from src.features.remote_terminal.views.connection_dialog import ConnectionDialog
 
 class TerminalController(QObject):
     """
     The controller for the remote terminal feature.
-    It connects the view and the SSH service, handling the application logic.
+    It connects the view, the repository, and the SSH service, handling the application logic.
     """
     def __init__(self, config_service):
         super().__init__()
         self.view = TerminalView()
         self.service = SSHService()
-        self.model = ConnectionModel()
-        self.config_service = config_service
+        self.repository = ConnectionRepository()
+        self.config_service = config_service # Retained for potential future use (e.g., saving last loaded DB)
 
         self._connect_signals()
-        self._load_initial_config()
+        self._load_initial_connections()
 
     def _connect_signals(self):
         """Connects signals and slots between all components."""
@@ -26,23 +26,35 @@ class TerminalController(QObject):
         self.view.connect_requested.connect(self.on_connect_requested)
         self.view.disconnect_requested.connect(self.service.disconnect)
         self.view.command_sent.connect(self.service.send_command)
-        self.view.load_config_requested.connect(self.on_load_config_requested)
-        self.view.config_selected.connect(self.on_config_selected)
-        self.view.add_config_requested.connect(self.on_add_config)
-        self.view.edit_config_requested.connect(self.on_edit_config)
-        self.view.delete_config_requested.connect(self.on_delete_config)
+        self.view.load_connections_requested.connect(self.on_load_connections_requested)
+        self.view.add_connection_requested.connect(self.on_add_connection)
+        self.view.edit_connection_requested.connect(self.on_edit_connection)
+        self.view.delete_connection_requested.connect(self.on_delete_connection)
 
         # Service to Controller
         self.service.status_changed.connect(self.on_status_changed)
 
-        # Model to Controller
-        self.model.configurations_loaded.connect(self.on_configurations_loaded)
-        self.model.error_occurred.connect(self.on_load_error)
+        # Repository to Controller
+        self.repository.connections_changed.connect(self.on_connections_changed)
+        self.repository.error_occurred.connect(self.on_repository_error)
 
     def get_view(self):
         """Returns the main view widget."""
         return self.view
 
+    def _load_initial_connections(self):
+        """Loads connections from the default database on startup."""
+        self.on_connections_changed()
+        self.view.set_database_path(self.repository.get_current_db_path())
+
+    @Slot()
+    def on_connections_changed(self):
+        """Reloads and repopulates the view when connections in the repository change."""
+        connections = self.repository.get_all_connections_by_group()
+        self.view.populate_connections(connections)
+        self.view.set_database_path(self.repository.get_current_db_path())
+
+    @Slot(dict)
     def on_connect_requested(self, details):
         """Handles the connection request from the view."""
         self.view.clear_terminal()
@@ -52,93 +64,68 @@ class TerminalController(QObject):
         """Handles all status updates from the SSH service."""
         if status == ConnectionStatus.CONNECTING:
             self.view.append_data(f"{message}\n")
-            self.view.set_connection_status(is_connected=False) # Keep controls disabled
+            self.view.set_connection_status(is_connected=False)
         elif status == ConnectionStatus.CONNECTED:
             self.view.set_connection_status(is_connected=True)
-            if "Shell is ready" in message:
-                 self.view.append_data("Connection successful!\n")
-            else:
-                self.view.append_data(message) # Append shell output
+            self.view.append_data("连接成功!\n" if "Shell is ready" in message else message)
         elif status == ConnectionStatus.DISCONNECTING:
-            self.view.append_data("Disconnecting...\n")
+            self.view.append_data("正在断开连接...\n")
         elif status == ConnectionStatus.DISCONNECTED:
-            self.view.append_data("Disconnected.\n")
+            self.view.append_data("已断开连接.\n")
             self.view.set_connection_status(is_connected=False)
         elif status == ConnectionStatus.FAILED:
-            self.view.append_data(f"Connection failed: {message}\n")
+            self.view.append_data(f"连接失败: {message}\n")
             self.view.set_connection_status(is_connected=False)
 
     @Slot()
-    def on_load_config_requested(self):
-        """Opens a file dialog to select a JSON config file."""
+    def on_load_connections_requested(self):
+        """Opens a file dialog to select a SQLite DB file."""
         file_path, _ = QFileDialog.getOpenFileName(
-            self.view, "Open SSH Configuration", "", "JSON Files (*.json)"
+            self.view, "打开连接数据库", "", "SQLite DB (*.db)"
         )
         if file_path:
-            self.model.load_configurations(file_path)
-            self._save_config_path(file_path)
+            self.repository.load_from_file(file_path)
 
     @Slot(str)
-    def on_config_selected(self, config_name):
-        """Handles the selection of a configuration from the dropdown."""
-        config = self.model.get_configuration(config_name)
-        if config:
-            self.view.set_connection_details(config)
-
-    @Slot(list)
-    def on_configurations_loaded(self, config_names):
-        """Updates the view with the list of loaded configuration names."""
-        self.view.update_configurations(config_names)
-        self.view.append_data("Configurations loaded successfully.\n")
-
-    @Slot(str)
-    def on_load_error(self, error_message):
-        """Displays an error message in the terminal."""
-        self.view.append_data(f"{error_message}\n")
+    def on_repository_error(self, error_message):
+        """Displays an error message from the repository in the terminal."""
+        self.view.append_data(f"错误: {error_message}\n")
+        QMessageBox.warning(self.view, "数据库错误", error_message)
 
     @Slot()
-    def on_add_config(self):
-        """Handles the request to add a new configuration."""
-        dialog = ConnectionDialog(parent=self.view)
+    def on_add_connection(self):
+        """Handles the request to add a new connection."""
+        existing_groups = list(self.repository.get_all_connections_by_group().keys())
+        dialog = ConnectionDialog(existing_groups=existing_groups, parent=self.view)
         if dialog.exec():
             new_data = dialog.get_data()
-            if new_data['name']:
-                self.model.add_configuration(new_data)
+            if new_data['name'] and new_data['group_name']:
+                self.repository.add_connection(new_data)
             else:
-                self.on_load_error("Configuration name cannot be empty.")
+                QMessageBox.warning(self.view, "输入错误", "连接名称和分组不能为空。")
 
-    @Slot(str)
-    def on_edit_config(self, config_name):
-        """Handles the request to edit an existing configuration."""
-        config_to_edit = self.model.get_configuration(config_name)
-        if not config_to_edit:
-            self.on_load_error(f"Cannot edit. Configuration '{config_name}' not found.")
-            return
-
-        dialog = ConnectionDialog(config=config_to_edit, parent=self.view)
+    @Slot(dict)
+    def on_edit_connection(self, conn_data):
+        """Handles the request to edit an existing connection."""
+        existing_groups = list(self.repository.get_all_connections_by_group().keys())
+        dialog = ConnectionDialog(config=conn_data, existing_groups=existing_groups, parent=self.view)
         if dialog.exec():
             updated_data = dialog.get_data()
-            if updated_data['name']:
-                self.model.update_configuration(config_name, updated_data)
+            if updated_data['name'] and updated_data['group_name']:
+                self.repository.update_connection(conn_data['id'], updated_data)
             else:
-                self.on_load_error("Configuration name cannot be empty.")
+                QMessageBox.warning(self.view, "输入错误", "连接名称和分组不能为空。")
 
-    @Slot(str)
-    def on_delete_config(self, config_name):
+    @Slot(dict)
+    def on_delete_connection(self, conn_data):
         """Handles the request to delete a configuration."""
-        reply = QMessageBox.question(self.view, 'Delete Configuration',
-                                     f"Are you sure you want to delete '{config_name}'?",
+        reply = QMessageBox.question(self.view, '删除连接',
+                                     f"您确定要从分组 '{conn_data['group_name']}' 中删除连接 '{conn_data['name']}' 吗?",
                                      QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
         if reply == QMessageBox.Yes:
-            self.model.delete_configuration(config_name)
+            self.repository.delete_connection(conn_data['id'])
 
-    def _load_initial_config(self):
-        """Loads the last used config path using the central ConfigService."""
-        path = self.config_service.get_value('RemoteTerminal', 'config_path', fallback=None)
-        if path:
-            self.model.load_configurations(path)
-
-    def _save_config_path(self, path):
-        """Saves the selected config file path using the central ConfigService."""
-        self.config_service.set_option('RemoteTerminal', 'config_path', path)
-        self.config_service.save_config()
+    def cleanup(self):
+        """Properly close resources."""
+        self.service.disconnect()
+        self.repository.close()
