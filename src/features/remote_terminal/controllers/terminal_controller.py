@@ -10,13 +10,15 @@ class TerminalController(QObject):
     The controller for the remote terminal feature.
     It connects the view and the SSH service, handling the application logic.
     """
-    def __init__(self):
+    def __init__(self, config_service):
         super().__init__()
         self.view = TerminalView()
         self.service = SSHService()
         self.model = ConnectionModel()
+        self.config_service = config_service
 
         self._connect_signals()
+        self._load_initial_config()
 
     def _connect_signals(self):
         """Connects signals and slots between all components."""
@@ -74,6 +76,7 @@ class TerminalController(QObject):
         )
         if file_path:
             self.model.load_configurations(file_path)
+            self._save_config_path(file_path)
 
     @Slot(str)
     def on_config_selected(self, config_name):
@@ -128,3 +131,14 @@ class TerminalController(QObject):
                                      QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
         if reply == QMessageBox.Yes:
             self.model.delete_configuration(config_name)
+
+    def _load_initial_config(self):
+        """Loads the last used config path using the central ConfigService."""
+        path = self.config_service.get_value('RemoteTerminal', 'config_path', fallback=None)
+        if path:
+            self.model.load_configurations(path)
+
+    def _save_config_path(self, path):
+        """Saves the selected config file path using the central ConfigService."""
+        self.config_service.set_option('RemoteTerminal', 'config_path', path)
+        self.config_service.save_config()
