@@ -10,7 +10,7 @@ from src.services.config_service import ConfigService
 # 【修改】元数据结构添加 "default" 字段
 SETTING_METADATA = {
     "General": {
-        "app_name": {"widget": "lineedit", "label": "应用程序名称", "default": "Desktop Control & Monitoring Center"},
+        "app_name": {"widget": "lineedit", "label": "应用程序名称", "default": "HelpSelf & Monitoring Center"},
         "start_minimized": {"widget": "combobox", "label": "启动时最小化", "items": ["禁用", "启用"], "map": {"启用": "true", "禁用": "false"}, "default": "false"},
         "show_startup_notification": {"widget": "combobox", "label": "显示启动通知", "items": ["禁用", "启用"], "map": {"启用": "true", "禁用": "false"}, "default": "true"}
     },

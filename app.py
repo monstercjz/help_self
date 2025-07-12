@@ -41,7 +41,7 @@ PNG_ICON_FILE = 'icon.png'  # 用于窗口、托盘等
 ICO_ICON_FILE = 'icon.ico'  # 专门用于Windows原生通知
 
 # 【新增】定义一个唯一的应用程序用户模型ID
-APP_USER_MODEL_ID = "Cj.DesktopCenter.DesktopControlMonitoringCenter"
+APP_USER_MODEL_ID = "Cj.Helpself.MonitoringCenter"
 
 
 def get_app_data_dir():
