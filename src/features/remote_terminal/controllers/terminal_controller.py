@@ -35,6 +35,7 @@ class TerminalController(QObject):
 
         # Service to Controller
         self.service.status_changed.connect(self.on_status_changed)
+        self.service.data_received.connect(self.on_data_received)
 
         # Repository to Controller
         self.repository.connections_changed.connect(self.on_connections_changed)
@@ -69,7 +70,9 @@ class TerminalController(QObject):
             self.view.set_connection_status(is_connected=False)
         elif status == ConnectionStatus.CONNECTED:
             self.view.set_connection_status(is_connected=True)
-            self.view.append_data("连接成功!\n" if "Shell is ready" in message else message)
+            # The initial "Shell is ready" or other messages are now handled by on_data_received
+            if "Shell is ready" in message:
+                 self.view.append_data("连接成功!\n")
         elif status == ConnectionStatus.DISCONNECTING:
             self.view.append_data("正在断开连接...\n")
         elif status == ConnectionStatus.DISCONNECTED:
@@ -78,6 +81,27 @@ class TerminalController(QObject):
         elif status == ConnectionStatus.FAILED:
             self.view.append_data(f"连接失败: {message}\n")
             self.view.set_connection_status(is_connected=False)
+
+    @Slot(str)
+    def on_data_received(self, data):
+        """Handles raw data from the SSH shell, checking for clear screen codes."""
+        # Based on debugging, the clear sequence from Alpine is `\x1b[H\x1b[J`.
+        clear_code = '\x1b[H\x1b[J'
+        
+        # The received data might contain the command echo, the clear code,
+        # and the new prompt all in one buffer.
+        # Example: 'clear\r\n\x1b[H\x1b[Jalpine-docker-downtools:~# '
+        
+        if clear_code in data:
+            self.view.clear_terminal()
+            
+            # Display any data that comes *after* the clear code sequence.
+            parts = data.split(clear_code, 1)
+            remaining_data = parts[1]
+            if remaining_data:
+                self.view.append_data(remaining_data)
+        else:
+            self.view.append_data(data)
 
     @Slot()
     def on_load_connections_requested(self):

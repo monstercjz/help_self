@@ -16,6 +16,7 @@ class SSHWorker(QObject):
     """
     # Emits (status, data) - data can be error message or shell output
     status_changed = Signal(ConnectionStatus, str)
+    data_received = Signal(str) # For raw shell output
     
     def __init__(self, details):
         super().__init__()
@@ -79,7 +80,7 @@ class SSHWorker(QObject):
             if self.shell.recv_ready():
                 data = self.shell.recv(4096).decode('utf-8', errors='replace')
                 if data:
-                    self.status_changed.emit(ConnectionStatus.CONNECTED, data)
+                    self.data_received.emit(data)
         except Exception as e:
             if self.reader_timer:
                 self.reader_timer.stop()
@@ -119,6 +120,7 @@ class SSHService(QObject):
     Service layer for managing the SSH connection lifecycle.
     """
     status_changed = Signal(ConnectionStatus, str)
+    data_received = Signal(str)
     _command_to_send = Signal(str) # Internal signal for thread-safe command sending
 
     def __init__(self):
@@ -138,6 +140,7 @@ class SSHService(QObject):
 
         # Connect signals
         self.worker.status_changed.connect(self.status_changed)
+        self.worker.data_received.connect(self.data_received)
         self._command_to_send.connect(self.worker.send_command) # Connect command signal to worker slot
         self.worker_thread.started.connect(self.worker.run)
         self.worker.status_changed.connect(self._on_worker_finished)
