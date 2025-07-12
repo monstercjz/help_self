@@ -5,17 +5,19 @@ from src.features.remote_terminal.services.ssh_service import SSHService, Connec
 from src.features.remote_terminal.models.connection_repository import ConnectionRepository
 from src.features.remote_terminal.views.connection_dialog import ConnectionDialog
 
+from src.core.context import ApplicationContext
+
 class TerminalController(QObject):
     """
     The controller for the remote terminal feature.
     It connects the view, the repository, and the SSH service, handling the application logic.
     """
-    def __init__(self, config_service):
+    def __init__(self, context: ApplicationContext):
         super().__init__()
+        self.context = context
         self.view = TerminalView()
         self.service = SSHService()
-        self.repository = ConnectionRepository()
-        self.config_service = config_service # Retained for potential future use (e.g., saving last loaded DB)
+        self.repository = ConnectionRepository(context)
 
         self._connect_signals()
         self._load_initial_connections()

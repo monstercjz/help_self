@@ -25,10 +25,9 @@ class RemoteTerminalPlugin(IFeaturePlugin):
         Initializes the plugin by creating the controller.
         """
         super().initialize(context)
-        config_service = self.context.config_service
-        if not config_service:
-            raise ValueError("ConfigService not found in context for RemoteTerminalPlugin")
-        self.controller = TerminalController(config_service)
+        if not self.context:
+            raise ValueError("Context not initialized for RemoteTerminalPlugin")
+        self.controller = TerminalController(self.context)
 
     def get_page_widget(self) -> QWidget | None:
         """

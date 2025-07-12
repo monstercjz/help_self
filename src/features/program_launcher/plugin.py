@@ -34,7 +34,7 @@ class ProgramLauncherPlugin(IFeaturePlugin):
 
         # 1. 创建模型，并将ConfigService注入，以实现路径配置化
         # 【修改】将 context.config_service 传递给模型
-        self.model = LauncherModel(config_service=context.config_service)
+        self.model = LauncherModel(context=context)
 
         # 2. 创建视图
         self.view = LauncherPageView()

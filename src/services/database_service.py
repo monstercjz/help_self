@@ -1,10 +1,12 @@
 # desktop_center/src/services/database_service.py
 import sqlite3
 import logging
+import os
 from typing import List, Dict, Any, Tuple
 from datetime import datetime
 # 【变更】导入插件的数据库扩展
 from src.features.alert_center.database_extensions import AlertCenterDatabaseExtensions
+from src.services.config_service import ConfigService
 
 # 【变更】让DatabaseService继承扩展类，从而获得插件专属方法
 class DatabaseService(AlertCenterDatabaseExtensions):
@@ -12,8 +14,17 @@ class DatabaseService(AlertCenterDatabaseExtensions):
     负责所有与SQLite数据库交互的服务。
     包括初始化、插入、查询和删除告警记录。
     """
-    def __init__(self, db_path: str):
-        self.db_path = db_path
+    def __init__(self, config_service: ConfigService, app_data_dir: str):
+        # 从配置服务获取数据库相对路径，如果未配置则使用默认值
+        db_relative_path = config_service.get_value("Paths", "database", "database/history.db")
+        
+        # 拼接成绝对路径
+        self.db_path = os.path.join(app_data_dir, db_relative_path)
+        
+        # 确保数据库文件所在的目录存在
+        db_dir = os.path.dirname(self.db_path)
+        os.makedirs(db_dir, exist_ok=True)
+
         self.conn = None
         try:
             self.conn = sqlite3.connect(self.db_path, check_same_thread=False)

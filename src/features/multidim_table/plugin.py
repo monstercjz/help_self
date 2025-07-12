@@ -28,7 +28,7 @@ class MultidimTablePlugin(IFeaturePlugin):
         
         # 创建主视图和控制器
         db_management_view = DbManagementView()
-        self.controller = MultidimTableController(model, db_management_view)
+        self.controller = MultidimTableController(model, db_management_view, context)
         
         # 设置插件的主页面
         self.page_widget = db_management_view

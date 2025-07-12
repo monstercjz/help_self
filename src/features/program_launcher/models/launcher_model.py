@@ -8,18 +8,30 @@ import uuid
 from PySide6.QtCore import QObject, Signal
 from PySide6.QtWidgets import QMessageBox
 
-from src.services.config_service import ConfigService
+from src.core.context import ApplicationContext
 
 CONFIG_SECTION = "ProgramLauncher"
 
 class LauncherModel(QObject):
     data_changed = Signal()
 
-    def __init__(self, config_service: ConfigService, parent=None):
+    def __init__(self, context: ApplicationContext, parent=None):
         super().__init__(parent)
-        self.config_service = config_service
-        default_path = "launcher_data.json"
-        self.data_file = self.config_service.get_value(CONFIG_SECTION, "data_file_path", default_path)
+        self.context = context
+        self.config_service = context.config_service
+        
+        # 从配置文件获取相对路径，如果不存在则使用默认值
+        relative_path = self.config_service.get_value(
+            CONFIG_SECTION,
+            "data_file_path"
+        )
+        # 如果路径为空或未在config中定义，则使用默认值
+        if not relative_path:
+            relative_path = "plugins/program_launcher/data.json"
+            
+        # 使用上下文提供的工具函数获取最终的、可写的绝对路径
+        self.data_file = self.context.get_data_path(relative_path)
+        
         self.data = {"groups": [], "programs": {}}
         self.load_data()
 
@@ -71,8 +83,7 @@ class LauncherModel(QObject):
     def save_data(self):
         try:
             logging.info(f"[MODEL] Saving data to {self.data_file}...")
-            dir_name = os.path.dirname(self.data_file)
-            if dir_name: os.makedirs(dir_name, exist_ok=True)
+            # 路径创建已由 context.get_data_path() 保证，此处无需重复创建
             with open(self.data_file, 'w', encoding='utf-8') as f:
                 json.dump(self.data, f, indent=4, ensure_ascii=False)
             logging.info(f"启动器数据已成功保存到 {self.data_file}。")

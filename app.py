@@ -3,9 +3,10 @@ import sys
 import os
 import logging
 import configparser
+import shutil
 from PySide6.QtWidgets import QApplication, QMessageBox
-from PySide6.QtGui import QIcon 
-import ctypes # 【新增】导入 ctypes 用于Windows AppUserModelID
+from PySide6.QtGui import QIcon
+import ctypes  # 【新增】导入 ctypes 用于Windows AppUserModelID
 if sys.platform == "win32":
     try:
         import pythoncom
@@ -33,7 +34,7 @@ from src.core.plugin_manager import PluginManager
 # --- 2. 全局应用程序常量 ---
 # 将所有硬编码的字符串和配置集中在此处，便于管理
 APP_VERSION = "5.3.8-Code-Refinement"
-APP_NAME_DEFAULT = "Desktop Control & Monitoring Center"
+APP_NAME_DEFAULT = "HelpSelf"
 CONFIG_FILE = 'config.ini'
 DB_FILE = 'history.db'
 LOG_FILE = 'app.log'
@@ -44,31 +45,68 @@ ICO_ICON_FILE = 'icon.ico'  # 专门用于Windows原生通知
 APP_USER_MODEL_ID = "Cj.DesktopCenter.DesktopControlMonitoringCenter"
 
 
+def get_app_data_dir():
+    """获取并确保应用数据根目录存在。"""
+    app_data_dir = os.path.join(os.path.expanduser('~'), APP_NAME_DEFAULT)
+    os.makedirs(app_data_dir, exist_ok=True)
+    return app_data_dir
+
+def get_resource_path(relative_path):
+    """获取资源的绝对路径，兼容开发环境和PyInstaller打包环境。"""
+    if getattr(sys, 'frozen', False) and hasattr(sys, '_MEIPASS'):
+        # PyInstaller环境
+        base_path = sys._MEIPASS
+    else:
+        # 开发环境
+        base_path = os.path.abspath(os.path.dirname(__file__))
+    return os.path.join(base_path, relative_path)
+
+def prepare_config_file():
+    """
+    准备配置文件。如果用户数据目录中不存在，则从包内复制一份。
+    返回可用的配置文件路径。
+    """
+    app_data_dir = get_app_data_dir()
+    config_path_in_data_dir = os.path.join(app_data_dir, CONFIG_FILE)
+
+    if not os.path.exists(config_path_in_data_dir):
+        logging.info(f"配置文件在 '{config_path_in_data_dir}' 未找到，将从程序包中复制默认配置。")
+        default_config_path = get_resource_path(CONFIG_FILE)
+        if os.path.exists(default_config_path):
+            try:
+                shutil.copy(default_config_path, config_path_in_data_dir)
+                logging.info(f"默认配置文件已成功复制到: {config_path_in_data_dir}")
+            except Exception as e:
+                logging.error(f"复制默认配置文件失败: {e}", exc_info=True)
+                return None # 复制失败，无法继续
+        else:
+            logging.warning(f"在程序包内也未找到默认配置文件: {default_config_path}")
+            return None # 找不到源文件，无法继续
+            
+    return config_path_in_data_dir
+
 def setup_logging():
     """
     配置全局日志记录器。
     此函数设计为在应用生命周期中最早被调用，它会预读配置文件以获取日志级别。
     """
-    # 默认日志级别，以防配置文件无法读取
     log_level_str = "INFO"
     
-    # 步骤1: 预加载配置以获取日志级别，不实例化完整的ConfigService
-    try:
-        pre_parser = configparser.ConfigParser()
-        if pre_parser.read(CONFIG_FILE, encoding='utf-8-sig'):
-            log_level_str = pre_parser.get('Logging', 'level', fallback='INFO').upper()
-    except (configparser.Error, IOError):
-        # 即使日志系统尚未完全建立，也可以使用Python的内置警告
-        import warnings
-        warnings.warn(f"无法预读配置文件 '{CONFIG_FILE}' 以获取日志级别，将使用默认的 'INFO' 级别。")
+    config_path = prepare_config_file()
+    if config_path:
+        try:
+            pre_parser = configparser.ConfigParser()
+            if pre_parser.read(config_path, encoding='utf-8-sig'):
+                log_level_str = pre_parser.get('Logging', 'level', fallback='INFO').upper()
+        except (configparser.Error, IOError):
+            import warnings
+            warnings.warn(f"无法预读配置文件 '{config_path}' 以获取日志级别，将使用默认的 'INFO' 级别。")
 
-    # 步骤2: 将字符串级别转换为logging模块的常量
     log_level = getattr(logging, log_level_str, logging.INFO)
 
-    # 步骤3: 配置日志系统
-    # 【修改】将日志文件输出到用户主目录下的特定子目录
-    log_dir = os.path.join(os.path.expanduser('~'), APP_NAME_DEFAULT, 'logs')
-    os.makedirs(log_dir, exist_ok=True) # 确保日志目录存在
+    # 将日志文件输出到用户主目录下的特定子目录
+    log_dir = os.path.join(get_app_data_dir(), 'logs')
+    os.makedirs(log_dir, exist_ok=True)
     log_file_path = os.path.join(log_dir, LOG_FILE)
 
     file_handler = logging.handlers.RotatingFileHandler(
@@ -107,21 +145,17 @@ class ApplicationOrchestrator:
         logging.info("[STEP 1.0] ApplicationOrchestrator: 开始初始化平台核心...")
 
         # --- 1.1 基础环境准备 ---
-        # 计算所有资源文件的绝对路径，以避免在不同工作目录下出现问题
-        if getattr(sys, 'frozen', False) and hasattr(sys, '_MEIPASS'):
-            # 如果是PyInstaller打包的单文件模式，使用_MEIPASS作为基础路径
-            project_root = sys._MEIPASS
-            logging.info(f"  - 检测到PyInstaller环境，使用_MEIPASS: {project_root}")
-        else:
-            # 否则，使用当前文件所在目录作为基础路径
-            project_root = os.path.dirname(os.path.abspath(__file__))
-            logging.info(f"  - 非PyInstaller环境，使用当前文件路径: {project_root}")
-
-        self.config_path = os.path.join(project_root, CONFIG_FILE)
-        self.db_path = os.path.join(project_root, DB_FILE)
-        self.png_icon_path = os.path.join(project_root, PNG_ICON_FILE)
-        self.ico_icon_path = os.path.join(project_root, ICO_ICON_FILE)
-        logging.info("  - 基础路径计算完成。")
+        self.app_data_dir = get_app_data_dir()
+        self.config_path = prepare_config_file()
+        if not self.config_path:
+            QMessageBox.critical(None, "致命错误", "无法创建或找到配置文件，应用程序无法启动。")
+            sys.exit(1)
+            
+        self.db_path = os.path.join(self.app_data_dir, DB_FILE) # 稍后会被配置文件中的值覆盖
+        self.png_icon_path = get_resource_path(PNG_ICON_FILE)
+        self.ico_icon_path = get_resource_path(ICO_ICON_FILE)
+        logging.info(f"  - 应用数据目录: {self.app_data_dir}")
+        logging.info(f"  - 配置文件路径: {self.config_path}")
 
         # --- 1.2 初始化Qt应用实例 ---
         self.app = QApplication(sys.argv)
@@ -146,7 +180,8 @@ class ApplicationOrchestrator:
         if sys.platform == "win32":
             self._create_shortcut()
         try:
-            self.db_service = DatabaseService(self.db_path)
+            # 路径将在DatabaseService内部通过新机制确定
+            self.db_service = DatabaseService(self.config_service, self.app_data_dir)
             self.db_service.init_db()
         except Exception as e:
             logging.critical(f"数据库服务初始化失败，程序无法启动: {e}", exc_info=True)
@@ -183,7 +218,8 @@ class ApplicationOrchestrator:
             tray_manager=self.tray_manager,
             action_manager=self.action_manager,
             notification_service=self.notification_service,
-            webhook_service=self.webhook_service
+            webhook_service=self.webhook_service,
+            app_data_dir=self.app_data_dir
         )
         logging.info("  - 共享的 ApplicationContext 创建完成。")
 

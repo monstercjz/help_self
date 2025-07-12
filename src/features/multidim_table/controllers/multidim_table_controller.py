@@ -2,8 +2,11 @@
 import os
 import pandas as pd
 import sys
-from PySide6.QtCore import QObject, QSettings, QTimer
+import logging
+import shutil # 新增导入
+from PySide6.QtCore import QObject, QTimer
 from PySide6.QtWidgets import QFileDialog
+from src.core.context import ApplicationContext
 from src.features.multidim_table.models.multidim_table_model import MultidimTableModel
 from src.features.multidim_table.services.data_service import DataService
 from src.features.multidim_table.views.db_management_view import DbManagementView
@@ -15,11 +18,12 @@ class MultidimTableController(QObject):
     """
     多维表格的控制器，负责协调模型和所有视图。![1752058308567](images/multidim_table_controller/1752058308567.png)![1752058310795](images/multidim_table_controller/1752058310795.png)![1752058326203](images/multidim_table_controller/1752058326203.png)![1752058332085](images/multidim_table_controller/1752058332085.png)
     """
-    def __init__(self, model: MultidimTableModel, db_view: DbManagementView):
+    def __init__(self, model: MultidimTableModel, db_view: DbManagementView, context: ApplicationContext):
         super().__init__()
         self._model = model
         self._db_view = db_view
         self._data_service = DataService(self._model)
+        self.context = context
         
         # 分页状态
         self.page_size = 100  # 每页显示100条
@@ -31,7 +35,15 @@ class MultidimTableController(QObject):
         self.analysis_df = pd.DataFrame() # 用于分析的全量数据
         self.last_analysis_result_df = pd.DataFrame() # 用于存储上次分析结果
         self.db_filter_criteria = {'column': None, 'value': None} # 数据库筛选条件
-        self.current_stats_config_path = self._get_resource_path(os.path.join("assets", "statistics_config.json"))
+        
+        stats_config_relative_path = self.context.config_service.get_value(
+            "MultiDimTable",
+            "stats_config_path"
+        )
+        if not stats_config_relative_path:
+            stats_config_relative_path = "plugins/multidim_table/statistics_config.json"
+            
+        self.current_stats_config_path = self.context.get_data_path(stats_config_relative_path)
 
         self._connect_signals()
         self._db_view.set_current_db(None) # Initially no db is open
@@ -55,9 +67,9 @@ class MultidimTableController(QObject):
         if not success:
             self._db_view.show_error("连接失败", f"无法连接到数据库: {err}")
         else:
-            # 保存成功连接的路径
-            settings = QSettings("MyCompany", "MultidimTableApp")
-            settings.setValue("last_db_path", db_path)
+            # 保存成功连接的路径到 config.ini
+            self.context.config_service.set_option("MultiDimTable", "last_db_path", db_path)
+            self.context.config_service.save_config()
 
     def _update_table_list(self):
         tables, err = self._model.get_table_list()
@@ -463,8 +475,7 @@ class MultidimTableController(QObject):
 
     def _load_last_db(self):
         """加载上次成功打开的数据库。"""
-        settings = QSettings("MyCompany", "MultidimTableApp")
-        last_db_path = settings.value("last_db_path")
+        last_db_path = self.context.config_service.get_value("MultiDimTable", "last_db_path")
         if last_db_path and os.path.exists(last_db_path):
             self._on_db_connect(last_db_path)
 
@@ -567,8 +578,22 @@ class MultidimTableController(QObject):
     def _on_open_statistics_config(self):
         """
         打开当前加载的统计配置文件以供用户编辑。
+        如果文件不存在，尝试从包内复制一份默认的。
         """
         try:
+            # 如果文件不存在，尝试从包内复制一份默认的
+            if not os.path.exists(self.current_stats_config_path):
+                default_path_in_package = os.path.join(os.path.dirname(__file__), "..", "assets", "statistics_config.json")
+                if os.path.exists(default_path_in_package):
+                    shutil.copy(default_path_in_package, self.current_stats_config_path)
+                    logging.info(f"默认统计配置文件已复制到: {self.current_stats_config_path}")
+                else:
+                    designer = self._get_current_designer_view()
+                    if designer:
+                        designer.show_error("错误", f"默认统计配置文件丢失，无法创建。")
+                    return # 无法创建，直接返回
+
+            # 尝试打开文件
             if os.path.exists(self.current_stats_config_path):
                 os.startfile(self.current_stats_config_path)
             else:

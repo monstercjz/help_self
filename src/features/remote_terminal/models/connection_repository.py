@@ -1,7 +1,7 @@
 import sqlite3
 import os
-from platformdirs import user_data_dir
 from PySide6.QtCore import QObject, Signal
+from src.core.context import ApplicationContext
 
 class ConnectionRepository(QObject):
     """
@@ -11,23 +11,28 @@ class ConnectionRepository(QObject):
     connections_changed = Signal()
     error_occurred = Signal(str)
 
-    def __init__(self, parent=None):
+    def __init__(self, context: ApplicationContext, parent=None):
         super().__init__(parent)
-        self._db_path = self.get_default_db_path()
+        self.context = context
+        
+        # 从配置文件获取相对路径，如果不存在则使用默认值
+        relative_path = self.context.config_service.get_value(
+            "RemoteTerminal",
+            "config_path"
+        )
+        # 如果路径为空或未在config中定义，则使用默认值
+        if not relative_path:
+            relative_path = "plugins/remote_terminal/connections.db"
+            
+        # 使用上下文提供的工具函数获取最终的、可写的绝对路径
+        self._db_path = self.context.get_data_path(relative_path)
+        
         self._db_conn = None
         self._ensure_database_exists()
 
     def get_current_db_path(self):
         """Returns the path of the currently loaded database."""
         return self._db_path
-
-    def get_default_db_path(self):
-        """Returns the default path for the connections database."""
-        app_name = "DesktopCenter"
-        app_author = "YourCompany"
-        data_dir = user_data_dir(app_name, app_author)
-        os.makedirs(data_dir, exist_ok=True)
-        return os.path.join(data_dir, "remote_connections.db")
 
     def _ensure_database_exists(self):
         """Connects to the database and creates the necessary tables if they don't exist."""
