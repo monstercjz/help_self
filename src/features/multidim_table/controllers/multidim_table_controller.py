@@ -581,29 +581,45 @@ class MultidimTableController(QObject):
         如果文件不存在，尝试从包内复制一份默认的。
         """
         try:
-            # 如果文件不存在，尝试从包内复制一份默认的
-            if not os.path.exists(self.current_stats_config_path):
-                default_path_in_package = os.path.join(os.path.dirname(__file__), "..", "assets", "statistics_config.json")
-                if os.path.exists(default_path_in_package):
-                    shutil.copy(default_path_in_package, self.current_stats_config_path)
-                    logging.info(f"默认统计配置文件已复制到: {self.current_stats_config_path}")
-                else:
-                    designer = self._get_current_designer_view()
-                    if designer:
-                        designer.show_error("错误", f"默认统计配置文件丢失，无法创建。")
-                    return # 无法创建，直接返回
+            # 定义需要复制的JSON文件列表
+            json_files_to_copy = [
+                "statistics_config.json",
+                "filter_example.json",
+                "group_by_example.json"
+            ]
+            
+            copied_files = []
+            for filename in json_files_to_copy:
+                source_path = os.path.join(os.path.dirname(__file__), "..", "assets", filename)
+                destination_path = self.context.get_data_path(os.path.join("plugins", "multidim_table", filename))
+                
+                # 确保目标目录存在
+                os.makedirs(os.path.dirname(destination_path), exist_ok=True)
 
-            # 尝试打开文件
+                if not os.path.exists(destination_path):
+                    if os.path.exists(source_path):
+                        shutil.copy(source_path, destination_path)
+                        copied_files.append(filename)
+                        logging.info(f"默认配置文件 '{filename}' 已复制到: {destination_path}")
+                    else:
+                        logging.warning(f"默认配置文件 '{filename}' 丢失，无法复制。")
+
+            if copied_files:
+                designer = self._get_current_designer_view()
+                if designer:
+                    designer.show_status_message(f"已复制以下默认配置文件: {', '.join(copied_files)}", 5000)
+            
+            # 尝试打开主统计配置文件
             if os.path.exists(self.current_stats_config_path):
                 os.startfile(self.current_stats_config_path)
             else:
                 designer = self._get_current_designer_view()
                 if designer:
-                    designer.show_error("错误", f"配置文件 '{self.current_stats_config_path}' 不存在。")
+                    designer.show_error("错误", f"主配置文件 '{self.current_stats_config_path}' 不存在，请检查。")
         except Exception as e:
             designer = self._get_current_designer_view()
             if designer:
-                designer.show_error("打开失败", f"无法打开配置文件: {e}")
+                designer.show_error("打开失败", f"无法打开配置文件或复制文件时出错: {e}")
 
     def _get_resource_path(self, relative_path):
         """获取资源的绝对路径，兼容开发环境和PyInstaller打包环境。"""
