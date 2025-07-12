@@ -1,7 +1,7 @@
 ## 项目新架构
 pip freeze > requirements.txt
 ```bash
-pyinstaller --onefile --windowed --icon=icon.ico HelpSelf.py --add-data "config.ini;." --add-data "icon.png;." --add-data "icon.ico;." --add-data "src;src" --collect-submodules src --hidden-import flask --hidden-import pandas --hidden-import uuid --hidden-import pygetwindow --hidden-import win32process --hidden-import plyer.platforms.win.notification
+pyinstaller --onefile --windowed --icon=icon.ico HelpSelf.py --add-data "config.ini;." --add-data "icon.png;." --add-data "icon.ico;." --add-data "src;src" --collect-submodules src --hidden-import flask --hidden-import pandas --hidden-import uuid --hidden-import pygetwindow --hidden-import win32process --hidden-import plyer.platforms.win.notification --hidden-import ansi2html --hidden-import paramiko
 
 ```
 desktop_center/
