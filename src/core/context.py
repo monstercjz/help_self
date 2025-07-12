@@ -6,7 +6,6 @@ from PySide6.QtWidgets import QApplication
 # 【修改】使用类型检查块来避免循环导入
 if TYPE_CHECKING:
     from src.services.config_service import ConfigService
-    from src.services.database_service import DatabaseService
     from src.services.notification_service import NotificationService
     from src.services.webhook_service import WebhookService
     from src.utils.tray_manager import TrayManager
@@ -16,14 +15,13 @@ if TYPE_CHECKING:
 class ApplicationContext:
     """一个数据类，持有所有核心/共享服务和组件的引用，供插件使用。"""
     def __init__(self, app: QApplication, main_window: 'MainWindow',
-                 config_service: 'ConfigService', db_service: 'DatabaseService',
+                 config_service: 'ConfigService',
                  tray_manager: 'TrayManager', action_manager: 'ActionManager',
                  notification_service: 'NotificationService', webhook_service: 'WebhookService',
                  app_data_dir: str):
         self.app = app
         self.main_window = main_window
         self.config_service = config_service
-        self.db_service = db_service
         self.tray_manager = tray_manager
         self.action_manager = action_manager
         self.notification_service = notification_service

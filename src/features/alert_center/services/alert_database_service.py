@@ -1,27 +1,36 @@
-# desktop_center/src/services/database_service.py
+# desktop_center/src/features/alert_center/services/alert_database_service.py
 import sqlite3
 import logging
 import os
 from typing import List, Dict, Any, Tuple
 from datetime import datetime
 # 【变更】导入插件的数据库扩展
-from src.features.alert_center.database_extensions import AlertCenterDatabaseExtensions
-from src.services.config_service import ConfigService
+from ..database_extensions import AlertCenterDatabaseExtensions
+from src.core.context import ApplicationContext
 
 # 【变更】让DatabaseService继承扩展类，从而获得插件专属方法
-class DatabaseService(AlertCenterDatabaseExtensions):
+class AlertDatabaseService(AlertCenterDatabaseExtensions):
     """
     负责所有与SQLite数据库交互的服务。
     包括初始化、插入、查询和删除告警记录。
     """
-    def __init__(self, config_service: ConfigService, app_data_dir: str):
-        # 从配置服务获取数据库相对路径，如果未配置则使用默认值
-        db_relative_path = config_service.get_value("Paths", "database", "database/history.db")
+    def __init__(self, context: ApplicationContext):
+        self.context = context
+        config_service = context.config_service
         
-        # 拼接成绝对路径
-        self.db_path = os.path.join(app_data_dir, db_relative_path)
+        # 从配置文件获取相对路径，如果不存在则使用默认值
+        relative_path = config_service.get_value(
+            "InfoService",
+            "database_path"
+        )
+        # 如果路径为空或未在config中定义，则使用默认值
+        if not relative_path:
+            relative_path = "plugins/alert_center/history.db"
+            
+        # 使用上下文提供的工具函数获取最终的、可写的绝对路径
+        self.db_path = self.context.get_data_path(relative_path)
         
-        # 确保数据库文件所在的目录存在
+        # 确保数据库文件所在的目录存在 (get_data_path 已经处理)
         db_dir = os.path.dirname(self.db_path)
         os.makedirs(db_dir, exist_ok=True)
 

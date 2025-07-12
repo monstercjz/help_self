@@ -2,13 +2,13 @@
 from PySide6.QtCore import QObject, Slot
 from PySide6.QtWidgets import QWidget
 
-from src.core.context import ApplicationContext
+from ...services.alert_database_service import AlertDatabaseService
 from ...views.statistics.hourly_stats_view import HourlyStatsView
 
 class HourlyStatsController(QObject):
-    def __init__(self, context: ApplicationContext, parent: QWidget):
+    def __init__(self, db_service: AlertDatabaseService, parent: QWidget):
         super().__init__(parent)
-        self.context = context
+        self.db_service = db_service
         self.view = HourlyStatsView(parent)
         self.is_loaded = False
         
@@ -29,7 +29,7 @@ class HourlyStatsController(QObject):
 
     def _update_ip_list(self):
         start_date, end_date = self.view.date_filter.get_date_range()
-        ips = self.context.db_service.get_distinct_source_ips(start_date, end_date)
+        ips = self.db_service.get_distinct_source_ips(start_date, end_date)
         self.view.ip_filter.set_ip_list(ips)
 
     @Slot()
@@ -38,8 +38,8 @@ class HourlyStatsController(QObject):
         ip = self.view.ip_filter.get_ip()
         
         if ip is None:
-            data = self.context.db_service.get_stats_by_hour(start_date, end_date)
+            data = self.db_service.get_stats_by_hour(start_date, end_date)
         else:
-            data = self.context.db_service.get_stats_by_ip_and_hour(ip, start_date, end_date)
+            data = self.db_service.get_stats_by_ip_and_hour(ip, start_date, end_date)
             
         self.view.update_table(data)

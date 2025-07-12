@@ -2,14 +2,14 @@
 from PySide6.QtCore import QObject, Slot
 from PySide6.QtWidgets import QWidget
 
-from src.core.context import ApplicationContext
+from ...services.alert_database_service import AlertDatabaseService
 from ...views.statistics.multidim_analysis_view import MultidimAnalysisView
 from ...models.statistics_model import StatisticsModel
 
 class MultidimAnalysisController(QObject):
-    def __init__(self, context: ApplicationContext, parent: QWidget):
+    def __init__(self, db_service: AlertDatabaseService, parent: QWidget):
         super().__init__(parent)
-        self.context = context
+        self.db_service = db_service
         self.model = StatisticsModel()
         self.view = MultidimAnalysisView(parent)
         self.is_loaded = False
@@ -31,7 +31,7 @@ class MultidimAnalysisController(QObject):
 
     def _update_ip_list(self):
         start_date, end_date = self.view.date_filter.get_date_range()
-        ips = self.context.db_service.get_distinct_source_ips(start_date, end_date)
+        ips = self.db_service.get_distinct_source_ips(start_date, end_date)
         self.view.ip_filter.set_ip_list(ips)
 
     @Slot()
@@ -39,6 +39,6 @@ class MultidimAnalysisController(QObject):
         start_date, end_date = self.view.date_filter.get_date_range()
         ip = self.view.ip_filter.get_ip()
         
-        data = self.context.db_service.get_detailed_hourly_stats(start_date, end_date, ip)
+        data = self.db_service.get_detailed_hourly_stats(start_date, end_date, ip)
         tree_data = self.model.process_detailed_stats_for_tree(data)
         self.view.update_tree(tree_data)

@@ -2,13 +2,13 @@
 from PySide6.QtCore import QObject, Slot
 from PySide6.QtWidgets import QWidget
 
-from src.core.context import ApplicationContext
+from ...services.alert_database_service import AlertDatabaseService
 from ...views.statistics.type_stats_view import TypeStatsView
 
 class TypeStatsController(QObject):
-    def __init__(self, context: ApplicationContext, parent: QWidget):
+    def __init__(self, db_service: AlertDatabaseService, parent: QWidget):
         super().__init__(parent)
-        self.context = context
+        self.db_service = db_service
         self.view = TypeStatsView(parent)
         self.is_loaded = False
         
@@ -27,5 +27,5 @@ class TypeStatsController(QObject):
     @Slot()
     def _perform_query(self):
         start_date, end_date = self.view.date_filter.get_date_range()
-        data = self.context.db_service.get_stats_by_type(start_date, end_date)
+        data = self.db_service.get_stats_by_type(start_date, end_date)
         self.view.update_table(data)

@@ -19,9 +19,8 @@ import logging.handlers
 # --- 1. 导入项目核心模块 ---
 # 遵循先导入服务、再导入UI、最后导入管理器的逻辑顺序
 from src.services.config_service import ConfigService
-from src.services.database_service import DatabaseService
 from src.services.notification_service import NotificationService
-from src.services.webhook_service import WebhookService 
+from src.services.webhook_service import WebhookService
 from src.ui.main_window import MainWindow
 from src.ui.settings_page import SettingsPageWidget
 from src.ui.action_manager import ActionManager
@@ -179,14 +178,6 @@ class ApplicationOrchestrator:
         # 【修复】在config_service初始化后调用快捷方式创建，因为快捷方式需要读取app_name
         if sys.platform == "win32":
             self._create_shortcut()
-        try:
-            # 路径将在DatabaseService内部通过新机制确定
-            self.db_service = DatabaseService(self.config_service, self.app_data_dir)
-            self.db_service.init_db()
-        except Exception as e:
-            logging.critical(f"数据库服务初始化失败，程序无法启动: {e}", exc_info=True)
-            sys.exit(1)
-        
         # 通知服务依赖于配置服务，因此在其后初始化
         app_name = self.config_service.get_value("General", "app_name", APP_NAME_DEFAULT)
         self.notification_service = NotificationService(
@@ -197,7 +188,7 @@ class ApplicationOrchestrator:
         )
         # 【新增】实例化 WebhookService 具体配置参数应该在插件平台设置
         self.webhook_service = WebhookService()
-        logging.info("  - 核心后台服务 (Config, Database, Notification, Webhook) 初始化完成。") # 【修改】更新日志
+        logging.info("  - 核心后台服务 (Config, Notification, Webhook) 初始化完成。")
 
         # --- 1.4 初始化核心UI组件 ---
         # 这些是平台级的UI元素，所有插件都可能与之交互
@@ -214,7 +205,6 @@ class ApplicationOrchestrator:
             app=self.app,
             main_window=self.window,
             config_service=self.config_service,
-            db_service=self.db_service,
             tray_manager=self.tray_manager,
             action_manager=self.action_manager,
             notification_service=self.notification_service,
@@ -295,10 +285,7 @@ class ApplicationOrchestrator:
         self.webhook_service.thread_pool.clear()
         self.webhook_service.thread_pool.waitForDone()
 
-        logging.info("  - [6.4] 关闭数据库服务...")
-        self.db_service.close()
-        
-        logging.info("[STEP 6.5] 应用程序关闭流程结束。")
+        logging.info("[STEP 6.4] 应用程序关闭流程结束。")
 
     def _create_shortcut(self):
         """

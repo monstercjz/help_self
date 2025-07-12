@@ -3,14 +3,14 @@ import logging, os, csv
 from PySide6.QtCore import QObject, Slot, QDate
 from PySide6.QtWidgets import QFileDialog, QMessageBox, QWidget
 
-from src.core.context import ApplicationContext
+from ..services.alert_database_service import AlertDatabaseService
 from ..views.history_dialog_view import HistoryDialogView
 from ..models.history_model import HistoryModel
 
 class HistoryController(QObject):
-    def __init__(self, context: ApplicationContext, parent: QWidget):
+    def __init__(self, db_service: AlertDatabaseService, parent: QWidget):
         super().__init__(parent)
-        self.context = context
+        self.db_service = db_service
         self.model = HistoryModel()
         self.view = HistoryDialogView(parent)
         self._connect_signals()
@@ -46,7 +46,7 @@ class HistoryController(QObject):
         self.model.keyword = params["keyword"]
         self.model.search_field = params["search_field"]
 
-        results, total_count = self.context.db_service.search_alerts(
+        results, total_count = self.db_service.search_alerts(
             start_date=self.model.start_date, end_date=self.model.end_date,
             severities=self.model.severities, keyword=self.model.keyword,
             search_field=self.model.search_field, page=self.model.current_page,
@@ -102,7 +102,7 @@ class HistoryController(QObject):
             return
         reply = QMessageBox.warning(self.view, "确认删除", f"您确定要删除选中的 {len(ids)} 条记录吗？", QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No, QMessageBox.StandardButton.No)
         if reply == QMessageBox.StandardButton.Yes:
-            if self.context.db_service.delete_alerts_by_ids(ids):
+            if self.db_service.delete_alerts_by_ids(ids):
                 QMessageBox.information(self.view, "成功", "选中的记录已删除。")
                 self._perform_search()
             else:
@@ -114,7 +114,7 @@ class HistoryController(QObject):
         if not file_path: return
         
         params = self.view.get_filter_parameters()
-        all_results, _ = self.context.db_service.search_alerts(
+        all_results, _ = self.db_service.search_alerts(
             start_date=params["start_date"], end_date=params["end_date"],
             severities=params["severities"], keyword=params["keyword"],
             search_field=params["search_field"], page=1,

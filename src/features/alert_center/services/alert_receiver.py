@@ -4,7 +4,9 @@ import threading
 from PySide6.QtCore import QThread, Signal
 from flask import Flask, request, jsonify
 
-from src.core.context import ApplicationContext
+from src.services.config_service import ConfigService
+from src.services.notification_service import NotificationService
+from .alert_database_service import AlertDatabaseService
 
 # 抑制Flask的常规日志输出，只保留错误信息
 log = logging.getLogger('werkzeug')
@@ -23,18 +25,22 @@ class AlertReceiverThread(QThread):
     """
     new_alert_received = Signal(dict)
 
-    def __init__(self, context: ApplicationContext, host: str, port: int, parent=None):
+    def __init__(self, config_service: ConfigService, db_service: AlertDatabaseService, notification_service: NotificationService, host: str, port: int, parent=None):
         """
         初始化告警接收器。
 
         Args:
-            context (ApplicationContext): 共享的应用上下文，用于访问服务。
+            config_service (ConfigService): 配置服务。
+            db_service (AlertDatabaseService): 告警数据库服务。
+            notification_service (NotificationService): 通知服务。
             host (str): Flask服务监听的主机地址。
             port (int): Flask服务监听的端口。
             parent (QObject, optional): 父对象。
         """
         super().__init__(parent)
-        self.context = context
+        self.config_service = config_service
+        self.db_service = db_service
+        self.notification_service = notification_service
         self.host = host
         self.port = port
         self.running = False
@@ -65,7 +71,7 @@ class AlertReceiverThread(QThread):
             logging.info(log_message)
 
             # 1. 将告警写入共享的数据库服务
-            self.context.db_service.add_alert(alert_data)
+            self.db_service.add_alert(alert_data)
             logging.info(f"告警已存入数据库。")
             
             # 2. 发射信号通知插件内部的控制器
@@ -86,11 +92,9 @@ class AlertReceiverThread(QThread):
         通过平台共享的 NotificationService 发送桌面通知。
         不再直接调用 plyer，将通知逻辑与平台统一。
         """
-        config = self.context.config_service
-        
         # 检查通知级别是否满足阈值
         try:
-            threshold_str = config.get_value("InfoService", "notification_level", "WARNING").upper()
+            threshold_str = self.config_service.get_value("InfoService", "notification_level", "WARNING").upper()
             threshold_level = SEVERITY_LEVELS.get(threshold_str, SEVERITY_LEVELS["WARNING"])
             current_level = SEVERITY_LEVELS.get(alert_data['severity'], SEVERITY_LEVELS["INFO"])
             
@@ -102,7 +106,7 @@ class AlertReceiverThread(QThread):
             notification_message = f"类型: {alert_data['type']}\n详情: {alert_data['message']}"
             
             # 调用共享的通知服务
-            self.context.notification_service.show(
+            self.notification_service.show(
                 title=notification_title,
                 message=notification_message,
                 level=alert_data['severity']

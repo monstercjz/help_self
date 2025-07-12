@@ -2,14 +2,14 @@
 from PySide6.QtCore import QObject, Slot
 from PySide6.QtWidgets import QWidget, QMessageBox
 
-from src.core.context import ApplicationContext
+from ...services.alert_database_service import AlertDatabaseService
 from ...views.statistics.custom_analysis_view import CustomAnalysisView
 from ...models.custom_analysis_model import CustomAnalysisModel
 
 class CustomAnalysisController(QObject):
-    def __init__(self, context: ApplicationContext, parent: QWidget):
+    def __init__(self, db_service: AlertDatabaseService, parent: QWidget):
         super().__init__(parent)
-        self.context = context
+        self.db_service = db_service
         self.model = CustomAnalysisModel()
         self.view = CustomAnalysisView(parent)
         self.is_loaded = False
@@ -34,7 +34,7 @@ class CustomAnalysisController(QObject):
             
         start_date, end_date = self.view.date_filter.get_date_range()
         
-        data = self.context.db_service.get_custom_stats(dimensions, start_date, end_date)
+        data = self.db_service.get_custom_stats(dimensions, start_date, end_date)
         
         tree_data = self.model.build_tree_from_data(data, dimensions)
         

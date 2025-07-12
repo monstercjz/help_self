@@ -27,7 +27,7 @@ class LauncherModel(QObject):
         )
         # 如果路径为空或未在config中定义，则使用默认值
         if not relative_path:
-            relative_path = "plugins/program_launcher/data.json"
+            relative_path = "plugins/program_launcher/launcher_data.json"
             
         # 使用上下文提供的工具函数获取最终的、可写的绝对路径
         self.data_file = self.context.get_data_path(relative_path)

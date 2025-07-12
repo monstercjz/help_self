@@ -5,11 +5,13 @@ from PySide6.QtWidgets import QMessageBox
 
 from src.core.context import ApplicationContext
 from ..views.alerts_page_view import AlertsPageView
+from ..services.alert_database_service import AlertDatabaseService
 
 class AlertsPageController(QObject):
-    def __init__(self, context: ApplicationContext, parent=None):
+    def __init__(self, context: ApplicationContext, db_service: AlertDatabaseService, parent=None):
         super().__init__(parent)
         self.context = context
+        self.db_service = db_service
         self.view = AlertsPageView()
         self._connect_signals()
         
@@ -33,7 +35,7 @@ class AlertsPageController(QObject):
             limit = int(limit_str)
             if limit > 0:
                 logging.info(f"正在从数据库加载最近 {limit} 条历史记录到告警中心页面...")
-                records = self.context.db_service.get_recent_alerts(limit)
+                records = self.db_service.get_recent_alerts(limit)
                 for record in reversed(records):
                     self.view.add_alert_to_table(record)
         except (ValueError, TypeError) as e:
@@ -74,13 +76,13 @@ class AlertsPageController(QObject):
     @Slot()
     def show_history_dialog(self):
         from .history_controller import HistoryController
-        self.history_controller = HistoryController(self.context, self.view)
+        self.history_controller = HistoryController(self.db_service, self.view)
         self.history_controller.show_dialog()
 
     @Slot()
     def show_statistics_dialog(self):
         from .statistics_dialog_controller import StatisticsDialogController
-        self.statistics_controller = StatisticsDialogController(self.context, self.view)
+        self.statistics_controller = StatisticsDialogController(self.db_service, self.view)
         self.statistics_controller.show_dialog()
 
     @Slot()
@@ -92,7 +94,7 @@ class AlertsPageController(QObject):
             QMessageBox.StandardButton.No
         )
         if reply == QMessageBox.StandardButton.Yes:
-            if self.context.db_service.clear_all_alerts():
+            if self.db_service.clear_all_alerts():
                 QMessageBox.information(self.view, "成功", "所有历史记录已成功清除。")
                 self.view.clear_table_display()
             else:
