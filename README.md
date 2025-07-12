@@ -1,11 +1,11 @@
 ## 项目新架构
 pip freeze > requirements.txt
 ```bash
-pyinstaller --onefile --windowed --icon=icon.ico app.py --add-data "config.ini;." --add-data "icon.png;." --add-data "icon.ico;." --add-data "src;src" --collect-submodules src --hidden-import flask --hidden-import pandas --hidden-import uuid --hidden-import pygetwindow --hidden-import win32process --hidden-import plyer.platforms.win.notification
+pyinstaller --onefile --windowed --icon=icon.ico HelpSelf.py --add-data "config.ini;." --add-data "icon.png;." --add-data "icon.ico;." --add-data "src;src" --collect-submodules src --hidden-import flask --hidden-import pandas --hidden-import uuid --hidden-import pygetwindow --hidden-import win32process --hidden-import plyer.platforms.win.notification
 
 ```
 desktop_center/
-├── app.py                     # 【平台核心】精简的应用协调器
+├── HelpSelf.py                     # 【平台核心】精简的应用协调器
 ├── config.ini
 ├── icon.png
 ├── requirements.txt
@@ -68,13 +68,13 @@ desktop_center/
 - 职责清晰:
 src/core: 定义游戏规则。
 src/features: 玩家。
-app.py: 游戏裁判和场地。
+HelpSelf.py: 游戏裁判和场地。
 src/services: 公共设施。
 - 利于团队协作: 不同的开发者可以并行开发不同的插件，只要都遵守 IFeaturePlugin 接口，就不会互相干扰。
 - 按需加载: 平台可以被配置为只加载某些插件，实现不同版本（基础版/专业版）的软件分发。
 
 ## 启动流程
 整个启动过程可以分为三个主要阶段：
-平台核心初始化 (Platform Core Initialization): app.py 负责创建应用程序实例、核心服务（配置、数据库）、核心UI（主窗口、托盘）以及最重要的“上下文”和“插件管理器”。
+平台核心初始化 (Platform Core Initialization): HelpSelf.py 负责创建应用程序实例、核心服务（配置、数据库）、核心UI（主窗口、托盘）以及最重要的“上下文”和“插件管理器”。
 插件加载与初始化 (Plugin Loading & Initialization): plugin_manager.py 负责扫描 features 目录，动态加载所有插件，并调用每个插件的 initialize 方法。
 插件内部组装 (Plugin Internal Assembly): 在插件的 initialize 方法中，插件负责组装自己的MVC（Model, View, Controller）组件，创建自己的后台服务，并将自己的功能连接到平台提供的接口上（如 ActionManager）。

@@ -28,7 +28,7 @@
 desktop_center/
 .
 ├── .gitignore
-├── app.py
+├── HelpSelf.py
 ├── config.ini
 ├── icon.ico
 ├── icon.png
@@ -133,17 +133,17 @@ desktop_center/
 - 职责清晰:
 src/core: 定义游戏规则。
 src/features: 玩家。
-app.py: 游戏裁判和场地。
+HelpSelf.py: 游戏裁判和场地。
 src/services: 公共设施。
 - 利于团队协作: 不同的开发者可以并行开发不同的插件，只要都遵守 IFeaturePlugin 接口，就不会互相干扰。
 - 按需加载: 平台可以被配置为只加载某些插件，实现不同版本（基础版/专业版）的软件分发。
 
 
 
-## app.py
+## HelpSelf.py
 
 ```python
-# desktop_center/app.py
+# desktop_center/HelpSelf.py
 import sys
 import os
 import logging
@@ -872,7 +872,7 @@ class MainWindow(QMainWindow):
             parent (QWidget, optional): 父组件。默认为 None。
         """
         super().__init__(parent)
-        self.setWindowTitle("Application Skeleton") # 初始标题，可由app.py覆盖
+        self.setWindowTitle("Application Skeleton") # 初始标题，可由HelpSelf.py覆盖
         self.setGeometry(100, 100, 900, 700) # 初始尺寸
 
         # --- 创建主布局 ---

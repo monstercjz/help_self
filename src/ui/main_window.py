@@ -19,7 +19,7 @@ class MainWindow(QMainWindow):
             parent (QWidget, optional): 父组件。默认为 None。
         """
         super().__init__(parent)
-        self.setWindowTitle("Application Skeleton") # 初始标题，可由app.py覆盖
+        self.setWindowTitle("Application Skeleton") # 初始标题，可由HelpSelf.py覆盖
         self.setGeometry(100, 100, 900, 700) # 初始尺寸
 
         # --- 创建主布局 ---

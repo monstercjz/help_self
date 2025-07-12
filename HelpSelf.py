@@ -1,4 +1,4 @@
-# desktop_center/app.py
+# desktop_center/HelpSelf.py
 import sys
 import os
 import logging
