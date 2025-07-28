@@ -281,23 +281,54 @@ class MultidimTableModel(QObject):
             return [], str(e)
 
     def delete_column(self, table_name: str, column_name: str):
-        """从表中删除一个列。"""
+        """从表中删除一个列（通过重建表实现以保证类型安全）。"""
         try:
             if not self.conn: return False, "数据库未连接。"
-            # 1. 从数据库读取当前表
-            df = pd.read_sql(f'SELECT * FROM "{table_name}"', self.conn)
+            
+            cursor = self.conn.cursor()
 
-            # 2. 在DataFrame中删除列
-            if column_name in df.columns:
-                df = df.drop(columns=[column_name])
-            else:
+            # 1. 获取当前表结构
+            cursor.execute(f'PRAGMA table_info("{table_name}")')
+            columns_info = cursor.fetchall()
+            
+            if not any(col[1] == column_name for col in columns_info):
                 return False, f"列 '{column_name}' 不存在。"
 
-            # 3. 将修改后的DataFrame写回数据库，覆盖原表
-            df.to_sql(table_name, self.conn, if_exists='replace', index=False)
+            # 2. 创建新的表结构定义（排除要删除的列）
+            new_columns_defs = []
+            kept_column_names = []
+            for col in columns_info:
+                name, ctype = col[1], col[2]
+                if name != column_name:
+                    new_columns_defs.append(f'"{name}" "{ctype}"')
+                    kept_column_names.append(f'"{name}"')
+
+            new_table_name = f"{table_name}_new_for_delete"
+            columns_def_str = ", ".join(new_columns_defs)
+            columns_names_str = ", ".join(kept_column_names)
+
+            # 3. 事务开始
+            cursor.execute("BEGIN TRANSACTION;")
+            
+            # 4. 创建新表
+            cursor.execute(f'CREATE TABLE "{new_table_name}" ({columns_def_str})')
+            
+            # 5. 复制数据
+            cursor.execute(f'INSERT INTO "{new_table_name}" ({columns_names_str}) SELECT {columns_names_str} FROM "{table_name}"')
+            
+            # 6. 删除旧表
+            cursor.execute(f'DROP TABLE "{table_name}"')
+            
+            # 7. 重命名新表
+            cursor.execute(f'ALTER TABLE "{new_table_name}" RENAME TO "{table_name}"')
+            
+            # 8. 提交事务
+            self.conn.commit()
             
             return True, None
         except Exception as e:
+            if self.conn:
+                self.conn.rollback()
             return False, str(e)
 
     def rename_table(self, old_name: str, new_name: str):
