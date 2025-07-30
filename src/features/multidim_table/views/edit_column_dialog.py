@@ -20,7 +20,7 @@ class EditColumnDialog(QDialog):
         form_layout.addRow("字段名称:", self.name_input)
 
         self.type_combo = QComboBox()
-        self.type_combo.addItems(["TEXT", "INTEGER", "REAL", "DATETIME", "BOOLEAN", "ENUM", "BLOB", "NUMERIC"])
+        self.type_combo.addItems(["TEXT", "INTEGER", "REAL", "DATETIME", "BOOLEAN", "ENUM", "ENUM_MULTI", "BLOB", "NUMERIC"])
         self.type_combo.currentTextChanged.connect(self._on_type_changed)
         form_layout.addRow("数据类型:", self.type_combo)
 
@@ -43,8 +43,13 @@ class EditColumnDialog(QDialog):
     def _set_initial_state(self, old_type):
         """根据旧类型设置对话框的初始状态。"""
         if old_type.upper().startswith("ENUM"):
-            self.type_combo.setCurrentText("ENUM")
-            match = re.match(r"ENUM\((.*)\)", old_type, re.IGNORECASE)
+            if "ENUM_MULTI" in old_type.upper():
+                self.type_combo.setCurrentText("ENUM_MULTI")
+                match = re.match(r"ENUM_MULTI\((.*)\)", old_type, re.IGNORECASE)
+            else:
+                self.type_combo.setCurrentText("ENUM")
+                match = re.match(r"ENUM\((.*)\)", old_type, re.IGNORECASE)
+            
             if match:
                 self.enum_input.setText(match.group(1))
         else:
@@ -59,11 +64,17 @@ class EditColumnDialog(QDialog):
             if options:
                 return name, f"ENUM({options})"
             else:
-                return name, "TEXT" # 默认为TEXT
+                return name, "TEXT"
+        elif col_type == "ENUM_MULTI":
+            options = self.enum_input.text().strip()
+            if options:
+                return name, f"ENUM_MULTI({options})"
+            else:
+                return name, "TEXT"
         return name, col_type
 
     def _on_type_changed(self, text):
         """当类型下拉框变化时，控制ENUM输入框的可见性。"""
-        is_enum = (text == "ENUM")
+        is_enum = (text == "ENUM" or text == "ENUM_MULTI")
         self.enum_label.setVisible(is_enum)
         self.enum_input.setVisible(is_enum)

@@ -21,7 +21,7 @@ class AddColumnDialog(QDialog):
 
         self.type_combo = QComboBox()
         # SQLite常见数据类型
-        self.type_combo.addItems(["TEXT", "INTEGER", "REAL", "DATETIME", "BOOLEAN", "ENUM", "BLOB", "NUMERIC"])
+        self.type_combo.addItems(["TEXT", "INTEGER", "REAL", "DATETIME", "BOOLEAN", "ENUM", "ENUM_MULTI", "BLOB", "NUMERIC"])
         self.type_combo.currentTextChanged.connect(self._on_type_changed)
         form_layout.addRow("数据类型:", self.type_combo)
 
@@ -49,12 +49,17 @@ class AddColumnDialog(QDialog):
             if options:
                 return name, f"ENUM({options})"
             else:
-                # 如果没有提供选项，则默认为TEXT
+                return name, "TEXT"
+        elif col_type == "ENUM_MULTI":
+            options = self.enum_input.text().strip()
+            if options:
+                return name, f"ENUM_MULTI({options})"
+            else:
                 return name, "TEXT"
         return name, col_type
 
     def _on_type_changed(self, text):
         """当类型下拉框变化时，控制ENUM输入框的可见性。"""
-        is_enum = (text == "ENUM")
+        is_enum = (text == "ENUM" or text == "ENUM_MULTI")
         self.enum_label.setVisible(is_enum)
         self.enum_input.setVisible(is_enum)
