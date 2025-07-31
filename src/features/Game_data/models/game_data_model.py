@@ -34,6 +34,7 @@ class GameDataModel:
         self.context = context
         self.config_service = context.config_service
         self._root_path = ""
+        self._db_path = ""
         self._config_text = ""
         self.load_settings()
 
@@ -44,6 +45,14 @@ class GameDataModel:
     @root_path.setter
     def root_path(self, value: str):
         self._root_path = value
+
+    @property
+    def db_path(self) -> str:
+        return self._db_path
+
+    @db_path.setter
+    def db_path(self, value: str):
+        self._db_path = value
 
     @property
     def config_text(self) -> str:
@@ -75,8 +84,10 @@ class GameDataModel:
         """
         logging.info("从配置服务加载GameData设置...")
         self._root_path = self.config_service.get_value("game_data", "root_path", "D:\\天龙相关\\临时处理")
+        self._db_path = self.config_service.get_value("game_data", "db_path", "D:\\天龙相关\\临时处理\\TL_game.db")
         self._config_text = self.config_service.get_value("game_data", "config_text", self.DEFAULT_CONFIG_TEXT)
         logging.info(f"根目录加载为: {self._root_path}")
+        logging.info(f"数据库路径加载为: {self._db_path}")
 
     def save_settings(self):
         """
@@ -84,6 +95,7 @@ class GameDataModel:
         """
         logging.info("保存GameData设置到配置服务...")
         self.config_service.set_option("game_data", "root_path", self._root_path)
+        self.config_service.set_option("game_data", "db_path", self._db_path)
         self.config_service.set_option("game_data", "config_text", self._config_text)
         self.config_service.save_config()  # 显式调用保存
         logging.info("GameData设置已保存。")

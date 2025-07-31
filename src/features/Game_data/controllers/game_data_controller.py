@@ -15,8 +15,8 @@ class GameDataController:
         self.view = view
         self.context = context
         
-        # 从context获取数据库路径，并初始化service
-        db_path = self.context.get_data_path('TL_game.db')
+        # 从模型获取数据库路径，并初始化service
+        db_path = self.model.db_path
         self.service = GameDataService(db_path=db_path)
         
         self._connect_signals()
@@ -25,17 +25,20 @@ class GameDataController:
     def _connect_signals(self):
         """连接视图的信号到控制器的槽函数。"""
         self.view.browse_button.clicked.connect(self._on_browse_path)
+        self.view.db_browse_button.clicked.connect(self._on_browse_db_path)
         self.view.extract_button.clicked.connect(self._on_extract_data)
         self.view.aggregate_button.clicked.connect(self._on_aggregate_files)
         self.view.distribute_button.clicked.connect(self._on_distribute_files)
         
         # 当文本框内容改变时，自动更新模型
         self.view.path_line_edit.textChanged.connect(self._on_path_changed)
+        self.view.db_path_line_edit.textChanged.connect(self._on_db_path_changed)
         self.view.config_text_edit.textChanged.connect(self._on_config_changed)
 
     def _update_view_from_model(self):
         """用模型的数据初始化视图。"""
         self.view.set_root_path(self.model.root_path)
+        self.view.set_db_path(self.model.db_path)
         self.view.set_config_text(self.model.config_text)
         self.view.append_log("游戏数据工具已就绪。")
 
@@ -45,9 +48,19 @@ class GameDataController:
         if directory:
             self.view.set_root_path(directory)
 
+    def _on_browse_db_path(self):
+        """处理数据库浏览按钮点击事件。"""
+        db_file = self.view.select_db_file()
+        if db_file:
+            self.view.set_db_path(db_file)
+
     def _on_path_changed(self, text: str):
         """处理路径文本框变化事件。"""
         self.model.root_path = text
+
+    def _on_db_path_changed(self, text: str):
+        """处理数据库路径文本框变化事件。"""
+        self.model.db_path = text
 
     def _on_config_changed(self):
         """处理配置文本框变化事件。"""
