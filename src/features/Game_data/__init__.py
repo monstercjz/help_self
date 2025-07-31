@@ -1,0 +1,1 @@
+# This file makes the game_data directory a Python package.
