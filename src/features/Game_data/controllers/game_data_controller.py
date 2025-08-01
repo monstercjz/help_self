@@ -41,6 +41,7 @@ class GameDataController:
         """用模型的数据初始化视图。"""
         self.view.set_root_path(self.model.root_path)
         self.view.set_db_path(self.model.db_path)
+        self.view.set_config_path_display(self.model.config_path) # 更新路径显示
         self.view.set_config_text(self.model.config_text)
         self.view.append_log("游戏数据工具已就绪。")
 
@@ -57,20 +58,28 @@ class GameDataController:
             self.view.set_db_path(db_file)
 
     def _on_path_changed(self, text: str):
-        """处理路径文本框变化事件。"""
+        """处理路径文本框变化事件，并立即保存。"""
         self.model.root_path = text
+        self.model.save_settings()
 
     def _on_db_path_changed(self, text: str):
-        """处理数据库路径文本框变化事件。"""
+        """处理数据库路径文本框变化事件，并立即保存。"""
         self.model.db_path = text
+        # 同步更新 service 中的 db_path，确保数据源一致
+        if self.service:
+            self.service.db_path = text
+            logging.info(f"GameDataService 的数据源已更新为: {text}")
+        self.model.save_settings()
 
     def _on_load_config_file(self):
-        """处理加载配置文件按钮点击事件。"""
+        """处理加载配置文件按钮点击事件，并立即保存。"""
         config_file = self.view.select_config_file()
         if config_file:
             self.model.config_path = config_file
             # 模型setter会自动调用load_config_from_file，我们只需更新视图
+            self.view.set_config_path_display(config_file) # 更新路径显示
             self.view.set_config_text(self.model.config_text)
+            self.model.save_settings()
 
     def _execute_service_action(self, action, action_name: str):
         """通用服务执行模板。"""
@@ -79,9 +88,7 @@ class GameDataController:
         logging.info(f"开始执行 '{action_name}' 操作...")
         
         try:
-            # 在执行前保存当前设置
-            self.model.save_settings()
-            
+            # 设置已在变更时保存，此处无需重复保存
             root_path = self.model.root_path
             config = self.model.get_parsed_config()
             

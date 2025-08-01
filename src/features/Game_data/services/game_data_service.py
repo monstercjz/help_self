@@ -6,6 +6,13 @@ import shutil
 import logging
 from typing import Dict, List
 
+try:
+    import pandas as pd
+    # openpyxl is a dependency of pandas for reading .xlsx files
+    import openpyxl
+except ImportError:
+    raise ImportError("缺少必要的库，请通过 'pip install pandas openpyxl' 来安装。")
+
 class GameDataService:
     """
     提供处理游戏数据的核心业务逻辑，替代原有的Lua脚本功能。
@@ -16,58 +23,104 @@ class GameDataService:
         初始化服务。
 
         Args:
-            db_path (str): SQLite数据库文件的路径。
+            db_path (str): 数据源文件的路径（可以是SQLite数据库或Excel文件）。
         """
         self.db_path = db_path
-        logging.info(f"GameDataService 初始化，数据库路径: {self.db_path}")
+        logging.info(f"GameDataService 初始化，数据源路径: {self.db_path}")
 
     def extract_data(self, root_path: str, config: Dict[str, List[str]], db_config: Dict[str, str]):
         """
-        根据配置从数据库提取账号信息，并生成对应的txt文件。
-        对应原 '1-findname3.0.lua' 的功能。
-
-        Args:
-            root_path (str): 操作的根目录，例如 "D:\\天龙相关\\临时处理"。
-            config (Dict[str, List[str]]): 分机ID到角色名列表的映射。
-            db_config (Dict[str, str]): 包含数据库表名和字段名的配置。
+        根据配置从数据源提取账号信息，并生成对应的txt文件。
+        根据db_path的扩展名自动选择使用数据库或Excel。
         """
         logging.info("开始执行数据提取...")
         
+        file_ext = os.path.splitext(self.db_path)[1].lower()
+        
+        try:
+            if file_ext in ['.db', '.sqlite', '.sqlite3']:
+                self._extract_from_db(root_path, config, db_config)
+            elif file_ext in ['.xlsx', '.xls', '.xlsm']:
+                self._extract_from_excel(root_path, config, db_config)
+            else:
+                logging.error(f"不支持的数据源文件类型: {file_ext}")
+                raise ValueError(f"不支持的数据源文件类型: {file_ext}")
+        except Exception as e:
+            logging.error(f"数据提取过程中发生错误: {e}", exc_info=True)
+            # 可以在这里重新抛出异常，让上层控制器捕获并显示在UI
+            raise
+
+    def _extract_from_db(self, root_path: str, config: Dict[str, List[str]], db_config: Dict[str, str]):
+        """从SQLite数据库提取数据。"""
+        logging.info("从SQLite数据库提取数据...")
         table = db_config.get('table_name', '账号数据')
         member_col = db_config.get('member_col', '角色名')
         account_col = db_config.get('account_col', '账号')
         
-        # 动态构建SQL查询语句，防止SQL注入
-        query = f"SELECT \"{account_col}\" FROM \"{table}\" WHERE \"{member_col}\" = ?"
+        query = f'SELECT "{account_col}" FROM "{table}" WHERE "{member_col}" = ?'
+
+        with sqlite3.connect(self.db_path) as conn:
+            cursor = conn.cursor()
+            for an_id, members in config.items():
+                account_info_parts = []
+                for member in members:
+                    cursor.execute(query, (member,))
+                    result = cursor.fetchone()
+                    if result:
+                        account_info_parts.append(str(result[0]))
+                    else:
+                        logging.warning(f"在数据库中未找到角色 '{member}' 的账号信息。")
+                
+                self._write_account_file(root_path, an_id, account_info_parts)
+
+    def _extract_from_excel(self, root_path: str, config: Dict[str, List[str]], db_config: Dict[str, str]):
+        """从Excel文件提取数据。"""
+        logging.info("从Excel文件提取数据...")
+        member_col = db_config.get('member_col', '角色名')
+        account_col = db_config.get('account_col', '账号')
 
         try:
-            with sqlite3.connect(self.db_path) as conn:
-                cursor = conn.cursor()
-                for an_id, members in config.items():
-                    account_info_parts = []
-                    for member in members:
-                        cursor.execute(query, (member,))
-                        result = cursor.fetchone()
-                        if result:
-                            account_info_parts.append(result[0])
-                        else:
-                            logging.warning(f"在数据库中未找到角色 '{member}' 的账号信息。")
-                    
-                    full_account_info = "\n".join(account_info_parts)
+            # engine='openpyxl' is required for .xlsx files
+            df = pd.read_excel(self.db_path, engine='openpyxl')
+            
+            # 确保列名是字符串类型，以便进行比较
+            df.columns = df.columns.astype(str)
 
-                    # 创建输出目录和文件
-                    output_dir = os.path.join(root_path, an_id, "游戏账号")
-                    os.makedirs(output_dir, exist_ok=True)
-                    
-                    output_file_path = os.path.join(output_dir, f"{an_id}.txt")
-                    with open(output_file_path, 'w', encoding='gbk') as f:
-                        f.write(full_account_info)
-                    logging.info(f"为ID '{an_id}' 成功创建账号文件: {output_file_path} (GBK编码)")
+            if member_col not in df.columns or account_col not in df.columns:
+                logging.error(f"Excel文件中缺少必要的列: '{member_col}' 或 '{account_col}'")
+                raise ValueError(f"Excel文件中缺少必要的列: '{member_col}' 或 '{account_col}'")
 
-        except sqlite3.Error as e:
-            logging.error(f"数据库操作失败: {e}")
-        except IOError as e:
-            logging.error(f"文件写入失败: {e}")
+            for an_id, members in config.items():
+                account_info_parts = []
+                for member in members:
+                    # 查询匹配的行
+                    result_df = df[df[member_col] == member]
+                    if not result_df.empty:
+                        # 获取第一个匹配项的账号信息
+                        account = result_df.iloc[0][account_col]
+                        account_info_parts.append(str(account))
+                    else:
+                        logging.warning(f"在Excel中未找到角色 '{member}' 的账号信息。")
+                
+                self._write_account_file(root_path, an_id, account_info_parts)
+
+        except FileNotFoundError:
+            logging.error(f"Excel文件未找到: {self.db_path}")
+            raise
+        except Exception as e:
+            logging.error(f"读取或处理Excel文件时出错: {e}")
+            raise
+
+    def _write_account_file(self, root_path: str, an_id: str, account_info_parts: List[str]):
+        """将账号信息写入文件。"""
+        full_account_info = "\n".join(account_info_parts)
+        output_dir = os.path.join(root_path, an_id, "游戏账号")
+        os.makedirs(output_dir, exist_ok=True)
+        
+        output_file_path = os.path.join(output_dir, f"{an_id}.txt")
+        with open(output_file_path, 'w', encoding='gbk') as f:
+            f.write(full_account_info)
+        logging.info(f"为ID '{an_id}' 成功创建账号文件: {output_file_path} (GBK编码)")
 
     def aggregate_files(self, root_path: str, config: Dict[str, List[str]]):
         """
@@ -96,7 +149,9 @@ class GameDataService:
                             dest_item_path = os.path.join(all_dir, item_name)
                             
                             if os.path.isdir(source_item_path):
-                                shutil.copytree(source_item_path, dest_item_path, dirs_exist_ok=True)
+                                if os.path.exists(dest_item_path):
+                                    shutil.rmtree(dest_item_path)
+                                shutil.copytree(source_item_path, dest_item_path)
                                 logging.info(f"复制目录 '{source_item_path}' 到 '{dest_item_path}'")
                             else:
                                 shutil.copy2(source_item_path, dest_item_path)

@@ -32,10 +32,10 @@ class GameDataView(QWidget):
         path_group.setLayout(path_layout)
         main_layout.addWidget(path_group)
 
-        # 1.5. 数据库路径设置区域
-        db_path_group = QGroupBox("数据库设置")
+        # 1.5. 数据源路径设置区域
+        db_path_group = QGroupBox("数据源设置")
         db_path_layout = QHBoxLayout()
-        self.db_path_label = QLabel("数据库文件:")
+        self.db_path_label = QLabel("数据源文件:")
         self.db_path_line_edit = QLineEdit()
         self.db_browse_button = QPushButton("浏览...")
         db_path_layout.addWidget(self.db_path_label)
@@ -48,9 +48,18 @@ class GameDataView(QWidget):
         config_group = QGroupBox("分机账号配置")
         config_layout = QVBoxLayout()
         
-        # 增加一个加载按钮
+        # 增加一个加载按钮和路径显示
+        config_top_layout = QHBoxLayout()
+        self.config_path_display = QLineEdit()
+        self.config_path_display.setReadOnly(True)
+        self.config_path_display.setPlaceholderText("当前未加载配置文件")
         self.load_config_button = QPushButton("从文件加载配置...")
-        config_layout.addWidget(self.load_config_button, 0, Qt.AlignRight)
+        
+        config_top_layout.addWidget(QLabel("当前配置文件:"))
+        config_top_layout.addWidget(self.config_path_display)
+        config_top_layout.addWidget(self.load_config_button)
+        
+        config_layout.addLayout(config_top_layout)
 
         self.config_text_edit = QTextEdit()
         config_layout.addWidget(self.config_text_edit)
@@ -103,6 +112,10 @@ class GameDataView(QWidget):
         """设置配置文本编辑框的内容。"""
         self.config_text_edit.setPlainText(text)
 
+    def set_config_path_display(self, path: str):
+        """设置配置文件路径显示框的内容。"""
+        self.config_path_display.setText(path)
+
     def append_log(self, message: str):
         """向日志浏览器追加一条消息。"""
         self.log_browser.append(message)
@@ -121,21 +134,35 @@ class GameDataView(QWidget):
         return directory
 
     def select_db_file(self) -> str | None:
-        """打开文件选择对话框选择数据库文件。"""
+        """打开文件选择对话框选择数据源文件（数据库或Excel）。"""
         file_path, _ = QFileDialog.getOpenFileName(
             self,
-            "选择数据库文件",
+            "选择数据源文件",
             self.get_db_path() or os.path.expanduser("~"),
-            "数据库文件 (*.db *.sqlite *.sqlite3)"
+            "数据文件 (*.db *.sqlite *.sqlite3 *.xlsx *.xls *.xlsm);;"
+            "数据库文件 (*.db *.sqlite *.sqlite3);;"
+            "Excel 文件 (*.xlsx *.xls *.xlsm);;"
+            "所有文件 (*)"
         )
         return file_path
 
     def select_config_file(self) -> str | None:
-        """打开文件选择对话框选择配置文件。"""
+        """打开文件选择对话框选择配置文件，使用智能默认路径。"""
+        # 优先使用当前配置文件所在的目录
+        current_config_path = self.config_path_display.text()
+        if current_config_path and os.path.isfile(current_config_path):
+            default_path = os.path.dirname(current_config_path)
+        # 其次使用根目录
+        elif self.get_root_path() and os.path.isdir(self.get_root_path()):
+            default_path = self.get_root_path()
+        # 最后使用用户主目录
+        else:
+            default_path = os.path.expanduser("~")
+
         file_path, _ = QFileDialog.getOpenFileName(
             self,
             "选择分机账号配置文件",
-            os.path.expanduser("~"),
-            "文本文件 (*.txt)"
+            default_path,
+            "文本文件 (*.txt);;所有文件 (*)"
         )
         return file_path
