@@ -26,6 +26,7 @@ class GameDataController:
         """连接视图的信号到控制器的槽函数。"""
         self.view.browse_button.clicked.connect(self._on_browse_path)
         self.view.db_browse_button.clicked.connect(self._on_browse_db_path)
+        self.view.load_config_button.clicked.connect(self._on_load_config_file)
         self.view.extract_button.clicked.connect(self._on_extract_data)
         self.view.aggregate_button.clicked.connect(self._on_aggregate_files)
         self.view.distribute_button.clicked.connect(self._on_distribute_files)
@@ -33,7 +34,8 @@ class GameDataController:
         # 当文本框内容改变时，自动更新模型
         self.view.path_line_edit.textChanged.connect(self._on_path_changed)
         self.view.db_path_line_edit.textChanged.connect(self._on_db_path_changed)
-        self.view.config_text_edit.textChanged.connect(self._on_config_changed)
+        # 不再需要监听config_text_edit的变化，因为它是由文件加载的
+        # self.view.config_text_edit.textChanged.connect(self._on_config_changed)
 
     def _update_view_from_model(self):
         """用模型的数据初始化视图。"""
@@ -62,9 +64,13 @@ class GameDataController:
         """处理数据库路径文本框变化事件。"""
         self.model.db_path = text
 
-    def _on_config_changed(self):
-        """处理配置文本框变化事件。"""
-        self.model.config_text = self.view.get_config_text()
+    def _on_load_config_file(self):
+        """处理加载配置文件按钮点击事件。"""
+        config_file = self.view.select_config_file()
+        if config_file:
+            self.model.config_path = config_file
+            # 模型setter会自动调用load_config_from_file，我们只需更新视图
+            self.view.set_config_text(self.model.config_text)
 
     def _execute_service_action(self, action, action_name: str):
         """通用服务执行模板。"""

@@ -51,9 +51,9 @@ class GameDataService:
                     os.makedirs(output_dir, exist_ok=True)
                     
                     output_file_path = os.path.join(output_dir, f"{an_id}.txt")
-                    with open(output_file_path, 'w', encoding='utf-8') as f:
+                    with open(output_file_path, 'w', encoding='gbk') as f:
                         f.write(full_account_info)
-                    logging.info(f"为ID '{an_id}' 成功创建账号文件: {output_file_path}")
+                    logging.info(f"为ID '{an_id}' 成功创建账号文件: {output_file_path} (GBK编码)")
 
         except sqlite3.Error as e:
             logging.error(f"数据库操作失败: {e}")

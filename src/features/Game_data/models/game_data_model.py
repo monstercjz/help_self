@@ -1,5 +1,6 @@
 # src/features/game_data/models/game_data_model.py
 
+import os
 import logging
 from typing import Dict, List
 from src.core.context import ApplicationContext
@@ -11,18 +12,6 @@ class GameDataModel:
     - 提供加载和保存配置的方法。
     - 解析配置文本为可用的数据结构。
     """
-    
-    DEFAULT_CONFIG_TEXT = """41706:善良的恶魔|べ瓒。|べ辰。|べ墨。|べ褚。|べ连。
-41601:雷ぃ傷う|べ谭°|べ藏。|べ黄。|べ陶。|べ王。
-41301:べ曉゜|べ曉。|べ珏。|べ皢。|べ潋。|べ吴。
-32401:べ孔。|べ施。|べ云。|べ沈。|べ柳。|べ邹。
-32402:〆﹎oKingゝ|べ稠。|べ唐。|べ张。|べ戴。|べ鲁。
-32403:笑尽天下英雄|べ祥。|归鹿．|べ秦。|べ费。|べ柯。
-32404:☆浅月|べ劫。|べ彭。|べ于。|べ崔。|べ水。
-32405:失魂の蟲|多情一刀|跑进∞新时代|べ伯。|べ魏。|べ戚。
-32406:べ栤。|べ恧。|べ顾。|べ郝。|べ飛。|べ伍。|べ卫。
-32408:单纯的宝贝|天￠闲★|伊ゞ辰メ|﹏冰慕筱筱ゞ|べ葛。|べ苗。
-32409:べ倪。|べ吕。|べ卫。|べ韩。|べ尤。|べ姜。"""
 
     def __init__(self, context: ApplicationContext):
         """
@@ -35,7 +24,8 @@ class GameDataModel:
         self.config_service = context.config_service
         self._root_path = ""
         self._db_path = ""
-        self._config_text = ""
+        self._config_path = ""
+        self._config_text = "" # 用于在UI上显示内容
         self.load_settings()
 
     @property
@@ -55,12 +45,17 @@ class GameDataModel:
         self._db_path = value
 
     @property
+    def config_path(self) -> str:
+        return self._config_path
+
+    @config_path.setter
+    def config_path(self, value: str):
+        self._config_path = value
+        self.load_config_from_file()
+
+    @property
     def config_text(self) -> str:
         return self._config_text
-
-    @config_text.setter
-    def config_text(self, value: str):
-        self._config_text = value
 
     def get_parsed_config(self) -> Dict[str, List[str]]:
         """
@@ -80,14 +75,43 @@ class GameDataModel:
 
     def load_settings(self):
         """
-        从ConfigService加载设置。如果不存在，则使用默认值。
+        从ConfigService加载持久化的路径设置。
         """
         logging.info("从配置服务加载GameData设置...")
         self._root_path = self.config_service.get_value("game_data", "root_path", "D:\\天龙相关\\临时处理")
         self._db_path = self.config_service.get_value("game_data", "db_path", "D:\\天龙相关\\临时处理\\TL_game.db")
-        self._config_text = self.config_service.get_value("game_data", "config_text", self.DEFAULT_CONFIG_TEXT)
+        self._config_path = self.config_service.get_value("game_data", "config_path", "")
+        self.load_config_from_file() # 根据加载的路径读取文件内容
         logging.info(f"根目录加载为: {self._root_path}")
         logging.info(f"数据库路径加载为: {self._db_path}")
+        logging.info(f"配置文件路径加载为: {self._config_path}")
+
+    def load_config_from_file(self):
+        """
+        根据 config_path 从文件加载配置内容到 config_text。
+        """
+        if self._config_path and os.path.exists(self._config_path):
+            try:
+                # 尝试用 UTF-8 读取
+                with open(self._config_path, 'r', encoding='utf-8') as f:
+                    self._config_text = f.read()
+                logging.info(f"成功从 '{self._config_path}' 加载配置内容 (UTF-8)。")
+            except UnicodeDecodeError:
+                logging.warning(f"使用UTF-8读取 '{self._config_path}' 失败，尝试使用GBK编码。")
+                try:
+                    # 如果UTF-8失败，尝试用 GBK 读取
+                    with open(self._config_path, 'r', encoding='gbk') as f:
+                        self._config_text = f.read()
+                    logging.info(f"成功从 '{self._config_path}' 加载配置内容 (GBK)。")
+                except (UnicodeDecodeError, IOError) as e:
+                    self._config_text = f"无法读取文件: {e}"
+                    logging.error(f"使用多种编码读取配置文件 '{self._config_path}' 均失败: {e}")
+            except IOError as e:
+                self._config_text = f"无法读取文件: {e}"
+                logging.error(f"读取配置文件 '{self._config_path}' 时发生IO错误: {e}")
+        else:
+            self._config_text = "请选择一个有效的分机账号配置文件..."
+            logging.warning(f"配置文件路径无效或文件不存在: '{self._config_path}'")
 
     def save_settings(self):
         """
@@ -96,6 +120,6 @@ class GameDataModel:
         logging.info("保存GameData设置到配置服务...")
         self.config_service.set_option("game_data", "root_path", self._root_path)
         self.config_service.set_option("game_data", "db_path", self._db_path)
-        self.config_service.set_option("game_data", "config_text", self._config_text)
+        self.config_service.set_option("game_data", "config_path", self._config_path)
         self.config_service.save_config()  # 显式调用保存
         logging.info("GameData设置已保存。")

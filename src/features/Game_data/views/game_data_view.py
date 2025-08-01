@@ -1,5 +1,6 @@
 # src/features/game_data/views/game_data_view.py
 
+import os
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QLineEdit,
     QGroupBox, QTextEdit, QLabel, QFileDialog, QTextBrowser
@@ -46,6 +47,11 @@ class GameDataView(QWidget):
         # 2. 配置编辑区域
         config_group = QGroupBox("分机账号配置")
         config_layout = QVBoxLayout()
+        
+        # 增加一个加载按钮
+        self.load_config_button = QPushButton("从文件加载配置...")
+        config_layout.addWidget(self.load_config_button, 0, Qt.AlignRight)
+
         self.config_text_edit = QTextEdit()
         config_layout.addWidget(self.config_text_edit)
         config_group.setLayout(config_layout)
@@ -121,5 +127,15 @@ class GameDataView(QWidget):
             "选择数据库文件",
             self.get_db_path() or os.path.expanduser("~"),
             "数据库文件 (*.db *.sqlite *.sqlite3)"
+        )
+        return file_path
+
+    def select_config_file(self) -> str | None:
+        """打开文件选择对话框选择配置文件。"""
+        file_path, _ = QFileDialog.getOpenFileName(
+            self,
+            "选择分机账号配置文件",
+            os.path.expanduser("~"),
+            "文本文件 (*.txt)"
         )
         return file_path
