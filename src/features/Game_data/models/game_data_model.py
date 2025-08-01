@@ -83,9 +83,24 @@ class GameDataModel:
         self._config_path = self.config_service.get_value("game_data", "config_path", "")
         
         # 新增：从配置加载数据库表和字段名 (在 game_data 区段下)
-        self.db_table_name = self.config_service.get_value("game_data", "db_table_name", "账号数据")
-        self.db_member_col = self.config_service.get_value("game_data", "db_member_col", "角色名")
-        self.db_account_col = self.config_service.get_value("game_data", "db_account_col", "账号")
+        # 检查并写入默认值
+        should_save = False
+        if not self.config_service.get_value("game_data", "db_table_name"):
+            self.config_service.set_option("game_data", "db_table_name", "账号数据")
+            should_save = True
+        if not self.config_service.get_value("game_data", "db_member_col"):
+            self.config_service.set_option("game_data", "db_member_col", "角色名")
+            should_save = True
+        if not self.config_service.get_value("game_data", "db_account_col"):
+            self.config_service.set_option("game_data", "db_account_col", "账号")
+            should_save = True
+        
+        if should_save:
+            self.config_service.save_config()
+
+        self.db_table_name = self.config_service.get_value("game_data", "db_table_name")
+        self.db_member_col = self.config_service.get_value("game_data", "db_member_col")
+        self.db_account_col = self.config_service.get_value("game_data", "db_account_col")
 
         self.load_config_from_file() # 根据加载的路径读取文件内容
         logging.info(f"根目录加载为: {self._root_path}")
@@ -129,10 +144,10 @@ class GameDataModel:
         self.config_service.set_option("game_data", "db_path", self._db_path)
         self.config_service.set_option("game_data", "config_path", self._config_path)
         
-        # 新增：保存数据库表和字段名配置 (在 game_data 区段下)
-        self.config_service.set_option("game_data", "db_table_name", self.db_table_name)
-        self.config_service.set_option("game_data", "db_member_col", self.db_member_col)
-        self.config_service.set_option("game_data", "db_account_col", self.db_account_col)
+        # 只保存用户可以在UI上修改的路径
+        # self.config_service.set_option("game_data", "db_table_name", self.db_table_name)
+        # self.config_service.set_option("game_data", "db_member_col", self.db_member_col)
+        # self.config_service.set_option("game_data", "db_account_col", self.db_account_col)
         # 移除对 config_text 的保存，因为它现在是动态加载的
         # self.config_service.set_option("game_data", "config_text", self._config_text)
 
