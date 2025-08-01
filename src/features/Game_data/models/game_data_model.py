@@ -81,10 +81,17 @@ class GameDataModel:
         self._root_path = self.config_service.get_value("game_data", "root_path", "D:\\天龙相关\\临时处理")
         self._db_path = self.config_service.get_value("game_data", "db_path", "D:\\天龙相关\\临时处理\\TL_game.db")
         self._config_path = self.config_service.get_value("game_data", "config_path", "")
+        
+        # 新增：从配置加载数据库表和字段名 (在 game_data 区段下)
+        self.db_table_name = self.config_service.get_value("game_data", "db_table_name", "账号数据")
+        self.db_member_col = self.config_service.get_value("game_data", "db_member_col", "角色名")
+        self.db_account_col = self.config_service.get_value("game_data", "db_account_col", "账号")
+
         self.load_config_from_file() # 根据加载的路径读取文件内容
         logging.info(f"根目录加载为: {self._root_path}")
         logging.info(f"数据库路径加载为: {self._db_path}")
         logging.info(f"配置文件路径加载为: {self._config_path}")
+        logging.info(f"数据库表配置: {self.db_table_name} / {self.db_member_col} / {self.db_account_col}")
 
     def load_config_from_file(self):
         """
@@ -121,5 +128,13 @@ class GameDataModel:
         self.config_service.set_option("game_data", "root_path", self._root_path)
         self.config_service.set_option("game_data", "db_path", self._db_path)
         self.config_service.set_option("game_data", "config_path", self._config_path)
+        
+        # 新增：保存数据库表和字段名配置 (在 game_data 区段下)
+        self.config_service.set_option("game_data", "db_table_name", self.db_table_name)
+        self.config_service.set_option("game_data", "db_member_col", self.db_member_col)
+        self.config_service.set_option("game_data", "db_account_col", self.db_account_col)
+        # 移除对 config_text 的保存，因为它现在是动态加载的
+        # self.config_service.set_option("game_data", "config_text", self._config_text)
+
         self.config_service.save_config()  # 显式调用保存
         logging.info("GameData设置已保存。")

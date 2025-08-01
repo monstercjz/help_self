@@ -21,7 +21,7 @@ class GameDataService:
         self.db_path = db_path
         logging.info(f"GameDataService 初始化，数据库路径: {self.db_path}")
 
-    def extract_data(self, root_path: str, config: Dict[str, List[str]]):
+    def extract_data(self, root_path: str, config: Dict[str, List[str]], db_config: Dict[str, str]):
         """
         根据配置从数据库提取账号信息，并生成对应的txt文件。
         对应原 '1-findname3.0.lua' 的功能。
@@ -29,15 +29,24 @@ class GameDataService:
         Args:
             root_path (str): 操作的根目录，例如 "D:\\天龙相关\\临时处理"。
             config (Dict[str, List[str]]): 分机ID到角色名列表的映射。
+            db_config (Dict[str, str]): 包含数据库表名和字段名的配置。
         """
         logging.info("开始执行数据提取...")
+        
+        table = db_config.get('table_name', '账号数据')
+        member_col = db_config.get('member_col', '角色名')
+        account_col = db_config.get('account_col', '账号')
+        
+        # 动态构建SQL查询语句，防止SQL注入
+        query = f"SELECT \"{account_col}\" FROM \"{table}\" WHERE \"{member_col}\" = ?"
+
         try:
             with sqlite3.connect(self.db_path) as conn:
                 cursor = conn.cursor()
                 for an_id, members in config.items():
                     account_info_parts = []
                     for member in members:
-                        cursor.execute("SELECT 账号 FROM 账号数据 WHERE 角色名 = ?", (member,))
+                        cursor.execute(query, (member,))
                         result = cursor.fetchone()
                         if result:
                             account_info_parts.append(result[0])

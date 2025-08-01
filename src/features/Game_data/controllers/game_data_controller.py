@@ -91,7 +91,15 @@ class GameDataController:
                 return
             
             # 调用具体的服务方法
-            action(root_path, config)
+            if action_name == "提取账号信息":
+                db_config = {
+                    'table_name': self.model.db_table_name,
+                    'member_col': self.model.db_member_col,
+                    'account_col': self.model.db_account_col
+                }
+                action(root_path, config, db_config)
+            else:
+                action(root_path, config)
             
             self.view.append_log(f"'{action_name}' 操作成功完成。")
             logging.info(f"'{action_name}' 操作成功完成。")
