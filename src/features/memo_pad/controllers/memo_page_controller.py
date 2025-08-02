@@ -81,14 +81,21 @@ class MemoPageController:
             content = self.view.content_text_edit.toPlainText()
             
             # 只有当编辑器里确实有内容时才创建
-            if title or content:
+            # if title or content:
                 # 1. 在进行任何操作前，完全断开信号，防止连锁反应
-                try:
-                    self.view.title_input.textChanged.disconnect(self.on_text_changed)
-                    self.view.content_text_edit.textChanged.disconnect(self.on_text_changed)
-                except RuntimeError:
-                    pass # 忽略断开失败的警告
-    
+                # try:
+                #     self.view.title_input.textChanged.disconnect(self.on_text_changed)
+                #     self.view.content_text_edit.textChanged.disconnect(self.on_text_changed)
+                # except RuntimeError:
+                #     pass # 忽略断开失败的警告
+                
+            # 只有当编辑器里确实有内容（标题或内容长度大于等于阈值）时才自动创建
+            MIN_AUTO_CREATE_LENGTH = 3 # 设定一个最小长度阈值
+            if len(title) >= MIN_AUTO_CREATE_LENGTH or len(content) >= MIN_AUTO_CREATE_LENGTH:
+                # 1. 在进行任何操作前，临时阻塞信号，防止连锁反应
+                self.view.title_input.blockSignals(True)
+                self.view.content_text_edit.blockSignals(True)
+
                 # 2. 创建新的备忘录 (在控制器层面处理默认标题)
                 final_title = title if title else "新笔记"
                 new_memo = self.db_service.create_memo(title=final_title, content=content)
@@ -104,8 +111,11 @@ class MemoPageController:
                 self.view.title_input.setText(new_memo.title) # 用返回的数据更新标题
                 
                 # 5. 在所有操作完成后，重新连接信号
-                self.view.title_input.textChanged.connect(self.on_text_changed)
-                self.view.content_text_edit.textChanged.connect(self.on_text_changed)
+                # self.view.title_input.textChanged.connect(self.on_text_changed)
+                # self.view.content_text_edit.textChanged.connect(self.on_text_changed)
+                # 5. 在所有操作完成后，解除信号阻塞
+                self.view.title_input.blockSignals(False)
+                self.view.content_text_edit.blockSignals(False)
         else:
             # 这是更新现有备忘录的场景
             self.auto_save_timer.start()
@@ -186,19 +196,25 @@ class MemoPageController:
             self._current_memo_id = memo.id
 
             # 临时断开信号，以编程方式设置文本，避免触发自动保存
-            try:
-                self.view.title_input.textChanged.disconnect(self.on_text_changed)
-                self.view.content_text_edit.textChanged.disconnect(self.on_text_changed)
-            except RuntimeError:
-                # 如果信号尚未连接，disconnect会引发RuntimeError，可以安全地忽略
-                pass
+            # try:
+            #     self.view.title_input.textChanged.disconnect(self.on_text_changed)
+            #     self.view.content_text_edit.textChanged.disconnect(self.on_text_changed)
+            # except RuntimeError:
+            #      如果信号尚未连接，disconnect会引发RuntimeError，可以安全地忽略
+            #     pass
+            # 临时阻塞信号，以编程方式设置文本，避免触发自动保存
+            self.view.title_input.blockSignals(True)
+            self.view.content_text_edit.blockSignals(True)
 
             self.view.title_input.setText(memo.title)
             self.view.content_text_edit.setText(memo.content)
 
             # 重新连接信号
-            self.view.title_input.textChanged.connect(self.on_text_changed)
-            self.view.content_text_edit.textChanged.connect(self.on_text_changed)
+            # self.view.title_input.textChanged.connect(self.on_text_changed)
+            # self.view.content_text_edit.textChanged.connect(self.on_text_changed)
+            # 解除信号阻塞
+            self.view.title_input.blockSignals(False)
+            self.view.content_text_edit.blockSignals(False)
 
             timestamp = memo.updated_at.strftime("%Y-%m-%d %H:%M:%S")
             self.view.status_label.setText(f"上次保存于 {timestamp}")
@@ -211,19 +227,25 @@ class MemoPageController:
         self._current_memo_id = None
 
         # 临时断开信号，以编程方式设置文本，避免触发自动保存
-        try:
-            self.view.title_input.textChanged.disconnect(self.on_text_changed)
-            self.view.content_text_edit.textChanged.disconnect(self.on_text_changed)
-        except RuntimeError:
-            # 如果信号尚未连接，disconnect会引发RuntimeError，可以安全地忽略
-            pass
+        # try:
+        #     self.view.title_input.textChanged.disconnect(self.on_text_changed)
+        #     self.view.content_text_edit.textChanged.disconnect(self.on_text_changed)
+        # except RuntimeError:
+        #      如果信号尚未连接，disconnect会引发RuntimeError，可以安全地忽略
+        #     pass
+        # 临时阻塞信号，以编程方式设置文本，避免触发自动保存
+        self.view.title_input.blockSignals(True)
+        self.view.content_text_edit.blockSignals(True)
 
         self.view.title_input.clear()
         self.view.content_text_edit.clear()
 
         # 重新连接信号
-        self.view.title_input.textChanged.connect(self.on_text_changed)
-        self.view.content_text_edit.textChanged.connect(self.on_text_changed)
+        # self.view.title_input.textChanged.connect(self.on_text_changed)
+        # self.view.content_text_edit.textChanged.connect(self.on_text_changed)
+        # 解除信号阻塞
+        self.view.title_input.blockSignals(False)
+        self.view.content_text_edit.blockSignals(False)
 
         self.view.clear_selection()
         self.view.status_label.setText("就绪")
