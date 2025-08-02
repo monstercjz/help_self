@@ -3,7 +3,8 @@ import os
 import logging
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QListWidget, QTextEdit,
-    QPushButton, QLineEdit, QLabel, QSplitter, QListWidgetItem, QGroupBox, QButtonGroup, QMenu
+    QPushButton, QLineEdit, QLabel, QSplitter, QListWidgetItem, QGroupBox, QButtonGroup, QMenu,
+    QFileDialog
 )
 from PySide6.QtCore import Qt, QSize, Signal
 from PySide6.QtGui import QIcon, QAction
@@ -16,6 +17,7 @@ class MemoPageView(QWidget):
     """
     delete_requested = Signal(int)
     edit_requested = Signal(int)
+    database_change_requested = Signal(str)
 
     def __init__(self):
         super().__init__()
@@ -50,9 +52,15 @@ class MemoPageView(QWidget):
         self.delete_button = QPushButton(QIcon.fromTheme("edit-delete"), "")
         self.delete_button.setObjectName("addGroupBtn")
         self.delete_button.setToolTip("删除笔记")
+
+        self.settings_button = QPushButton(QIcon.fromTheme("document-properties"), "")
+        self.settings_button.setObjectName("settingsBtn")
+        self.settings_button.setToolTip("切换数据库")
+        self.settings_button.clicked.connect(self._open_db_file_dialog)
         
         toolbar_layout.addWidget(self.new_button)
         toolbar_layout.addWidget(self.delete_button)
+        toolbar_layout.addWidget(self.settings_button)
         toolbar_layout.addStretch()
 
         # 视图模式切换按钮组
@@ -124,6 +132,17 @@ class MemoPageView(QWidget):
         main_layout.addWidget(content_group_box, 1)
 
         self.view_mode_group.idClicked.connect(self.set_view_mode)
+
+    def _open_db_file_dialog(self):
+        """打开文件对话框以选择新的数据库文件。"""
+        file_path, _ = QFileDialog.getOpenFileName(
+            self,
+            "选择备忘录数据库",
+            "",
+            "数据库文件 (*.db *.sqlite *.sqlite3);;所有文件 (*)"
+        )
+        if file_path:
+            self.database_change_requested.emit(file_path)
 
     def _show_context_menu(self, point):
         """在指定位置显示右键上下文菜单。"""

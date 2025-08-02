@@ -54,7 +54,7 @@ QLineEdit:focus {
 }
 
 /* --- Toolbar Flat Buttons --- */
-#addProgramBtn, #addGroupBtn {
+#addProgramBtn, #addGroupBtn, #settingsBtn {
     background-color: transparent;
     border: none;
     padding: 6px;
@@ -62,7 +62,7 @@ QLineEdit:focus {
     font-size: 21px;
     font-weight: bold;
 }
-#addProgramBtn:hover, #addGroupBtn:hover {
+#addProgramBtn:hover, #addGroupBtn:hover, #settingsBtn:hover {
     background-color: #a0cfff;
 }
 

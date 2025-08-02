@@ -36,6 +36,7 @@ class MemoPageController:
         self.view.clear_action.triggered.connect(self.view.search_bar.clear)
         self.view.search_bar.textChanged.connect(lambda text: self.view.clear_action.setVisible(bool(text)))
         self.view.view_mode_group.idClicked.connect(self.on_view_mode_changed)
+        self.view.database_change_requested.connect(self._on_database_change)
         
         # 当文本变化时，启动自动保存计时器
         self.view.title_input.textChanged.connect(self.on_text_changed)
@@ -171,6 +172,28 @@ class MemoPageController:
         """当视图模式按钮被点击时，更新控制器内的状态。"""
         self.current_view_mode = mode_id
         # The view handles the visual change itself, we just track the state.
+
+    def _on_database_change(self, db_path: str):
+        """
+        处理数据库切换请求。
+        
+        Args:
+            db_path (str): 新数据库文件的路径。
+        """
+        # 1. 确保任何待处理的更改都已保存
+        if self.auto_save_timer.isActive():
+            self.auto_save()
+        
+        # 2. 创建新的数据库服务实例
+        self.db_service = MemoDatabaseService(db_path)
+        
+        # 3. 清理当前状态
+        self.clear_editor()
+        self.memos = []
+        
+        # 4. 从新数据库加载数据
+        self.load_memos()
+        self.view.status_label.setText(f"已加载数据库: {db_path}")
 
     def _refresh_memo_list(self, memos_to_display: list[Memo]):
         """
