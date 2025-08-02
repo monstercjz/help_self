@@ -1,0 +1,112 @@
+/* === Memo Pad Plugin Styles === */
+
+/* --- Containers --- */
+#mainContentArea {
+    border: 1px solid #E0E0E0;
+    border-radius: 5px;
+}
+
+#innerContainer {
+    border: 1px solid #dcdfe6;
+    background-color: #fafafa;
+}
+
+/* --- Generic Controls --- */
+QPushButton {
+    background-color: #ffffff;
+    border: 1px solid #dcdfe6;
+    padding: 8px 15px;
+    border-radius: 6px;
+    font-size: 14px;
+    color: #303133;
+    min-height: 20px;
+}
+QPushButton:hover {
+    background-color: #ecf5ff;
+    color: #409eff;
+    border-color: #c6e2ff;
+}
+QPushButton:pressed {
+    background-color: #a0cfff;
+    border-color: #a0cfff;
+    color: #ffffff;
+}
+QPushButton:checked {
+    background-color: #409eff;
+    border-color: #409eff;
+    color: #ffffff;
+}
+
+QLineEdit {
+    background-color: #ffffff;
+    border: 1px solid #dcdfe6;
+    padding: 8px;
+    border-radius: 6px;
+    font-size: 14px;
+}
+QLineEdit:focus {
+    border-color: #409eff;
+}
+
+/* --- Toolbar Flat Buttons --- */
+#addProgramBtn, #addGroupBtn {
+    background-color: transparent;
+    border: none;
+    padding: 6px;
+    border-radius: 4px;
+    font-size: 21px;
+    font-weight: bold;
+}
+#addProgramBtn:hover, #addGroupBtn:hover {
+    background-color: #a0cfff;
+}
+
+/* --- View Mode Switcher --- */
+#viewModeWidget {
+    border: 1px dotted #E0E0E0;
+    border-radius: 6px;
+    padding: 2px;
+}
+#viewModeWidget QPushButton {
+    border: none;
+    background-color: transparent;
+    color: #c0c4cc;
+    font-size: 22px;
+    padding: 0px;
+    min-width: 20px;
+    max-width: 20px;
+    min-height: 20px;
+    max-height: 20px;
+    border-radius: 10px;
+}
+#viewModeWidget QPushButton:hover {
+    color: #a0cfff;
+    background-color: transparent;
+}
+#viewModeWidget QPushButton:checked {
+    color: #409eff;
+    background-color: transparent;
+}
+
+/* --- ScrollBar --- */
+QScrollBar:vertical {
+    border: none;
+    background: #f5f5f7;
+    width: 10px;
+    margin: 0px 0px 0px 0px;
+}
+QScrollBar::handle:vertical {
+    background: #dcdfe6;
+    min-height: 20px;
+    border-radius: 5px;
+}
+QScrollBar::handle:vertical:hover {
+    background: #c0c4cc;
+}
+QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {
+    border: none;
+    background: none;
+}
+QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical {
+    background: none;
+}
