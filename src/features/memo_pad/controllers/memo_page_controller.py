@@ -1,5 +1,6 @@
 # src/features/memo_pad/controllers/memo_page_controller.py
 
+import os
 from PySide6.QtWidgets import QListWidgetItem
 from PySide6.QtCore import QTimer, Qt
 from src.features.memo_pad.views.memo_page_view import MemoPageView
@@ -10,9 +11,10 @@ class MemoPageController:
     """
     备忘录页面的控制器，负责连接视图和数据服务。
     """
-    def __init__(self, view: MemoPageView, db_service: MemoDatabaseService):
+    def __init__(self, view: MemoPageView, db_service: MemoDatabaseService, context):
         self.view = view
         self.db_service = db_service
+        self.context = context
         self._current_memo_id = None
         self.current_view_mode = 1 # 0: list, 1: split, 2: editor
         
@@ -23,6 +25,9 @@ class MemoPageController:
         self.auto_save_timer.timeout.connect(self.auto_save)
 
         self._connect_signals()
+        
+        # 初始化加载
+        self.view.set_current_db(self.db_service.db_path)
         self.load_memos()
 
     def _connect_signals(self):
@@ -174,26 +179,33 @@ class MemoPageController:
         # The view handles the visual change itself, we just track the state.
 
     def _on_database_change(self, db_path: str):
-        """
-        处理数据库切换请求。
-        
-        Args:
-            db_path (str): 新数据库文件的路径。
-        """
-        # 1. 确保任何待处理的更改都已保存
-        if self.auto_save_timer.isActive():
-            self.auto_save()
-        
-        # 2. 创建新的数据库服务实例
-        self.db_service = MemoDatabaseService(db_path)
-        
-        # 3. 清理当前状态
-        self.clear_editor()
-        self.memos = []
-        
-        # 4. 从新数据库加载数据
-        self.load_memos()
-        self.view.status_label.setText(f"已加载数据库: {db_path}")
+        """处理用户主动发起的数据库切换请求。"""
+        try:
+            # 1. 确保任何待处理的更改都已保存
+            if self.auto_save_timer.isActive():
+                self.auto_save()
+            
+            # 2. 创建新的数据库服务实例
+            self.db_service = MemoDatabaseService(db_path)
+            
+            # 3. 清理当前状态
+            self.clear_editor()
+            self.memos = []
+            
+            # 4. 从新数据库加载数据
+            self.load_memos()
+            
+            # 5. 更新UI和配置
+            self.view.set_current_db(db_path)
+            self.context.config_service.set_option("MemoPad", "last_db_path", db_path)
+            self.context.config_service.save_config()
+            print(f"Plugin 'memo_pad': Successfully switched to database: {db_path}")
+
+        except Exception as e:
+            self.view.show_error("数据库切换失败", f"无法加载或初始化数据库: {db_path}\n\n错误: {e}")
+            # 切换失败时，最好能恢复到之前的状态，但简化起见，我们先清空
+            self.view.set_current_db(None)
+            print(f"Plugin 'memo_pad': Failed to switch to database: {db_path}. Error: {e}")
 
     def _refresh_memo_list(self, memos_to_display: list[Memo]):
         """

@@ -4,7 +4,7 @@ import logging
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QListWidget, QTextEdit,
     QPushButton, QLineEdit, QLabel, QSplitter, QListWidgetItem, QGroupBox, QButtonGroup, QMenu,
-    QFileDialog
+    QFileDialog, QMessageBox
 )
 from PySide6.QtCore import Qt, QSize, Signal
 from PySide6.QtGui import QIcon, QAction
@@ -61,6 +61,11 @@ class MemoPageView(QWidget):
         toolbar_layout.addWidget(self.new_button)
         toolbar_layout.addWidget(self.delete_button)
         toolbar_layout.addWidget(self.settings_button)
+        
+        self.current_db_label = QLabel("未加载数据库")
+        self.current_db_label.setObjectName("currentDbLabel")
+        toolbar_layout.addWidget(self.current_db_label)
+        
         toolbar_layout.addStretch()
 
         # 视图模式切换按钮组
@@ -143,6 +148,21 @@ class MemoPageView(QWidget):
         )
         if file_path:
             self.database_change_requested.emit(file_path)
+
+    def set_current_db(self, path: str):
+        """设置并显示当前数据库路径。"""
+        if path:
+            # 只显示文件名以保持界面整洁
+            file_name = os.path.basename(path)
+            self.current_db_label.setText(f"当前库: {file_name}")
+            self.current_db_label.setToolTip(path) # 完整路径作为提示
+        else:
+            self.current_db_label.setText("未加载数据库")
+            self.current_db_label.setToolTip("")
+
+    def show_error(self, title: str, message: str):
+        """显示一个错误消息对话框。"""
+        QMessageBox.critical(self, title, message)
 
     def _show_context_menu(self, point):
         """在指定位置显示右键上下文菜单。"""

@@ -1,5 +1,5 @@
 # src/features/memo_pad/plugin.py
-
+import os
 from src.core.plugin_interface import IFeaturePlugin
 from src.core.context import ApplicationContext
 from src.features.memo_pad.views.memo_page_view import MemoPageView
@@ -26,15 +26,22 @@ class MemoPadPlugin(IFeaturePlugin):
         """初始化插件，连接MVC组件。"""
         super().initialize(context)
         
-        # 1. 设置数据库路径 (遵循项目约定)
-        db_path = self.context.get_data_path("plugins/memo_pad/memos.db")
-        
+        # 1. 决定要使用的数据库路径 (Single Source of Truth: config.ini)
+        config_service = self.context.config_service
+        db_path = config_service.get_value("MemoPad", "last_db_path")
+
+        if not db_path:
+            # 如果配置中没有记录，则创建默认路径并写回配置
+            db_path = self.context.get_data_path("plugins/memo_pad/memos.db")
+            config_service.set_option("MemoPad", "last_db_path", db_path)
+            config_service.save_config()
+            print(f"Plugin 'memo_pad': No last DB path found, setting default and saving to config: {db_path}")
+
         # 2. 初始化服务、视图和控制器
+        # MemoDatabaseService 会在路径不存在时自动创建文件
         db_service = MemoDatabaseService(db_path)
         self.page_widget = MemoPageView()
-        self.controller = MemoPageController(self.page_widget, db_service)
-        
-        print(f"Plugin '{self.name()}' initialized with db at: {db_path}")
+        self.controller = MemoPageController(self.page_widget, db_service, self.context)
 
     def get_page_widget(self):
         """返回此插件的主UI页面。"""
