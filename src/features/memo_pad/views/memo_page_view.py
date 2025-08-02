@@ -119,7 +119,7 @@ class MemoPageView(QWidget):
         right_layout.addWidget(self.status_label)
         self.splitter.addWidget(right_group_box)
         
-        self.splitter.setSizes([250, 550])
+        self.splitter.setSizes([350, 550])
         main_layout.addWidget(content_group_box, 1)
 
         self.view_mode_group.idClicked.connect(self.set_view_mode)
