@@ -102,14 +102,32 @@ class MemoPageController:
 
     def select_memo_by_id(self, memo_id: int):
         """根据ID加载备忘录内容到编辑器。"""
+        # 如果计时器是激活状态，意味着有未保存的更改，立即保存。
+        if self.auto_save_timer.isActive():
+            self.auto_save()
+
+        # 在加载新内容前，停止可能正在进行的自动保存
+        self.auto_save_timer.stop()
+
         memo = self.db_service.get_memo(memo_id)
         if memo:
-            # 在加载新内容前，停止可能正在进行的自动保存
-            self.auto_save_timer.stop()
-            
             self._current_memo_id = memo.id
+
+            # 临时断开信号，以编程方式设置文本，避免触发自动保存
+            try:
+                self.view.title_input.textChanged.disconnect(self.on_text_changed)
+                self.view.content_text_edit.textChanged.disconnect(self.on_text_changed)
+            except RuntimeError:
+                # 如果信号尚未连接，disconnect会引发RuntimeError，可以安全地忽略
+                pass
+
             self.view.title_input.setText(memo.title)
             self.view.content_text_edit.setText(memo.content)
+
+            # 重新连接信号
+            self.view.title_input.textChanged.connect(self.on_text_changed)
+            self.view.content_text_edit.textChanged.connect(self.on_text_changed)
+
             timestamp = memo.updated_at.strftime("%Y-%m-%d %H:%M:%S")
             self.view.status_label.setText(f"上次保存于 {timestamp}")
             
