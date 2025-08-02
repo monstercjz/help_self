@@ -166,12 +166,24 @@ class MemoPageView(QWidget):
         else:
             logging.warning(f"Stylesheet not found at {style_path}")
 
-    def add_memo_card(self, memo: Memo):
+    def add_memo_card(self, memo: Memo, at_top: bool = False):
+        """
+        向列表中添加一个新的备忘录卡片。
+
+        Args:
+            memo (Memo): 要添加的备忘录对象。
+            at_top (bool): 如果为True，则在列表顶部插入；否则追加到末尾。
+        """
         card = NoteCardWidget(memo)
-        item = QListWidgetItem(self.memo_list_widget)
+        item = QListWidgetItem() # Do not set parent here
         item.setSizeHint(card.sizeHint())
         item.setData(Qt.UserRole, memo.id)
-        self.memo_list_widget.addItem(item)
+        
+        if at_top:
+            self.memo_list_widget.insertItem(0, item)
+        else:
+            self.memo_list_widget.addItem(item)
+            
         self.memo_list_widget.setItemWidget(item, card)
 
     def update_memo_card(self, memo: Memo):

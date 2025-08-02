@@ -49,7 +49,11 @@ class MemoPageController:
     def new_memo(self):
         """立即创建一个新的空备忘录并选中它。"""
         new_memo = self.db_service.create_memo(title="新笔记", content="")
-        self.view.add_memo_card(new_memo)
+        # 更新内存中的列表
+        self.memos.insert(0, new_memo)
+        # 刷新整个列表以保证顺序
+        self.filter_memos()
+        # 选中新创建的备忘录
         self.view.select_item_by_id(new_memo.id)
         self.select_memo_by_id(new_memo.id)
         self.view.title_input.setFocus()
@@ -70,7 +74,20 @@ class MemoPageController:
         
         updated_memo = self.db_service.update_memo(self._current_memo_id, title, content)
         if updated_memo:
-            self.view.update_memo_card(updated_memo)
+            # 更新内存中的列表顺序
+            try:
+                # 找到旧的备忘录并移除
+                old_memo = next(m for m in self.memos if m.id == updated_memo.id)
+                self.memos.remove(old_memo)
+            except StopIteration:
+                pass # 如果找不到，也没关系
+            # 将更新后的备忘录插入到顶部
+            self.memos.insert(0, updated_memo)
+            # 刷新整个列表
+            self.filter_memos()
+            # 确保更新后的项仍然被选中
+            self.view.select_item_by_id(updated_memo.id)
+            
             timestamp = updated_memo.updated_at.strftime("%H:%M:%S")
             self.view.status_label.setText(f"已于 {timestamp} 保存")
 
@@ -81,11 +98,19 @@ class MemoPageController:
 
     def delete_memo_by_id(self, memo_id: int):
         """根据ID删除备忘录。"""
+        was_current = (self._current_memo_id == memo_id)
+        
         self.db_service.delete_memo(memo_id)
-        self.view.remove_memo_card(memo_id)
+        
+        # 更新内存列表
+        self.memos = [m for m in self.memos if m.id != memo_id]
+        
         # 如果删除的是当前正在编辑的笔记，则清空编辑器
-        if self._current_memo_id == memo_id:
+        if was_current:
             self.clear_editor()
+            
+        # 刷新列表
+        self.filter_memos()
 
     def select_memo(self, item: QListWidgetItem):
         """当用户在列表中选择一个备忘录时，加载其内容。"""
@@ -147,15 +172,26 @@ class MemoPageController:
         self.current_view_mode = mode_id
         # The view handles the visual change itself, we just track the state.
 
+    def _refresh_memo_list(self, memos_to_display: list[Memo]):
+        """
+        核心刷新函数：清空并根据给定列表重新渲染UI。
+        """
+        self.view.memo_list_widget.clear()
+        for memo in memos_to_display:
+            self.view.add_memo_card(memo)
+
     def filter_memos(self):
         """根据搜索框文本过滤并显示备忘录。"""
         search_text = self.view.search_bar.text().lower()
-        self.view.memo_list_widget.clear()
         
         if not search_text:
-            for memo in self.memos:
-                self.view.add_memo_card(memo)
+            # 如果没有搜索文本，显示所有备忘录
+            memos_to_display = self.memos
         else:
-            for memo in self.memos:
-                if search_text in memo.title.lower() or search_text in memo.content.lower():
-                    self.view.add_memo_card(memo)
+            # 如果有搜索文本，过滤备忘录
+            memos_to_display = [
+                memo for memo in self.memos
+                if search_text in memo.title.lower() or search_text in memo.content.lower()
+            ]
+        
+        self._refresh_memo_list(memos_to_display)
