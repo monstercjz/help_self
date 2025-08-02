@@ -1,5 +1,6 @@
 # src/features/memo_pad/plugin.py
 import os
+import logging
 from src.core.plugin_interface import IFeaturePlugin
 from src.core.context import ApplicationContext
 from src.features.memo_pad.views.memo_page_view import MemoPageView
@@ -35,7 +36,7 @@ class MemoPadPlugin(IFeaturePlugin):
             db_path = self.context.get_data_path("plugins/memo_pad/memos.db")
             config_service.set_option("MemoPad", "last_db_path", db_path)
             config_service.save_config()
-            print(f"Plugin 'memo_pad': No last DB path found, setting default and saving to config: {db_path}")
+            logging.info(f"Plugin 'memo_pad': No last DB path found, setting default and saving to config: {db_path}")
 
         # 2. 初始化服务、视图和控制器
         # MemoDatabaseService 会在路径不存在时自动创建文件
@@ -53,5 +54,5 @@ class MemoPadPlugin(IFeaturePlugin):
 
     def shutdown(self):
         """关闭插件。"""
-        print(f"Plugin '{self.name()}' is shutting down.")
+        logging.info(f"Plugin '{self.name()}' is shutting down.")
         super().shutdown()

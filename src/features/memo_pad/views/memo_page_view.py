@@ -21,6 +21,7 @@ class MemoPageView(QWidget):
 
     def __init__(self):
         super().__init__()
+        self._current_db_path = None # 用于存储当前DB的完整路径
         self.setWindowTitle("备忘录")
         self._init_ui()
         self._load_stylesheet()
@@ -140,10 +141,14 @@ class MemoPageView(QWidget):
 
     def _open_db_file_dialog(self):
         """打开文件对话框以选择新的数据库文件。"""
+        start_dir = ""
+        if self._current_db_path:
+            start_dir = os.path.dirname(self._current_db_path)
+
         file_path, _ = QFileDialog.getOpenFileName(
             self,
             "选择备忘录数据库",
-            "",
+            start_dir, # 使用智能确定的起始路径
             "数据库文件 (*.db *.sqlite *.sqlite3);;所有文件 (*)"
         )
         if file_path:
@@ -151,6 +156,7 @@ class MemoPageView(QWidget):
 
     def set_current_db(self, path: str):
         """设置并显示当前数据库路径。"""
+        self._current_db_path = path # 存储完整路径以供对话框使用
         if path:
             # 只显示文件名以保持界面整洁
             file_name = os.path.basename(path)

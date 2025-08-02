@@ -1,6 +1,7 @@
 # src/features/memo_pad/controllers/memo_page_controller.py
 
 import os
+import logging
 from PySide6.QtWidgets import QListWidgetItem
 from PySide6.QtCore import QTimer, Qt
 from src.features.memo_pad.views.memo_page_view import MemoPageView
@@ -29,6 +30,7 @@ class MemoPageController:
         # 初始化加载
         self.view.set_current_db(self.db_service.db_path)
         self.load_memos()
+        logging.info(f"MemoPageController initialized for db: {self.db_service.db_path}")
 
     def _connect_signals(self):
         """连接视图中的信号到控制器槽函数。"""
@@ -55,6 +57,7 @@ class MemoPageController:
     def new_memo(self):
         """立即创建一个新的空备忘录并选中它。"""
         new_memo = self.db_service.create_memo(title="新笔记", content="")
+        logging.info(f"New memo created with id: {new_memo.id}, title: '{new_memo.title}'")
         # 更新内存中的列表
         self.memos.insert(0, new_memo)
         # 刷新整个列表以保证顺序
@@ -106,7 +109,8 @@ class MemoPageController:
         """根据ID删除备忘录。"""
         was_current = (self._current_memo_id == memo_id)
         
-        self.db_service.delete_memo(memo_id)
+        if self.db_service.delete_memo(memo_id):
+            logging.info(f"Memo deleted with id: {memo_id}")
         
         # 更新内存列表
         self.memos = [m for m in self.memos if m.id != memo_id]
@@ -199,13 +203,16 @@ class MemoPageController:
             self.view.set_current_db(db_path)
             self.context.config_service.set_option("MemoPad", "last_db_path", db_path)
             self.context.config_service.save_config()
-            print(f"Plugin 'memo_pad': Successfully switched to database: {db_path}")
+            logging.info(f"Successfully switched memo database to: {db_path}")
+            
+            file_name = os.path.basename(db_path)
+            self.view.status_label.setText(f"成功加载数据库: {file_name}")
 
         except Exception as e:
             self.view.show_error("数据库切换失败", f"无法加载或初始化数据库: {db_path}\n\n错误: {e}")
             # 切换失败时，最好能恢复到之前的状态，但简化起见，我们先清空
             self.view.set_current_db(None)
-            print(f"Plugin 'memo_pad': Failed to switch to database: {db_path}. Error: {e}")
+            logging.error(f"Plugin 'memo_pad': Failed to switch to database: {db_path}. Error: {e}")
 
     def _refresh_memo_list(self, memos_to_display: list[Memo]):
         """
