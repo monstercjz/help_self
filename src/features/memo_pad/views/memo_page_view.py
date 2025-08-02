@@ -9,6 +9,7 @@ from PySide6.QtWidgets import (
 from PySide6.QtCore import Qt, QSize, Signal
 from PySide6.QtGui import QIcon, QAction
 from src.features.memo_pad.widgets.note_card_widget import NoteCardWidget
+from src.features.memo_pad.widgets.clickable_list_widget import ClickableListWidget
 from src.features.memo_pad.models.memo_model import Memo
 
 class MemoPageView(QWidget):
@@ -111,7 +112,7 @@ class MemoPageView(QWidget):
         left_group_box = QGroupBox()
         left_group_box.setObjectName("innerContainer")
         left_layout = QVBoxLayout(left_group_box)
-        self.memo_list_widget = QListWidget()
+        self.memo_list_widget = ClickableListWidget()
         self.memo_list_widget.setResizeMode(QListWidget.Adjust)
         self.memo_list_widget.setSpacing(5)
         self.memo_list_widget.setContextMenuPolicy(Qt.CustomContextMenu)

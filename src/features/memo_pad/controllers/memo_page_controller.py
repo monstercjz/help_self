@@ -38,6 +38,7 @@ class MemoPageController:
         self.view.delete_button.clicked.connect(self.delete_current_memo)
         self.view.delete_requested.connect(self.delete_memo_by_id)
         self.view.memo_list_widget.itemClicked.connect(self.select_memo)
+        self.view.memo_list_widget.blank_area_clicked.connect(self.clear_editor)
         self.view.edit_requested.connect(self.enter_edit_mode)
         self.view.search_bar.textChanged.connect(self.filter_memos)
         self.view.clear_action.triggered.connect(self.view.search_bar.clear)
@@ -69,8 +70,44 @@ class MemoPageController:
         self.view.title_input.selectAll()
 
     def on_text_changed(self):
-        """当编辑器文本改变时，重启自动保存计时器。"""
-        if self._current_memo_id is not None:
+        """
+        当编辑器文本改变时，
+        如果当前有选中的备忘录，则启动自动保存计时器。
+        如果当前没有选中的备忘录，则立即创建一个新的备忘录。
+        """
+        if self._current_memo_id is None:
+            # 这是“从无到有”创建新备忘录的场景
+            title = self.view.title_input.text()
+            content = self.view.content_text_edit.toPlainText()
+            
+            # 只有当编辑器里确实有内容时才创建
+            if title or content:
+                # 1. 在进行任何操作前，完全断开信号，防止连锁反应
+                try:
+                    self.view.title_input.textChanged.disconnect(self.on_text_changed)
+                    self.view.content_text_edit.textChanged.disconnect(self.on_text_changed)
+                except RuntimeError:
+                    pass # 忽略断开失败的警告
+    
+                # 2. 创建新的备忘录 (在控制器层面处理默认标题)
+                final_title = title if title else "新笔记"
+                new_memo = self.db_service.create_memo(title=final_title, content=content)
+                logging.info(f"New memo auto-created from editor with id: {new_memo.id}")
+                
+                # 3. 更新数据模型和内部状态
+                self.memos.insert(0, new_memo)
+                self._current_memo_id = new_memo.id
+                
+                # 4. 更新UI
+                self.filter_memos() # 更新左侧列表
+                self.view.select_item_by_id(new_memo.id) # 高亮新条目
+                self.view.title_input.setText(new_memo.title) # 用返回的数据更新标题
+                
+                # 5. 在所有操作完成后，重新连接信号
+                self.view.title_input.textChanged.connect(self.on_text_changed)
+                self.view.content_text_edit.textChanged.connect(self.on_text_changed)
+        else:
+            # 这是更新现有备忘录的场景
             self.auto_save_timer.start()
 
     def auto_save(self):
@@ -170,10 +207,24 @@ class MemoPageController:
             self.view.select_item_by_id(memo.id)
 
     def clear_editor(self):
-        """清空编辑器。"""
+        """清空编辑器，并临时断开信号以防止副作用。"""
         self._current_memo_id = None
+
+        # 临时断开信号，以编程方式设置文本，避免触发自动保存
+        try:
+            self.view.title_input.textChanged.disconnect(self.on_text_changed)
+            self.view.content_text_edit.textChanged.disconnect(self.on_text_changed)
+        except RuntimeError:
+            # 如果信号尚未连接，disconnect会引发RuntimeError，可以安全地忽略
+            pass
+
         self.view.title_input.clear()
         self.view.content_text_edit.clear()
+
+        # 重新连接信号
+        self.view.title_input.textChanged.connect(self.on_text_changed)
+        self.view.content_text_edit.textChanged.connect(self.on_text_changed)
+
         self.view.clear_selection()
         self.view.status_label.setText("就绪")
 
