@@ -71,7 +71,7 @@ class PluginManager:
     def initialize_plugins(self):
         """初始化所有已加载的插件。"""
         logging.info("[STEP 2.2] PluginManager: 开始初始化所有已加载的插件...")
-        self.plugins.sort(key=lambda p: p.load_priority())
+        self._sort_plugins_with_config()
         logging.info(f"  - 插件将按以下优先级顺序初始化: {[p.name() for p in self.plugins]}")
         
         for plugin in self.plugins:
@@ -103,9 +103,59 @@ class PluginManager:
 
     def shutdown_plugins(self):
         """安全关闭所有插件。"""
-        for plugin in self.plugins:
+        # 【增强】使用启动顺序的逆序来关闭，确保依赖关系被正确处理 (LIFO)。
+        for plugin in reversed(self.plugins):
             try:
                 plugin.shutdown()
                 logging.info(f"  - 插件 '{plugin.name()}' 已成功关闭。")
             except Exception as e:
                 logging.error(f"关闭插件 {plugin.name()} 时发生错误: {e}", exc_info=True)
+
+    def _sort_plugins_with_config(self):
+        """
+        使用 config.ini 中的 [PluginOrder] 配置对插件进行排序。
+        如果配置不存在，则根据插件默认优先级创建配置。
+        如果存在新插件，则自动追加到配置中，不改变原有顺序。
+        """
+        config_service = self.context.config_service
+        section = "PluginOrder"
+        
+        # 1. 从配置文件加载已有的顺序
+        plugin_order_config = dict(config_service.get_options(section))
+        
+        config_updated = False
+        
+        # 2. 检查每个加载的插件
+        for plugin in self.plugins:
+            plugin_name = plugin.name()
+            if plugin_name not in plugin_order_config:
+                # 这是一个新插件，或者配置文件是空的
+                default_priority = plugin.load_priority()
+                config_service.set_option(section, plugin_name, str(default_priority))
+                plugin_order_config[plugin_name] = str(default_priority)
+                config_updated = True
+                logging.info(f"  - 发现新插件或新配置 '{plugin_name}'，已使用默认优先级 {default_priority} 并添加到配置中。")
+
+        # 3. 如果配置被更新过，则保存
+        if config_updated:
+            config_service.save_config()
+            
+        # 4. 使用最终的配置进行排序
+        def get_priority(p: IFeaturePlugin) -> int:
+            """安全地获取插件的优先级，处理无效配置。"""
+            priority_str = plugin_order_config.get(p.name())
+            if priority_str:
+                try:
+                    return int(priority_str)
+                except (ValueError, TypeError):
+                    msg = f"配置中插件 '{p.name()}' 的优先级 '{priority_str}' 无效，已使用默认值 {p.load_priority()}。"
+                    logging.warning(f"  - {msg}")
+                    # 【增强】增加弹窗通知，让用户感知到配置问题
+                    self.context.notification_service.show("配置警告", msg, level="warning")
+                    # 如果配置值无效，则回退到代码中的默认值
+                    return p.load_priority()
+            
+            # 如果由于某种原因配置中不存在（理论上不应发生），也回退到默认值
+            return p.load_priority()
+
+        self.plugins.sort(key=get_priority)
