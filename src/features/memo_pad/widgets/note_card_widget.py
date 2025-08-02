@@ -1,6 +1,6 @@
 # src/features/memo_pad/widgets/note_card_widget.py
 
-from PySide6.QtWidgets import QWidget, QVBoxLayout, QLabel
+from PySide6.QtWidgets import QWidget, QVBoxLayout, QLabel, QHBoxLayout, QSizePolicy
 from PySide6.QtCore import Qt
 from src.features.memo_pad.models.memo_model import Memo
 
@@ -23,42 +23,47 @@ class NoteCardWidget(QWidget):
         self.title_label = QLabel()
         self.title_label.setObjectName("titleLabel")
         self.title_label.setWordWrap(True)
+        self.title_label.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
 
         self.summary_label = QLabel()
         self.summary_label.setObjectName("summaryLabel")
         self.summary_label.setWordWrap(True)
+        self.summary_label.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
 
         self.date_label = QLabel()
         self.date_label.setObjectName("dateLabel")
-        self.date_label.setAlignment(Qt.AlignRight)
-
         self.layout.addWidget(self.title_label)
         self.layout.addWidget(self.summary_label)
         self.layout.addStretch()
-        self.layout.addWidget(self.date_label)
+        
+        bottom_layout = QHBoxLayout()
+        bottom_layout.setContentsMargins(0,0,0,0)
+        bottom_layout.addStretch()
+        bottom_layout.addWidget(self.date_label)
+        self.layout.addLayout(bottom_layout)
 
         # 设置样式
         self.setStyleSheet("""
             QWidget {
-                background-color: #FFFFFF;
-                border: 1px solid #E0E0E0;
-                border-radius: 8px;
+                background-color: transparent;
+                border: none;
+            }
+            #titleLabel, #summaryLabel, #dateLabel {
+                background-color: transparent;
+                border: none;
             }
             #titleLabel {
                 font-size: 14px;
                 font-weight: bold;
                 color: #333333;
-                border: none;
             }
             #summaryLabel {
                 font-size: 12px;
                 color: #666666;
-                border: none;
             }
             #dateLabel {
                 font-size: 10px;
                 color: #999999;
-                border: none;
             }
         """)
 
