@@ -1,3 +1,4 @@
+import os
 from PySide6.QtCore import QObject, Slot
 from PySide6.QtWidgets import QFileDialog, QMessageBox
 from src.features.remote_terminal.views.terminal_view import TerminalView
@@ -106,8 +107,11 @@ class TerminalController(QObject):
     @Slot()
     def on_load_connections_requested(self):
         """Opens a file dialog to select a SQLite DB file."""
+        current_db_path = self.repository.get_current_db_path()
+        start_dir = os.path.dirname(current_db_path) if current_db_path and os.path.exists(os.path.dirname(current_db_path)) else os.path.expanduser("~")
+        
         file_path, _ = QFileDialog.getOpenFileName(
-            self.view, "打开连接数据库", "", "SQLite DB (*.db)"
+            self.view, "打开连接数据库", start_dir, "SQLite DB (*.db)"
         )
         if file_path:
             self.repository.load_from_file(file_path)

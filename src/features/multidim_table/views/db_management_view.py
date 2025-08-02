@@ -5,6 +5,7 @@ from PySide6.QtWidgets import (
     QStyle, QMenu
 )
 from PySide6.QtCore import Signal, Qt
+import os
 from PySide6.QtGui import QAction
 
 class DbManagementView(QWidget):
@@ -21,6 +22,7 @@ class DbManagementView(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setWindowTitle("数据库管理")
+        self._current_db_path = None  # 增加专门的状态变量
         self._setup_ui()
 
     def _setup_ui(self):
@@ -71,18 +73,27 @@ class DbManagementView(QWidget):
         self.table_list_widget.customContextMenuRequested.connect(self._show_table_context_menu)
         layout.addWidget(self.table_list_widget)
 
+    def _get_current_db_dir(self) -> str:
+        """从状态变量获取当前数据库的目录，并提供回退。"""
+        if self._current_db_path and os.path.exists(os.path.dirname(self._current_db_path)):
+            return os.path.dirname(self._current_db_path)
+        return os.path.expanduser("~")
+
     def _on_create_db(self):
-        file_path, _ = QFileDialog.getSaveFileName(self, "创建新数据库", "", "SQLite 数据库 (*.db)")
+        start_dir = self._get_current_db_dir()
+        file_path, _ = QFileDialog.getSaveFileName(self, "创建新数据库", start_dir, "SQLite 数据库 (*.db)")
         if file_path:
             self.create_db_requested.emit(file_path)
 
     def _on_open_db(self):
-        file_path, _ = QFileDialog.getOpenFileName(self, "打开数据库", "", "SQLite 数据库 (*.db)")
+        start_dir = self._get_current_db_dir()
+        file_path, _ = QFileDialog.getOpenFileName(self, "打开数据库", start_dir, "SQLite 数据库 (*.db)")
         if file_path:
             self.open_db_requested.emit(file_path)
 
     def set_current_db(self, path: str):
         """设置并显示当前数据库路径。"""
+        self._current_db_path = path  # 更新状态变量
         if path:
             self.current_db_label.setText(f"当前数据库: {path}")
             self.table_panel.setEnabled(True)

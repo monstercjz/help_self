@@ -5,6 +5,7 @@ from PySide6.QtWidgets import (
 )
 from PySide6.QtGui import QStandardItemModel, QStandardItem, QAction, QGuiApplication
 from PySide6.QtCore import Signal, Qt, QSortFilterProxyModel
+import os
 import pandas as pd
 from src.features.multidim_table.widgets.custom_delegate import CustomItemDelegate
 
@@ -31,6 +32,7 @@ class DataTabView(QWidget):
 
     def __init__(self, parent=None):
         super().__init__(parent)
+        self._last_io_dir = os.path.expanduser("~")
         self._setup_ui()
 
     def _setup_ui(self):
@@ -207,13 +209,15 @@ class DataTabView(QWidget):
         self.proxy_model.setFilterRegularExpression(text)
 
     def _on_import(self):
-        file_path, _ = QFileDialog.getOpenFileName(self, "导入文件", "", "支持的文件 (*.csv *.xlsx)")
+        file_path, _ = QFileDialog.getOpenFileName(self, "导入文件", self._last_io_dir, "支持的文件 (*.csv *.xlsx)")
         if file_path:
+            self._last_io_dir = os.path.dirname(file_path)
             self.import_requested.emit(file_path)
 
     def _on_export(self):
-        file_path, _ = QFileDialog.getSaveFileName(self, "导出文件", "", "Excel 文件 (*.xlsx);;CSV 文件 (*.csv)")
+        file_path, _ = QFileDialog.getSaveFileName(self, "导出文件", self._last_io_dir, "Excel 文件 (*.xlsx);;CSV 文件 (*.csv)")
         if file_path:
+            self._last_io_dir = os.path.dirname(file_path)
             self.export_requested.emit(file_path)
 
     def _show_data_context_menu(self, position):

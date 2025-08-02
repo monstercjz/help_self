@@ -66,6 +66,11 @@ class ConnectionRepository(QObject):
         
         self._db_path = file_path
         self._ensure_database_exists()
+        
+        # 【核心修复】将新加载的DB路径持久化到配置文件
+        self.context.config_service.set_option("RemoteTerminal", "config_path", file_path)
+        self.context.config_service.save_config()
+        
         self.connections_changed.emit()
 
     def get_all_connections_by_group(self):

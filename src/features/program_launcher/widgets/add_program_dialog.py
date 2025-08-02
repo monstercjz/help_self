@@ -82,10 +82,13 @@ class AddProgramDialog(QDialog):
     @Slot()
     def browse_file(self):
         """打开文件对话框以选择文件。"""
+        current_path = self.path_edit.text()
+        start_dir = os.path.dirname(current_path) if current_path else os.path.expanduser("~")
+        
         file_path, _ = QFileDialog.getOpenFileName(
             self,
             "选择一个可执行文件",
-            "",
+            start_dir,
             "可执行文件 (*.exe);;所有文件 (*)"
         )
         if file_path:

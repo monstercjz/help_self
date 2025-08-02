@@ -13,6 +13,7 @@ class HistoryController(QObject):
         self.db_service = db_service
         self.model = HistoryModel()
         self.view = HistoryDialogView(parent)
+        self._last_export_dir = os.path.expanduser("~/Desktop")
         self._connect_signals()
 
     def show_dialog(self):
@@ -110,8 +111,11 @@ class HistoryController(QObject):
 
     @Slot()
     def _export_data(self):
-        file_path, _ = QFileDialog.getSaveFileName(self.view, "导出历史记录", os.path.expanduser("~/Desktop/alerts_history.csv"), "CSV Files (*.csv)")
+        default_filename = os.path.join(self._last_export_dir, "alerts_history.csv")
+        file_path, _ = QFileDialog.getSaveFileName(self.view, "导出历史记录", default_filename, "CSV Files (*.csv)")
         if not file_path: return
+        
+        self._last_export_dir = os.path.dirname(file_path)
         
         params = self.view.get_filter_parameters()
         all_results, _ = self.db_service.search_alerts(
