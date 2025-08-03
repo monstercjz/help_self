@@ -12,10 +12,11 @@ class MemoPageController:
     """
     备忘录页面的控制器，负责连接视图和数据服务。
     """
-    def __init__(self, view: MemoPageView, db_service: MemoDatabaseService, context):
+    def __init__(self, view: MemoPageView, db_service: MemoDatabaseService, context, plugin_name: str):
         self.view = view
         self.db_service = db_service
         self.context = context
+        self.plugin_name = plugin_name
         self._current_memo_id = None
         self.current_view_mode = 1 # 0: list, 1: split, 2: editor
         
@@ -281,7 +282,7 @@ class MemoPageController:
             
             # 6. 更新UI和配置
             self.view.set_current_db(db_path)
-            self.context.config_service.set_option("MemoPad", "last_db_path", db_path)
+            self.context.config_service.set_option(self.plugin_name, "db_path", db_path)
             self.context.config_service.save_config()
             logging.info(f"Successfully switched memo database to: {db_path}")
             
@@ -290,7 +291,7 @@ class MemoPageController:
 
         except Exception as e:
             self.view.show_error("数据库切换失败", f"无法加载或初始化数据库: {db_path}\n\n错误: {e}")
-            logging.error(f"Plugin 'memo_pad': Failed to switch to database: {db_path}. Error: {e}")
+            logging.error(f"Plugin '{self.plugin_name}': Failed to switch to database: {db_path}. Error: {e}")
             # 切换失败时，恢复到之前的数据库服务实例
             self.db_service = old_db_service
             self.view.set_current_db(old_db_service.db_path) # 恢复UI显示

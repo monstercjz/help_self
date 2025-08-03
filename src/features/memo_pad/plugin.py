@@ -47,7 +47,7 @@ class MemoPadPlugin(IFeaturePlugin):
 
         # 初始化视图和控制器
         self.page_widget = MemoPageView()
-        self.controller = MemoPageController(self.page_widget, db_service, self.context)
+        self.controller = MemoPageController(self.page_widget, db_service, self.context, self.name())
         logging.info(f"Plugin '{self.name()}' initialized successfully.")
 
     def get_page_widget(self):
