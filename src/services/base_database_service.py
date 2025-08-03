@@ -123,3 +123,37 @@ class BaseDatabaseService:
         if self.conn:
             self.conn.close()
             logging.info(f"Database connection closed for {self.TABLE_NAME}.")
+
+    @staticmethod
+    def check_db_writability(db_path: str) -> (bool, str):
+        """
+        检查指定的SQLite数据库文件是否具有写入权限。
+
+        Args:
+            db_path (str): 数据库文件的路径。
+
+        Returns:
+            tuple[bool, str]: 一个元组 (is_writable, error_message)。
+                              如果可写，返回 (True, "")。
+                              如果不可写，返回 (False, "具体的错误信息")。
+        """
+        conn = None
+        try:
+            # 确保目录存在
+            dir_name = os.path.dirname(db_path)
+            if dir_name:
+                os.makedirs(dir_name, exist_ok=True)
+            
+            conn = sqlite3.connect(db_path, check_same_thread=False)
+            cursor = conn.cursor()
+            cursor.execute("CREATE TABLE IF NOT EXISTS _temp_write_test (id INTEGER)")
+            cursor.execute("DROP TABLE IF EXISTS _temp_write_test")
+            conn.commit()
+            return True, ""
+        except sqlite3.Error as e:
+            error_msg = f"数据库 '{db_path}' 写入权限检查失败: {e}"
+            logging.warning(error_msg)
+            return False, str(e)
+        finally:
+            if conn:
+                conn.close()

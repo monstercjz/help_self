@@ -7,6 +7,7 @@ import shutil # 新增导入
 from PySide6.QtCore import QObject, QTimer
 from PySide6.QtWidgets import QFileDialog
 from src.core.context import ApplicationContext
+from src.services.base_database_service import BaseDatabaseService
 from src.features.multidim_table.models.multidim_table_model import MultidimTableModel
 from src.features.multidim_table.services.data_service import DataService
 from src.features.multidim_table.views.db_management_view import DbManagementView
@@ -18,12 +19,13 @@ class MultidimTableController(QObject):
     """
     多维表格的控制器，负责协调模型和所有视图。![1752058308567](images/multidim_table_controller/1752058308567.png)![1752058310795](images/multidim_table_controller/1752058310795.png)![1752058326203](images/multidim_table_controller/1752058326203.png)![1752058332085](images/multidim_table_controller/1752058332085.png)
     """
-    def __init__(self, model: MultidimTableModel, db_view: DbManagementView, context: ApplicationContext):
+    def __init__(self, model: MultidimTableModel, db_view: DbManagementView, context: ApplicationContext, plugin_name: str):
         super().__init__()
         self._model = model
         self._db_view = db_view
         self._data_service = DataService(self._model)
         self.context = context
+        self.plugin_name = plugin_name
         
         # 分页状态
         self.page_size = 100  # 每页显示100条
@@ -37,7 +39,7 @@ class MultidimTableController(QObject):
         self.db_filter_criteria = {'column': None, 'value': None} # 数据库筛选条件
         
         stats_config_relative_path = self.context.config_service.get_value(
-            "MultiDimTable",
+            self.plugin_name,
             "stats_config_path"
         )
         if not stats_config_relative_path:
@@ -62,13 +64,27 @@ class MultidimTableController(QObject):
         self._db_view.rename_table_requested.connect(self._on_rename_table)
         self._db_view.table_selected.connect(self._on_table_selected)
 
+    def _check_writability_and_notify(self, db_path: str):
+        """检查数据库的可写性，如果不可写则发出通知。"""
+        is_writable, write_err = BaseDatabaseService.check_db_writability(db_path)
+        if not is_writable:
+            logging.warning(f"数据库 '{db_path}' 是只读的或不可写: {write_err}")
+            self.context.notification_service.show(
+                title="多维表格数据库只读",
+                message=f"文件 '{os.path.basename(db_path)}' 无法写入。\n您仍可查看数据，但无法修改或保存。",
+                level="WARNING"
+            )
+
     def _on_db_connect(self, db_path):
+        # 在连接前，先检查数据库的可写性
+        self._check_writability_and_notify(db_path)
+
         success, err = self._model.connect_to_db(db_path)
         if not success:
             self._db_view.show_error("连接失败", f"无法连接到数据库: {err}")
         else:
             # 保存成功连接的路径到 config.ini
-            self.context.config_service.set_option("MultiDimTable", "last_db_path", db_path)
+            self.context.config_service.set_option(self.plugin_name, "last_db_path", db_path)
             self.context.config_service.save_config()
 
     def _update_table_list(self):
@@ -475,7 +491,7 @@ class MultidimTableController(QObject):
 
     def _load_last_db(self):
         """加载上次成功打开的数据库。"""
-        last_db_path = self.context.config_service.get_value("MultiDimTable", "last_db_path")
+        last_db_path = self.context.config_service.get_value(self.plugin_name, "last_db_path")
         if last_db_path and os.path.exists(last_db_path):
             self._on_db_connect(last_db_path)
 
