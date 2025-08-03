@@ -257,22 +257,29 @@ class MemoPageController:
 
     def _on_database_change(self, db_path: str):
         """处理用户主动发起的数据库切换请求。"""
+        old_db_service = self.db_service # 保存旧的服务实例，以便恢复
         try:
             # 1. 确保任何待处理的更改都已保存
             if self.auto_save_timer.isActive():
                 self.auto_save()
             
             # 2. 创建新的数据库服务实例
-            self.db_service = MemoDatabaseService(db_path)
+            new_db_service = MemoDatabaseService(db_path)
             
-            # 3. 清理当前状态
+            # 3. 验证新数据库的结构和权限
+            if not new_db_service.validate_database_schema():
+                raise ValueError("所选数据库文件不符合备忘录插件的结构要求或无写入权限。")
+
+            self.db_service = new_db_service # 验证通过后才切换
+            
+            # 4. 清理当前状态
             self.clear_editor()
             self.memos = []
             
-            # 4. 从新数据库加载数据
+            # 5. 从新数据库加载数据
             self.load_memos()
             
-            # 5. 更新UI和配置
+            # 6. 更新UI和配置
             self.view.set_current_db(db_path)
             self.context.config_service.set_option("MemoPad", "last_db_path", db_path)
             self.context.config_service.save_config()
@@ -283,9 +290,12 @@ class MemoPageController:
 
         except Exception as e:
             self.view.show_error("数据库切换失败", f"无法加载或初始化数据库: {db_path}\n\n错误: {e}")
-            # 切换失败时，最好能恢复到之前的状态，但简化起见，我们先清空
-            self.view.set_current_db(None)
             logging.error(f"Plugin 'memo_pad': Failed to switch to database: {db_path}. Error: {e}")
+            # 切换失败时，恢复到之前的数据库服务实例
+            self.db_service = old_db_service
+            self.view.set_current_db(old_db_service.db_path) # 恢复UI显示
+            self.load_memos() # 重新加载旧数据库的数据
+            self.view.status_label.setText(f"恢复到原数据库: {os.path.basename(old_db_service.db_path)}")
 
     def _refresh_memo_list(self, memos_to_display: list[Memo]):
         """

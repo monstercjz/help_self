@@ -2,6 +2,7 @@
 
 import sqlite3
 import os
+import logging # 导入 logging 模块
 from datetime import datetime
 from typing import List, Optional
 
@@ -26,6 +27,25 @@ class MemoDatabaseService:
         """获取数据库连接。"""
         return sqlite3.connect(self.db_path)
 
+    def _check_write_access(self, conn: sqlite3.Connection) -> bool:
+        """
+        尝试在数据库中执行一个简单的写入操作，以验证写入权限。
+        """
+        try:
+            cursor = conn.cursor()
+            # 尝试创建一个临时表并立即删除
+            cursor.execute("CREATE TABLE IF NOT EXISTS _temp_write_test (id INTEGER)")
+            cursor.execute("DROP TABLE IF EXISTS _temp_write_test")
+            conn.commit()
+            return True
+        except sqlite3.OperationalError as e:
+            # 例如，数据库文件被锁定或只读
+            logging.error(f"Database write access check failed: {e}")
+            return False
+        except Exception as e:
+            logging.error(f"An unexpected error occurred during write access check: {e}")
+            return False
+
     def _create_table(self):
         """如果表不存在，则创建 'memos' 表。"""
         with self._get_connection() as conn:
@@ -40,6 +60,55 @@ class MemoDatabaseService:
                 )
             """)
             conn.commit()
+
+    def validate_database_schema(self) -> bool:
+        """
+        验证当前数据库是否包含预期的 'memos' 表及其正确的结构。
+        如果 'memos' 表不存在，则返回 True，表示可以创建。
+        如果存在，则检查其列结构是否符合预期。
+        同时检查数据库的写入权限。
+        """
+        try:
+            with self._get_connection() as conn:
+                # 1. 检查写入权限
+                if not self._check_write_access(conn):
+                    return False
+
+                # 2. 检查 'memos' 表是否存在
+                cursor = conn.cursor()
+                cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='memos'")
+                if cursor.fetchone() is None:
+                    # 'memos' 表不存在，表示这是一个新的或共享的数据库，可以创建
+                    return True
+
+                # 3. 如果 'memos' 表存在，则检查其列结构
+                cursor.execute("PRAGMA table_info(memos)")
+                columns = cursor.fetchall()
+                column_names = {col[1] for col in columns} # col[1] 是列名
+
+                expected_columns = {'id', 'title', 'content', 'created_at', 'updated_at'}
+                if not expected_columns.issubset(column_names):
+                    logging.warning(f"Memo table schema mismatch. Expected columns: {expected_columns}, Found: {column_names}")
+                    return False # 缺少预期的列
+
+                # 可以进一步检查列的数据类型、非空约束等，但对于SQLite通常不是严格必需的
+                # 例如：
+                # for col in columns:
+                #     name, type, notnull, pk = col[1], col[2], col[3], col[5]
+                #     if name == 'title' and (type.upper() != 'TEXT' or notnull != 1): return False
+                #     if name == 'created_at' and (type.upper() != 'TIMESTAMP' or notnull != 1): return False
+
+                # 4. 尝试执行一个简单的查询，确保数据库可读
+                cursor.execute("SELECT COUNT(*) FROM memos")
+                cursor.fetchone() # 确保查询成功
+
+            return True
+        except sqlite3.Error as e:
+            logging.error(f"Database schema validation or read access failed: {e}")
+            return False
+        except Exception as e:
+            logging.error(f"An unexpected error occurred during database schema validation: {e}")
+            return False
 
     def create_memo(self, title: str, content: str) -> Memo:
         """创建一条新的备忘录。"""
