@@ -42,6 +42,7 @@ class AlertsPageView(QWidget):
     它通过信号与控制器通信，并通过槽函数接收数据更新。
     """
     # --- Signals to Controller ---
+    settings_requested = Signal()
     toggle_popup_status_requested = Signal()
     notification_level_changed = Signal(str)
     history_dialog_requested = Signal()
@@ -140,6 +141,12 @@ class AlertsPageView(QWidget):
             self.ops_button.setText("⚙️ 操作 ▾")
         
         ops_menu = QMenu(self)
+        
+        settings_action = QAction(QIcon.fromTheme("document-properties"), "插件设置...", self)
+        settings_action.triggered.connect(self.settings_requested.emit)
+        ops_menu.addAction(settings_action)
+        ops_menu.addSeparator()
+
         # 【变更】恢复菜单项的图标
         history_action = QAction(QIcon.fromTheme("document-open-recent"), "查看历史记录...", self)
         stats_action = QAction(QIcon.fromTheme("utilities-system-monitor"), "打开统计分析...", self)

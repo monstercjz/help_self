@@ -51,8 +51,8 @@ class AlertCenterPlugin(IFeaturePlugin):
 
         # 2. 初始化后台服务
         # 从配置中读取监听地址和端口，如果未配置，则使用默认值
-        host = self.context.config_service.get_value("InfoService", "host", "0.0.0.0")
-        port_str = self.context.config_service.get_value("InfoService", "port", "9527")
+        host = self.context.config_service.get_value(self.name(), "host", "0.0.0.0")
+        port_str = self.context.config_service.get_value(self.name(), "port", "9527")
         try:
             port = int(port_str)
         except (ValueError, TypeError):
@@ -64,14 +64,15 @@ class AlertCenterPlugin(IFeaturePlugin):
             db_service=self.db_service,
             notification_service=self.context.notification_service,
             host=host,
-            port=port
+            port=port,
+            plugin_name=self.name()
         )
         self.background_services.append(self.alert_receiver)
         logging.info(f"[{self.display_name()}] 后台告警接收服务准备就绪，监听地址：{host}:{port}。")
 
         # 3. 初始化主控制器
         # 控制器将负责创建和管理视图(View)和模型(Model)
-        self.alerts_page_controller = AlertsPageController(self.context, self.db_service)
+        self.alerts_page_controller = AlertsPageController(self.context, self.db_service, self.name())
         
         # 4. 将新告警信号连接到主控制器的槽
         self.alert_receiver.new_alert_received.connect(self.alerts_page_controller.on_new_alert)

@@ -25,7 +25,7 @@ class NotificationService:
         self.app_id = app_id
         logging.info(f"通知服务 (NotificationService) 初始化完成。App ID: {self.app_id}")
 
-    def show(self, title: str, message: str, level: str = 'INFO'):
+    def show(self, title: str, message: str, level: str = 'INFO', enable_popup: bool = None, timeout: int = None):
         """
         供所有插件调用的公共接口，用于显示一个系统原生通知。
 
@@ -33,10 +33,17 @@ class NotificationService:
             title (str): 通知的标题。
             message (str): 通知的主体内容。
             level (str, optional): 通知的级别（暂未使用，为未来扩展保留）。
+            enable_popup (bool, optional): 是否弹出。如果为None，则使用全局配置。
+            timeout (int, optional): 弹窗超时时间。如果为None，则使用全局配置。
         """
-        # 1. 检查全局配置是否允许弹窗
-        if self.config_service.get_value("InfoService", "enable_desktop_popup", "true").lower() != 'true':
-            logging.info("桌面通知被全局禁用，本次通知已忽略。")
+        # 1. 检查是否允许弹窗
+        # 优先使用调用者传入的覆盖值，否则使用全局配置
+        popup_is_enabled = enable_popup
+        if popup_is_enabled is None:
+            popup_is_enabled = self.config_service.get_value("General", "enable_desktop_popup", "true").lower() == 'true'
+        
+        if not popup_is_enabled:
+            logging.info(f"通知 '{title}' 已被插件或全局设置禁用，本次通知已忽略。")
             return
 
         # 2. 检查通知级别是否满足阈值 (未来可扩展)
@@ -47,8 +54,10 @@ class NotificationService:
             # 确保图标文件存在
             icon_path = self.app_icon if os.path.exists(self.app_icon) else ''
             
-            timeout_str = self.config_service.get_value("InfoService", "popup_timeout", "10")
-            timeout = int(timeout_str) if timeout_str.isdigit() else 10
+            # 优先使用调用者传入的覆盖值，否则使用全局配置
+            if timeout is None:
+                timeout_str = self.config_service.get_value("General", "popup_timeout", "10")
+                timeout = int(timeout_str) if timeout_str.isdigit() else 10
             
             # 【核心修复】在Windows上，plyer的 'app_name' 参数实际上被用作 AppUserModelID
             # 因此，我们传递 self.app_id 而不是 self.app_name

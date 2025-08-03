@@ -25,7 +25,7 @@ class AlertReceiverThread(QThread):
     """
     new_alert_received = Signal(dict)
 
-    def __init__(self, config_service: ConfigService, db_service: AlertDatabaseService, notification_service: NotificationService, host: str, port: int, parent=None):
+    def __init__(self, config_service: ConfigService, db_service: AlertDatabaseService, notification_service: NotificationService, host: str, port: int, plugin_name: str, parent=None):
         """
         初始化告警接收器。
 
@@ -35,10 +35,12 @@ class AlertReceiverThread(QThread):
             notification_service (NotificationService): 通知服务。
             host (str): Flask服务监听的主机地址。
             port (int): Flask服务监听的端口。
+            plugin_name (str): 插件的内部名称，用于访问配置。
             parent (QObject, optional): 父对象。
         """
         super().__init__(parent)
         self.config_service = config_service
+        self.plugin_name = plugin_name
         self.db_service = db_service
         self.notification_service = notification_service
         self.host = host
@@ -94,7 +96,12 @@ class AlertReceiverThread(QThread):
         """
         # 检查通知级别是否满足阈值
         try:
-            threshold_str = self.config_service.get_value("InfoService", "notification_level", "WARNING").upper()
+            # 从本插件的配置中读取通知设定
+            config = self.config_service
+            plugin = self.plugin_name
+            
+            # 1. 检查通知级别
+            threshold_str = config.get_value(plugin, "notification_level", "WARNING").upper()
             threshold_level = SEVERITY_LEVELS.get(threshold_str, SEVERITY_LEVELS["WARNING"])
             current_level = SEVERITY_LEVELS.get(alert_data['severity'], SEVERITY_LEVELS["INFO"])
             
@@ -102,14 +109,21 @@ class AlertReceiverThread(QThread):
                 logging.info(f"信息等级 '{alert_data['severity']}' 低于阈值 '{threshold_str}'，已跳过弹窗通知。")
                 return
 
+            # 2. 读取本插件的弹窗开关和超时设置，用于覆盖全局设置
+            enable_popup_override = config.get_value(plugin, "enable_desktop_popup", "true").lower() == 'true'
+            timeout_override_str = config.get_value(plugin, "popup_timeout", "10")
+            timeout_override = int(timeout_override_str) if timeout_override_str.isdigit() else 10
+
             notification_title = f"[{alert_data['severity']}] 监控告警: {alert_data['source_ip']}"
             notification_message = f"类型: {alert_data['type']}\n详情: {alert_data['message']}"
             
-            # 调用共享的通知服务
+            # 3. 调用共享的通知服务，并传入覆盖参数
             self.notification_service.show(
                 title=notification_title,
                 message=notification_message,
-                level=alert_data['severity']
+                level=alert_data['severity'],
+                enable_popup=enable_popup_override,
+                timeout=timeout_override
             )
         except Exception as e:
             # 错误日志已在 NotificationService 内部记录，此处仅记录上下文

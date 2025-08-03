@@ -12,7 +12,9 @@ SETTING_METADATA = {
     "General": {
         "app_name": {"widget": "lineedit", "label": "应用程序名称", "default": "HelpSelf & Monitoring Center"},
         "start_minimized": {"widget": "combobox", "label": "启动时最小化", "items": ["禁用", "启用"], "map": {"启用": "true", "禁用": "false"}, "default": "false"},
-        "show_startup_notification": {"widget": "combobox", "label": "显示启动通知", "items": ["禁用", "启用"], "map": {"启用": "true", "禁用": "false"}, "default": "true"}
+        "show_startup_notification": {"widget": "combobox", "label": "显示启动通知", "items": ["禁用", "启用"], "map": {"启用": "true", "禁用": "false"}, "default": "true"},
+        "enable_desktop_popup": {"widget": "combobox", "label": "桌面弹窗通知", "items": ["禁用", "启用"], "map": {"启用": "true", "禁用": "false"}, "default": "true"},
+        "popup_timeout": {"widget": "spinbox", "label": "弹窗显示时长 (秒)", "min": 1, "max": 300, "default": 10}
     },
     # 【新增】日志设置的元数据，上面的notification也是本次新添加的
     "Logging": {
@@ -23,14 +25,6 @@ SETTING_METADATA = {
         "default_host": {"widget": "lineedit", "label": "默认推送主机", "default": "127.0.0.1"},
         "default_port": {"widget": "spinbox", "label": "默认推送端口", "min": 1, "max": 65535, "default": 5000}
     },
-    "InfoService": {
-        "host": {"widget": "lineedit", "label": "监听地址", "col": 0, "default": "0.0.0.0"},
-        "port": {"widget": "spinbox", "label": "监听端口", "min": 1024, "max": 65535, "col": 0, "default": 9527},
-        "enable_desktop_popup": {"widget": "combobox", "label": "桌面弹窗通知", "items": ["禁用", "启用"], "map": {"启用": "true", "禁用": "false"}, "col": 0, "default": "true"},
-        "popup_timeout": {"widget": "spinbox", "label": "弹窗显示时长 (秒)", "min": 1, "max": 300, "col": 1, "default": 10},
-        "notification_level": {"widget": "combobox", "label": "通知级别阈值", "items": ["INFO", "WARNING", "CRITICAL"], "col": 1, "default": "INFO"},
-        "load_history_on_startup": {"widget": "combobox", "label": "启动时加载历史", "items": ["不加载", "加载最近50条", "加载最近100条", "加载最近500条"], "map": {"不加载": "0", "加载最近50条": "50", "加载最近100条": "100", "加载最近500条": "500"}, "col": 1, "default": "100"}
-    }
 }
 
 class SettingsPageWidget(QWidget):
@@ -80,7 +74,7 @@ class SettingsPageWidget(QWidget):
     def _create_setting_cards(self):
         """根据元数据动态创建所有设置卡片。"""
         # 【修改】确保新卡片按预定顺序创建
-        ordered_sections = ["General", "Logging", "WebhookDefaults", "InfoService"]
+        ordered_sections = ["General", "Logging", "WebhookDefaults"]
         for section in ordered_sections:
             if section in SETTING_METADATA:
                 options_meta = SETTING_METADATA[section]
@@ -90,33 +84,12 @@ class SettingsPageWidget(QWidget):
                     QGroupBox::title { subcontrol-origin: margin; subcontrol-position: top left; padding: 0 10px; left: 10px; background-color: #fcfcfc; }
                 """)
                 
-                if section == "InfoService":
-                    self._populate_multi_column_layout(card, section, options_meta)
-                else:
-                    form_layout = QFormLayout(card)
-                    form_layout.setSpacing(12)
-                    form_layout.setContentsMargins(20, 30, 20, 20)
-                    self._populate_form_layout(form_layout, section, options_meta)
+                form_layout = QFormLayout(card)
+                form_layout.setSpacing(12)
+                form_layout.setContentsMargins(20, 30, 20, 20)
+                self._populate_form_layout(form_layout, section, options_meta)
                 
                 self.settings_layout.addWidget(card)
-
-    def _populate_multi_column_layout(self, parent_group: QGroupBox, section_name: str, options_meta: dict):
-        """为InfoService卡片创建多列布局。"""
-        main_hbox = QHBoxLayout(parent_group)
-        main_hbox.setSpacing(40)
-        main_hbox.setContentsMargins(20, 30, 20, 20)
-
-        column1_layout = QFormLayout()
-        column1_layout.setSpacing(12)
-        column2_layout = QFormLayout()
-        column2_layout.setSpacing(12)
-
-        for key, meta in options_meta.items():
-            target_layout = column1_layout if meta.get("col", 0) == 0 else column2_layout
-            self._add_widget_to_form(target_layout, section_name, key, meta)
-        
-        main_hbox.addLayout(column1_layout)
-        main_hbox.addLayout(column2_layout)
 
     def _populate_form_layout(self, form_layout: QFormLayout, section_name: str, options_meta: dict):
         """将控件填充到给定的单列QFormLayout中。"""
