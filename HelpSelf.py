@@ -21,6 +21,7 @@ import logging.handlers
 from src.services.config_service import ConfigService
 from src.services.notification_service import NotificationService
 from src.services.webhook_service import WebhookService
+from src.services.database_initializer import DatabaseInitializerService
 from src.ui.main_window import MainWindow
 from src.ui.settings_page import SettingsPageWidget
 from src.ui.action_manager import ActionManager
@@ -188,7 +189,8 @@ class ApplicationOrchestrator:
         )
         # 【新增】实例化 WebhookService 具体配置参数应该在插件平台设置
         self.webhook_service = WebhookService()
-        logging.info("  - 核心后台服务 (Config, Notification, Webhook) 初始化完成。")
+        self.db_initializer_service = DatabaseInitializerService()
+        logging.info("  - 核心后台服务 (Config, Notification, Webhook, DB Initializer) 初始化完成。")
 
         # --- 1.4 初始化核心UI组件 ---
         # 这些是平台级的UI元素，所有插件都可能与之交互
@@ -209,6 +211,7 @@ class ApplicationOrchestrator:
             action_manager=self.action_manager,
             notification_service=self.notification_service,
             webhook_service=self.webhook_service,
+            db_initializer=self.db_initializer_service,
             app_data_dir=self.app_data_dir
         )
         logging.info("  - 共享的 ApplicationContext 创建完成。")
