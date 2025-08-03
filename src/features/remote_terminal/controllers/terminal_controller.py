@@ -5,7 +5,7 @@ from src.features.remote_terminal.views.terminal_view import TerminalView
 from src.features.remote_terminal.services.ssh_service import SSHService, ConnectionStatus
 from src.features.remote_terminal.models.connection_repository import ConnectionRepository
 from src.features.remote_terminal.views.connection_dialog import ConnectionDialog
-
+from src.features.remote_terminal.services.connection_db_service import ConnectionDBService
 from src.core.context import ApplicationContext
 
 class TerminalController(QObject):
@@ -13,12 +13,12 @@ class TerminalController(QObject):
     The controller for the remote terminal feature.
     It connects the view, the repository, and the SSH service, handling the application logic.
     """
-    def __init__(self, context: ApplicationContext):
+    def __init__(self, context: ApplicationContext, db_service: ConnectionDBService, plugin_name: str):
         super().__init__()
         self.context = context
         self.view = TerminalView()
         self.service = SSHService()
-        self.repository = ConnectionRepository(context)
+        self.repository = ConnectionRepository(context, db_service, plugin_name)
 
         self._connect_signals()
         self._load_initial_connections()
@@ -158,4 +158,4 @@ class TerminalController(QObject):
     def cleanup(self):
         """Properly close resources."""
         self.service.disconnect()
-        self.repository.close()
+        # The repository no longer manages the DB connection, so closing is not needed here.

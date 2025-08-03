@@ -1,3 +1,4 @@
+import os
 from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel,
                                QLineEdit, QPushButton, QTextEdit, QTreeView,
                                QSplitter, QAbstractItemView, QMenu, QGroupBox)
@@ -329,7 +330,12 @@ class TerminalView(QWidget):
     def clear_terminal(self):
         self.terminal_output.clear()
 
-    def set_database_path(self, path):
-        """Sets the text of the database path label."""
-        self.db_path_label.setText(f"数据库: {path}")
-        self.db_path_label.setToolTip(path)
+    def set_database_path(self, path: str):
+        """Sets the text of the database path label to show only the filename."""
+        if path:
+            file_name = os.path.basename(path)
+            self.db_path_label.setText(f"当前源: {file_name}")
+            self.db_path_label.setToolTip(path)  # Keep the full path in the tooltip
+        else:
+            self.db_path_label.setText("当前源: 未加载")
+            self.db_path_label.setToolTip("")

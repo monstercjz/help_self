@@ -1,6 +1,8 @@
+import logging
 from src.core.plugin_interface import IFeaturePlugin
 from src.core.context import ApplicationContext
 from src.features.remote_terminal.controllers.terminal_controller import TerminalController
+from src.features.remote_terminal.services.connection_db_service import ConnectionDBService
 from PySide6.QtWidgets import QWidget
 
 class RemoteTerminalPlugin(IFeaturePlugin):
@@ -10,6 +12,7 @@ class RemoteTerminalPlugin(IFeaturePlugin):
     def __init__(self):
         super().__init__()
         self.controller = None
+        self.db_service = None
 
     def name(self) -> str:
         return "remote_terminal"
@@ -25,23 +28,45 @@ class RemoteTerminalPlugin(IFeaturePlugin):
         Initializes the plugin by creating the controller.
         """
         super().initialize(context)
-        if not self.context:
-            raise ValueError("Context not initialized for RemoteTerminalPlugin")
-        self.controller = TerminalController(self.context)
+        logging.info(f"[{self.display_name()}] 插件开始初始化...")
+
+        # 1. Initialize the database service using the global initializer
+        self.db_service = self.context.db_initializer.initialize_db(
+            context=self.context,
+            plugin_name=self.name(),
+            config_section=self.name(),
+            config_key="db_path",
+            db_service_class=ConnectionDBService,
+            default_relative_path="plugins/remote_terminal/connections.db"
+        )
+
+        if not self.db_service:
+            logging.error(f"[{self.display_name()}] 插件因数据库错误无法加载。")
+            return
+
+        logging.info(f"[{self.display_name()}] 插件专属数据库服务已初始化。")
+
+        # 2. Initialize the main controller
+        self.controller = TerminalController(self.context, self.db_service, self.name())
+        self.page_widget = self.controller.get_view()
+        logging.info(f"[{self.display_name()}] 插件初始化完成。")
+
 
     def get_page_widget(self) -> QWidget | None:
         """
         Returns the main widget for the terminal page.
         """
-        if self.controller:
-            return self.controller.get_view()
-        return None
+        return self.page_widget
 
     def shutdown(self):
         """
         Handles plugin shutdown.
         """
+        logging.info(f"[{self.display_name()}] 插件开始关闭...")
         if self.controller:
-            # Ensure the SSH connection is closed
-            self.controller.service.disconnect()
+            self.controller.cleanup()
+        if self.db_service:
+            self.db_service.close()
+            logging.info(f"[{self.display_name()}] 数据库服务已关闭。")
         super().shutdown()
+        logging.info(f"[{self.display_name()}] 插件关闭完成。")
