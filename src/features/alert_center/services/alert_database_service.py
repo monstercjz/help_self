@@ -7,43 +7,25 @@ from datetime import datetime
 # 【变更】导入插件的数据库扩展
 from ..database_extensions import AlertCenterDatabaseExtensions
 from src.core.context import ApplicationContext
+from src.services.base_database_service import BaseDatabaseService
 
-# 【变更】让DatabaseService继承扩展类，从而获得插件专属方法
-class AlertDatabaseService(AlertCenterDatabaseExtensions):
+# 【变更】让DatabaseService继承扩展类和新的基类
+class AlertDatabaseService(AlertCenterDatabaseExtensions, BaseDatabaseService):
     """
     负责所有与SQLite数据库交互的服务。
-    包括初始化、插入、查询和删除告警记录。
+    继承自 BaseDatabaseService，只关注业务逻辑。
     """
-    def __init__(self, context: ApplicationContext):
-        self.context = context
-        config_service = context.config_service
-        
-        # 从配置文件获取相对路径，如果不存在则使用默认值
-        relative_path = config_service.get_value(
-            "InfoService",
-            "database_path"
-        )
-        # 如果路径为空或未在config中定义，则使用默认值
-        if not relative_path:
-            relative_path = "plugins/alert_center/history.db"
-            
-        # 使用上下文提供的工具函数获取最终的、可写的绝对路径
-        self.db_path = self.context.get_data_path(relative_path)
-        
-        # 确保数据库文件所在的目录存在 (get_data_path 已经处理)
-        db_dir = os.path.dirname(self.db_path)
-        os.makedirs(db_dir, exist_ok=True)
+    TABLE_NAME = "alerts"
+    EXPECTED_COLUMNS = {'id', 'timestamp', 'severity', 'type', 'source_ip', 'message'}
 
-        self.conn = None
-        try:
-            self.conn = sqlite3.connect(self.db_path, check_same_thread=False)
-            self.conn.row_factory = sqlite3.Row
-            logging.info(f"数据库连接已成功建立: {self.db_path}")
-        except sqlite3.Error as e:
-            logging.error(f"数据库连接失败: {e}", exc_info=True)
-            raise
+    def __init__(self, db_path: str):
+        # 调用父类的构造函数来处理连接和通用验证
+        BaseDatabaseService.__init__(self, db_path)
 
-    # ... (init_db, add_alert, get_recent_alerts, etc. 所有通用方法保持不变) ...
+    def _create_table(self):
+        """实现父类的抽象方法，定义 'alerts' 表的创建SQL。"""
+        self.init_db() # 复用原有的init_db逻辑
+
     def init_db(self):
         """
         初始化数据库，如果表不存在，则创建它。

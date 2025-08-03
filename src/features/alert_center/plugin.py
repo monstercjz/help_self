@@ -33,9 +33,20 @@ class AlertCenterPlugin(IFeaturePlugin):
         super().initialize(context)
         logging.info(f"[{self.display_name()}] 插件开始初始化...")
 
-        # 1. 初始化数据库服务 (插件专属)
-        self.db_service = AlertDatabaseService(self.context)
-        self.db_service.init_db()
+        # 1. 初始化数据库服务 (使用共享服务)
+        self.db_service = self.context.db_initializer.initialize_db(
+            context=self.context,
+            plugin_name=self.name(),
+            config_section=self.name(),      # 遵循统一规范，使用插件内部名作为配置区
+            config_key="db_path",           # 遵循统一规范，使用'db_path'作为键名
+            db_service_class=AlertDatabaseService,
+            default_relative_path="plugins/alert_center/history.db"
+        )
+
+        if not self.db_service:
+            logging.error(f"[{self.display_name()}] 插件因数据库错误无法加载。")
+            return
+        
         logging.info(f"[{self.display_name()}] 插件专属数据库服务已初始化。")
 
         # 2. 初始化后台服务
