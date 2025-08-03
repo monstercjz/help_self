@@ -5,7 +5,8 @@ from src.core.context import ApplicationContext
 from .controllers.alerts_page_controller import AlertsPageController
 from .services.alert_receiver import AlertReceiverThread
 from .services.alert_database_service import AlertDatabaseService
-
+from .constants import DEFAULT_HOST, DEFAULT_PORT
+ 
 class AlertCenterPlugin(IFeaturePlugin):
     """
     【插件】告警中心。
@@ -51,13 +52,13 @@ class AlertCenterPlugin(IFeaturePlugin):
 
         # 2. 初始化后台服务
         # 从配置中读取监听地址和端口，如果未配置，则使用默认值
-        host = self.context.config_service.get_value(self.name(), "host", "0.0.0.0")
-        port_str = self.context.config_service.get_value(self.name(), "port", "9527")
+        host = self.context.config_service.get_value(self.name(), "host", DEFAULT_HOST)
+        port_str = self.context.config_service.get_value(self.name(), "port", str(DEFAULT_PORT))
         try:
             port = int(port_str)
         except (ValueError, TypeError):
-            logging.warning(f"[{self.display_name()}] 无效的端口配置 '{port_str}'，将使用默认端口 9527。")
-            port = 9527
+            logging.warning(f"[{self.display_name()}] 无效的端口配置 '{port_str}'，将使用默认端口 {DEFAULT_PORT}。")
+            port = DEFAULT_PORT
             
         self.alert_receiver = AlertReceiverThread(
             config_service=self.context.config_service,

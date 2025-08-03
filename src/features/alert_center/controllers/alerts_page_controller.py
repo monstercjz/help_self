@@ -2,6 +2,7 @@
 import logging
 from PySide6.QtCore import QObject, Slot
 from PySide6.QtWidgets import QMessageBox
+from ..constants import DEFAULT_HOST, DEFAULT_PORT
 
 from src.core.context import ApplicationContext
 from ..views.alerts_page_view import AlertsPageView
@@ -78,16 +79,31 @@ class AlertsPageController(QObject):
 
     @Slot()
     def show_settings_dialog(self):
-        """显示插件专属的设置对话框。"""
-        # 注意：这里我们传递了 self.plugin_name
-        controller = SettingsDialogController(self.context, self.plugin_name, self.view)
-        # 如果用户点击OK保存了设置，可能需要重新加载某些状态
+        """显示插件专属的设置对话框，并在网络设置变更时提示重启。"""
+        config = self.context.config_service
+        plugin = self.plugin_name
+
+        # 1. 保存修改前的网络设置
+        old_host = config.get_value(plugin, "host", DEFAULT_HOST)
+        old_port = config.get_value(plugin, "port", str(DEFAULT_PORT))
+
+        # 2. 显示对话框
+        controller = SettingsDialogController(self.context, plugin, self.view)
         if controller.show_dialog():
-            logging.info(f"[{self.plugin_name}] 设置已更新，正在刷新工具栏状态。")
-            # 例如，通知级别可能已更改，需要更新UI
+            logging.info(f"[{plugin}] 设置已更新，正在刷新工具栏状态。")
             self.update_toolbar_status()
-            # 如果有其他依赖配置的逻辑，也应在此处触发更新
-            # 比如，如果监听端口变了，可能需要提示用户重启插件/应用
+
+            # 3. 检查网络设置是否变更
+            new_host = config.get_value(plugin, "host", DEFAULT_HOST)
+            new_port = config.get_value(plugin, "port", str(DEFAULT_PORT))
+
+            if old_host != new_host or old_port != new_port:
+                QMessageBox.information(
+                    self.view,
+                    "需要重启",
+                    "监听地址或端口已更改。\n请重启应用程序以使新设置生效。",
+                    QMessageBox.StandardButton.Ok
+                )
 
     @Slot()
     def show_history_dialog(self):

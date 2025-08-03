@@ -2,6 +2,7 @@
 import logging
 from src.core.context import ApplicationContext
 from ..views.settings_dialog_view import SettingsDialogView
+from ..constants import DEFAULT_HOST, DEFAULT_PORT
 
 class SettingsDialogController:
     """
@@ -17,8 +18,8 @@ class SettingsDialogController:
         """从配置服务加载设置到对话框视图中。"""
         config = self.context.config_service
         settings = {
-            "host": config.get_value(self.plugin_name, "host", "0.0.0.0"),
-            "port": config.get_value(self.plugin_name, "port", "9527"),
+            "host": config.get_value(self.plugin_name, "host", DEFAULT_HOST),
+            "port": config.get_value(self.plugin_name, "port", str(DEFAULT_PORT)),
             "enable_desktop_popup": config.get_value(self.plugin_name, "enable_desktop_popup", "true"),
             "popup_timeout": config.get_value(self.plugin_name, "popup_timeout", "10"),
             "notification_level": config.get_value(self.plugin_name, "notification_level", "WARNING"),
