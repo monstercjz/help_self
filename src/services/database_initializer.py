@@ -4,6 +4,8 @@ import logging
 from datetime import datetime
 from typing import Type, Callable, Optional
 
+from src.services.base_database_service import BaseDatabaseService, SchemaType
+
 class DatabaseInitializerService:
     """
     一个可重用的服务，用于处理插件数据库的初始化、验证和回退逻辑。
@@ -14,9 +16,10 @@ class DatabaseInitializerService:
         plugin_name: str,
         config_section: str,
         config_key: str,
-        db_service_class: Type,
-        default_relative_path: str
-    ) -> Optional[Type]:
+        db_service_class: Type[BaseDatabaseService],
+        default_relative_path: str,
+        schema_type: SchemaType = SchemaType.FIXED
+    ) -> Optional[BaseDatabaseService]:
         """
         执行标准的数据库初始化流程。
 
@@ -57,8 +60,9 @@ class DatabaseInitializerService:
 
         logging.info(f"[{plugin_name}] [步骤 2/3] 开始验证数据库: {db_path}")
         if os.path.exists(db_path):
-            logging.debug(f"[{plugin_name}] 文件存在，开始进行模式验证...")
+            logging.debug(f"[{plugin_name}] 文件存在，开始进行模式验证 (模式: {schema_type.name})...")
             temp_service = db_service_class(db_path)
+            temp_service.set_schema_type(schema_type)
             if temp_service.validate_database_schema():
                 db_service = temp_service
                 validation_passed = True
@@ -76,8 +80,9 @@ class DatabaseInitializerService:
             logging.debug(f"[{plugin_name}] [回退 1/2] 尝试使用标准默认数据库。")
             default_absolute_path = context.get_data_path(default_relative_path)
             if os.path.exists(default_absolute_path):
-                logging.debug(f"[{plugin_name}] 默认数据库文件存在于 '{default_absolute_path}'，正在验证...")
+                logging.debug(f"[{plugin_name}] 默认数据库文件存在于 '{default_absolute_path}'，正在验证 (模式: {schema_type.name})...")
                 db_service = db_service_class(default_absolute_path)
+                db_service.set_schema_type(schema_type)
                 if db_service.validate_database_schema():
                     config_service.set_option(config_section, config_key, default_relative_path)
                     config_service.save_config()
@@ -100,7 +105,9 @@ class DatabaseInitializerService:
                 logging.debug(f"[{plugin_name}] 生成新的相对路径: '{new_relative_path}'")
                 
                 db_path = context.get_data_path(new_relative_path)
+                logging.debug(f"[{plugin_name}] 正在创建新数据库 (模式: {schema_type.name})...")
                 db_service = db_service_class(db_path)
+                db_service.set_schema_type(schema_type)
 
                 if db_service.validate_database_schema():
                     config_service.set_option(config_section, config_key, new_relative_path)

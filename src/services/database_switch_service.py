@@ -4,7 +4,7 @@ import logging
 from PySide6.QtWidgets import QFileDialog, QMessageBox, QWidget
 from typing import Type, Optional, Callable, Tuple, Union
 
-from src.services.base_database_service import BaseDatabaseService
+from src.services.base_database_service import BaseDatabaseService, SchemaType
 from src.services.config_service import ConfigService
 
 class DatabaseSwitchService:
@@ -21,7 +21,8 @@ class DatabaseSwitchService:
         config_key: str,
         db_service_class: Optional[Type[BaseDatabaseService]] = None, # 保持向后兼容
         validation_callback: Optional[Callable[[str], Tuple[bool, str]]] = None, # 新增通用验证回调
-        perform_validation: bool = True # 新增控制是否执行验证的标志
+        perform_validation: bool = True, # 新增控制是否执行验证的标志
+        schema_type: SchemaType = SchemaType.FIXED # 新增 schema_type
     ) -> Optional[Union[str, BaseDatabaseService]]:
         """
         执行标准的数据库切换流程。
@@ -68,8 +69,9 @@ class DatabaseSwitchService:
                     logging.debug(f"[{config_section}] 自定义验证回调通过。")
                 # 3. 向后兼容：使用 db_service_class 验证
                 elif db_service_class:
-                    logging.debug(f"[{config_section}] 使用 db_service_class '{db_service_class.__name__}' 进行验证。")
+                    logging.debug(f"[{config_section}] 使用 db_service_class '{db_service_class.__name__}' 进行验证 (模式: {schema_type.name})。")
                     temp_db_service = db_service_class(new_path)
+                    temp_db_service.set_schema_type(schema_type)
                     if not temp_db_service.validate_database_schema():
                         raise ValueError(f"所选数据库文件不符合 {db_service_class.__name__} 的结构要求。")
                     temp_db_service.close()
@@ -88,6 +90,8 @@ class DatabaseSwitchService:
             
             # 根据是否提供了 db_service_class 返回不同类型
             if db_service_class:
+                # 注意：这里我们不再次设置 schema_type，因为调用者会重新初始化
+                # 但为了安全，我们还是返回一个全新的实例
                 return db_service_class(new_path)
             else:
                 return new_path
