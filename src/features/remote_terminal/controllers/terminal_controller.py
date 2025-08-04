@@ -29,7 +29,7 @@ class TerminalController(QObject):
         self.view.connect_requested.connect(self.on_connect_requested)
         self.view.disconnect_requested.connect(self.service.disconnect)
         self.view.command_sent.connect(self.service.send_command)
-        self.view.load_connections_requested.connect(self.on_load_connections_requested)
+        self.view.database_change_requested.connect(self.on_database_change_requested)
         self.view.add_connection_requested.connect(self.on_add_connection)
         self.view.edit_connection_requested.connect(self.on_edit_connection)
         self.view.delete_connection_requested.connect(self.on_delete_connection)
@@ -105,16 +105,19 @@ class TerminalController(QObject):
             self.view.append_data(data)
 
     @Slot()
-    def on_load_connections_requested(self):
-        """Opens a file dialog to select a SQLite DB file."""
-        current_db_path = self.repository.get_current_db_path()
-        start_dir = os.path.dirname(current_db_path) if current_db_path and os.path.exists(os.path.dirname(current_db_path)) else os.path.expanduser("~")
-        
-        file_path, _ = QFileDialog.getOpenFileName(
-            self.view, "打开连接数据库", start_dir, "SQLite DB (*.db)"
+    def on_database_change_requested(self):
+        """Handles the request to switch the database file."""
+        new_db_service = self.context.database_switch_service.switch_database(
+            parent_widget=self.view,
+            current_db_path=self.repository.get_current_db_path(),
+            db_service_class=ConnectionDBService,
+            config_service=self.context.config_service,
+            config_section=self.repository.plugin_name,
+            config_key="db_path"
         )
-        if file_path:
-            self.repository.load_from_file(file_path)
+
+        if new_db_service:
+            self.repository.set_db_service(new_db_service)
 
     @Slot(str)
     def on_repository_error(self, error_message):

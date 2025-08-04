@@ -13,7 +13,7 @@ class TerminalView(QWidget):
     connect_requested = Signal(dict)
     disconnect_requested = Signal()
     command_sent = Signal(str)
-    load_connections_requested = Signal()
+    database_change_requested = Signal()
     add_connection_requested = Signal()
     edit_connection_requested = Signal(dict)
     delete_connection_requested = Signal(dict)
@@ -42,9 +42,9 @@ class TerminalView(QWidget):
 
         top_bar_layout = QHBoxLayout(top_toolbar)
         top_bar_layout.setContentsMargins(5, 2, 5, 2)
-        self.load_button = QPushButton("⚙️ 加载库")
-        self.load_button.setToolTip("设置配置文件")
-        self.load_button.setMinimumHeight(30)
+        self.db_switch_button = QPushButton("⚙️ 切换数据库")
+        self.db_switch_button.setToolTip("选择另一个数据库文件")
+        self.db_switch_button.setMinimumHeight(30)
         self.add_button = QPushButton(QIcon.fromTheme("list-add"), " 添加连接")
         self.add_button.setToolTip("添加新连接")
         self.add_button.setMinimumHeight(30)
@@ -53,7 +53,7 @@ class TerminalView(QWidget):
         
         
         top_bar_layout.addWidget(self.add_button)
-        top_bar_layout.addWidget(self.load_button)
+        top_bar_layout.addWidget(self.db_switch_button)
         top_bar_layout.addStretch()
         top_bar_layout.addWidget(self.db_path_label)
         
@@ -173,7 +173,7 @@ class TerminalView(QWidget):
 
     def _connect_signals(self):
         """Connects UI signals to handlers or emits them."""
-        self.load_button.clicked.connect(self.load_connections_requested)
+        self.db_switch_button.clicked.connect(self.database_change_requested)
         self.add_button.clicked.connect(self.add_connection_requested)
         self.tree_view.customContextMenuRequested.connect(self._show_tree_context_menu)
         self.tree_view.selectionModel().selectionChanged.connect(self._on_tree_selection_changed)

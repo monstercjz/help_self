@@ -16,38 +16,13 @@ class ConnectionRepository(QObject):
         self.db_service = db_service
         self.plugin_name = plugin_name
 
+    def set_db_service(self, new_db_service: ConnectionDBService):
+        self.db_service = new_db_service
+        self.connections_changed.emit()
+
     def get_current_db_path(self) -> str:
         """Returns the path of the currently loaded database from the service."""
         return self.db_service.db_path
-
-    def load_from_file(self, file_path: str):
-        """
-        Handles a user-initiated request to switch to a different database file.
-        """
-        old_db_service = self.db_service
-        try:
-            # 1. Instantiate the new DB service directly
-            new_db_service = ConnectionDBService(file_path)
-
-            # 2. Validate the schema of the new database
-            if not new_db_service.validate_database_schema():
-                raise ValueError("The selected database file does not match the required schema or is not writable.")
-
-            # 3. If validation passes, switch to the new service
-            self.db_service = new_db_service
-            
-            # 4. Notify listeners and update configuration
-            self.connections_changed.emit()
-            self.context.config_service.set_option(self.plugin_name, "db_path", file_path)
-            self.context.config_service.save_config()
-
-        except Exception as e:
-            # If anything goes wrong, revert to the old service
-            self.db_service = old_db_service
-            error_message = f"Failed to load database: {e}"
-            self.error_occurred.emit(error_message)
-            # Ensure the view is consistent with the actual state
-            self.connections_changed.emit()
 
     def get_all_connections_by_group(self):
         """Returns all connections, structured as a dictionary of groups."""

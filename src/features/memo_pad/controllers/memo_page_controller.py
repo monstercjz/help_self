@@ -256,47 +256,29 @@ class MemoPageController:
         self.current_view_mode = mode_id
         # The view handles the visual change itself, we just track the state.
 
-    def _on_database_change(self, db_path: str):
+    def _on_database_change(self):
         """处理用户主动发起的数据库切换请求。"""
-        old_db_service = self.db_service # 保存旧的服务实例，以便恢复
-        try:
-            # 1. 确保任何待处理的更改都已保存
+        new_db_service = self.context.database_switch_service.switch_database(
+            parent_widget=self.view,
+            current_db_path=self.db_service.db_path,
+            db_service_class=MemoDatabaseService,
+            config_service=self.context.config_service,
+            config_section=self.plugin_name,
+            config_key="db_path" # 在备忘录插件中，这个key是硬编码的
+        )
+
+        if new_db_service:
+            # 确保任何待处理的更改都已保存
             if self.auto_save_timer.isActive():
                 self.auto_save()
-            
-            # 2. 创建新的数据库服务实例
-            new_db_service = MemoDatabaseService(db_path)
-            
-            # 3. 验证新数据库的结构和权限
-            if not new_db_service.validate_database_schema():
-                raise ValueError("所选数据库文件不符合备忘录插件的结构要求或无写入权限。")
 
-            self.db_service = new_db_service # 验证通过后才切换
-            
-            # 4. 清理当前状态
+            self.db_service = new_db_service
             self.clear_editor()
             self.memos = []
-            
-            # 5. 从新数据库加载数据
             self.load_memos()
-            
-            # 6. 更新UI和配置
-            self.view.set_current_db(db_path)
-            self.context.config_service.set_option(self.plugin_name, "db_path", db_path)
-            self.context.config_service.save_config()
-            logging.info(f"Successfully switched memo database to: {db_path}")
-            
-            file_name = os.path.basename(db_path)
+            self.view.set_current_db(new_db_service.db_path)
+            file_name = os.path.basename(new_db_service.db_path)
             self.view.status_label.setText(f"成功加载数据库: {file_name}")
-
-        except Exception as e:
-            self.view.show_error("数据库切换失败", f"无法加载或初始化数据库: {db_path}\n\n错误: {e}")
-            logging.error(f"Plugin '{self.plugin_name}': Failed to switch to database: {db_path}. Error: {e}")
-            # 切换失败时，恢复到之前的数据库服务实例
-            self.db_service = old_db_service
-            self.view.set_current_db(old_db_service.db_path) # 恢复UI显示
-            self.load_memos() # 重新加载旧数据库的数据
-            self.view.status_label.setText(f"恢复到原数据库: {os.path.basename(old_db_service.db_path)}")
 
     def _refresh_memo_list(self, memos_to_display: list[Memo]):
         """
