@@ -8,6 +8,7 @@ from PySide6.QtCore import QObject, QTimer
 from PySide6.QtWidgets import QFileDialog
 from src.core.context import ApplicationContext
 from src.services.base_database_service import BaseDatabaseService
+from src.services.database_switch_service import DatabaseSwitchService
 from src.features.multidim_table.models.multidim_table_model import MultidimTableModel
 from src.features.multidim_table.services.data_service import DataService
 from src.features.multidim_table.views.db_management_view import DbManagementView
@@ -26,6 +27,7 @@ class MultidimTableController(QObject):
         self._data_service = DataService(self._model)
         self.context = context
         self.plugin_name = plugin_name
+        self._db_switch_service = DatabaseSwitchService()
         
         # 分页状态
         self.page_size = 100  # 每页显示100条
@@ -57,8 +59,8 @@ class MultidimTableController(QObject):
         self._model.db_connection_changed.connect(self._db_view.set_current_db)
 
         # 数据库管理视图信号
-        self._db_view.create_db_requested.connect(self._on_db_connect)
-        self._db_view.open_db_requested.connect(self._on_db_connect)
+        self._db_view.create_db_requested.connect(self._on_create_db)
+        self._db_view.open_db_requested.connect(self._on_open_db)
         self._db_view.create_table_requested.connect(self._on_create_table_requested)
         self._db_view.delete_table_requested.connect(self._on_delete_table_requested)
         self._db_view.rename_table_requested.connect(self._on_rename_table)
@@ -75,9 +77,16 @@ class MultidimTableController(QObject):
                 level="WARNING"
             )
 
-    def _on_db_connect(self, db_path):
-        # 在连接前，先检查数据库的可写性
-        self._check_writability_and_notify(db_path)
+    def _on_create_db(self, db_path: str):
+        """处理创建数据库的请求。"""
+        if not db_path:
+            return
+        
+        # 检查数据库的可写性
+        is_writable, write_err = BaseDatabaseService.check_db_writability(db_path)
+        if not is_writable:
+            self._db_view.show_error("数据库不可写入", f"所选数据库文件不可写入。\n\n错误: {write_err}")
+            return
 
         success, err = self._model.connect_to_db(db_path)
         if not success:
@@ -86,6 +95,38 @@ class MultidimTableController(QObject):
             # 保存成功连接的路径到 config.ini
             self.context.config_service.set_option(self.plugin_name, "last_db_path", db_path)
             self.context.config_service.save_config()
+            self._check_writability_and_notify(db_path)
+
+    def _on_open_db(self):
+        """处理打开数据库的请求，使用 DatabaseSwitchService。"""
+        current_db_path = self._model.db_path if self._model.db_path else os.path.expanduser("~")
+        
+        new_db_path = self._db_switch_service.switch_database(
+            parent_widget=self._db_view,
+            current_db_path=current_db_path,
+            config_service=self.context.config_service,
+            config_section=self.plugin_name,
+            config_key="last_db_path",
+            perform_validation=False
+        )
+
+        if new_db_path:
+            success, err = self._model.connect_to_db(new_db_path)
+            if not success:
+                self._db_view.show_error("连接失败", f"无法连接到数据库: {err}")
+                self._db_view.set_current_db(None)
+                self._model.conn = None
+                self._model.db_path = None
+                self._model.db_connection_changed.emit(None)
+                self._model.tables_changed.emit()
+            else:
+                self._check_writability_and_notify(new_db_path)
+        else:
+            # 如果用户取消或切换失败，确保UI状态正确
+            if not self._model.conn:
+                self._db_view.set_current_db(None)
+                self._model.db_connection_changed.emit(None)
+                self._model.tables_changed.emit()
 
     def _update_table_list(self):
         tables, err = self._model.get_table_list()
@@ -493,7 +534,17 @@ class MultidimTableController(QObject):
         """加载上次成功打开的数据库。"""
         last_db_path = self.context.config_service.get_value(self.plugin_name, "last_db_path")
         if last_db_path and os.path.exists(last_db_path):
-            self._on_db_connect(last_db_path)
+            success, err = self._model.connect_to_db(last_db_path)
+            if success:
+                self._check_writability_and_notify(last_db_path)
+            else:
+                logging.error(f"无法加载上次打开的数据库: {last_db_path}. 错误: {err}")
+                self.context.notification_service.show(
+                    title="多维表格数据库加载失败",
+                    message=f"无法加载上次打开的数据库 '{os.path.basename(last_db_path)}'。\n错误: {err}",
+                    level="ERROR"
+                )
+                self._db_view.set_current_db(None)
 
     def _on_toggle_full_data_mode(self):
         """切换全量数据加载模式。"""

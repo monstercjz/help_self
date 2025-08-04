@@ -16,6 +16,7 @@ class MultidimTableModel(QObject):
         self._df = pd.DataFrame()
         self._original_df = pd.DataFrame()
         self.conn = None
+        self.db_path = None
         self.active_table = None
 
     @property
@@ -29,11 +30,13 @@ class MultidimTableModel(QObject):
                 self.conn.close()
             
             self.conn = sqlite3.connect(db_path, check_same_thread=False)
+            self.db_path = db_path
             self.db_connection_changed.emit(db_path)
             self.tables_changed.emit() # 触发刷新表列表
             return True, None
         except Exception as e:
             self.conn = None
+            self.db_path = None
             self.db_connection_changed.emit(None)
             return False, str(e)
 

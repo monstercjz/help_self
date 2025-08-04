@@ -12,7 +12,7 @@ class DbManagementView(QWidget):
     """
     数据库管理视图，用于选择数据库文件，并显示、创建和删除表。
     """
-    open_db_requested = Signal(str)
+    open_db_requested = Signal()
     create_db_requested = Signal(str)
     table_selected = Signal(str)
     create_table_requested = Signal(str, list)
@@ -86,10 +86,7 @@ class DbManagementView(QWidget):
             self.create_db_requested.emit(file_path)
 
     def _on_open_db(self):
-        start_dir = self._get_current_db_dir()
-        file_path, _ = QFileDialog.getOpenFileName(self, "打开数据库", start_dir, "SQLite 数据库 (*.db)")
-        if file_path:
-            self.open_db_requested.emit(file_path)
+        self.open_db_requested.emit()
 
     def set_current_db(self, path: str):
         """设置并显示当前数据库路径。"""
