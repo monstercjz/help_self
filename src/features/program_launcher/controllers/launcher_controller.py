@@ -13,20 +13,22 @@ from ..widgets.group_dialog import GroupDialog
 from ..widgets.delete_group_dialog import DeleteGroupDialog
 from ..widgets.add_program_dialog import AddProgramDialog
 from src.core.context import ApplicationContext
+from ..services.program_launcher_database_service import ProgramLauncherDatabaseService
 
 class LauncherController(QObject):
-    def __init__(self, model: LauncherModel, view: LauncherPageView, context: ApplicationContext, parent=None):
+    def __init__(self, model: LauncherModel, view: LauncherPageView, context: ApplicationContext, plugin, parent=None):
         super().__init__(parent)
         self.model = model
         self.view = view
         self.context = context
+        self.plugin = plugin
         
         # 读取树状视图的配置，遵循项目通用模式
         self.tree_view_icon_size = int(self.context.config_service.get_value(
-            "ProgramLauncher", "treeview_iconsize", fallback="20"
+            self.plugin.name(), self.plugin.CONFIG_KEY_TREEVIEW_ICONSIZE, fallback="20"
         ))
         self.tree_view_font_size = int(self.context.config_service.get_value(
-            "ProgramLauncher", "treeview_fontsize", fallback="10"
+            self.plugin.name(), self.plugin.CONFIG_KEY_TREEVIEW_FONTSIZE, fallback="10"
         ))
 
         self._connect_signals()
@@ -212,18 +214,30 @@ class LauncherController(QObject):
             self.view.rebuild_ui(filtered_data)
     @Slot()
     def change_data_path(self):
-        current_path = self.model.data_file
+        current_path = self.model.get_db_path()
         new_path, _ = QFileDialog.getOpenFileName(
-            self.view, "选择或指定程序启动器数据文件",
-            os.path.dirname(current_path), "JSON 文件 (*.json);;所有文件 (*)"
+            self.view, "选择新的数据库文件",
+            os.path.dirname(current_path), "数据库文件 (*.db);;所有文件 (*)"
         )
-        if new_path and new_path != current_path:
-            try:
-                self.model.set_data_path(new_path)
-                QMessageBox.information(
-                    self.view, "成功", f"数据源已成功切换到:\n{new_path}\n\n界面已刷新。"
-                )
-            except Exception as e:
-                QMessageBox.critical(
-                    self.view, "操作失败", f"无法切换数据源到: {new_path}\n\n设置未更改。"
-                )
+
+        if not new_path or new_path == current_path:
+            return
+
+        old_db_service = self.model.db_service
+        try:
+            new_db_service = ProgramLauncherDatabaseService(new_path)
+            if not new_db_service.validate_database_schema():
+                raise ValueError("所选数据库文件不符合程序启动器插件的结构要求或无写入权限。")
+
+            self.model.set_db_service(new_db_service)
+            
+            self.context.config_service.set_option("program_launcher", "db_path", new_path)
+            self.context.config_service.save_config()
+            
+            QMessageBox.information(self.view, "成功", f"数据源已成功切换到:\n{new_path}")
+            logging.info(f"Successfully switched program launcher database to: {new_path}")
+
+        except Exception as e:
+            QMessageBox.critical(self.view, "数据库切换失败", f"无法加载或初始化数据库: {new_path}\n\n错误: {e}")
+            logging.error(f"Failed to switch program launcher database to: {new_path}. Error: {e}")
+            self.model.set_db_service(old_db_service)

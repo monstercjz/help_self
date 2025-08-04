@@ -7,11 +7,15 @@ from src.core.context import ApplicationContext
 from .controllers.launcher_controller import LauncherController
 from .models.launcher_model import LauncherModel
 from .views.launcher_page_view import LauncherPageView
+from .services.program_launcher_database_service import ProgramLauncherDatabaseService
 
 class ProgramLauncherPlugin(IFeaturePlugin):
     """
     程序启动器插件，提供管理和快速启动应用程序的功能。
     """
+    CONFIG_KEY_DB_PATH = "db_path"
+    CONFIG_KEY_TREEVIEW_ICONSIZE = "treeview_iconsize"
+    CONFIG_KEY_TREEVIEW_FONTSIZE = "treeview_fontsize"
     
     def name(self) -> str:
         """返回插件的唯一内部名称。"""
@@ -32,15 +36,27 @@ class ProgramLauncherPlugin(IFeaturePlugin):
         super().initialize(context)
         logging.info(f"[{self.name()}]-> 插件初始化开始...")
 
-        # 1. 创建模型，并将ConfigService注入，以实现路径配置化
-        # 【修改】将 context.config_service 传递给模型
-        self.model = LauncherModel(context=context)
+        db_service = self.context.db_initializer.initialize_db(
+            context=self.context,
+            plugin_name=self.name(),
+            config_section=self.name(),
+            config_key=self.CONFIG_KEY_DB_PATH,
+            db_service_class=ProgramLauncherDatabaseService,
+            default_relative_path=f"plugins/{self.name()}/launcher.db"
+        )
+
+        if not db_service:
+            logging.error(f"插件 '{self.name()}' 因数据库错误无法初始化。")
+            return
+
+        # 1. 创建模型
+        self.model = LauncherModel(db_service)
 
         # 2. 创建视图
         self.view = LauncherPageView()
 
-        # 3. 创建控制器，将模型和视图注入
-        self.controller = LauncherController(self.model, self.view, context)
+        # 3. 创建控制器
+        self.controller = LauncherController(self.model, self.view, context, self)
 
         # 4. 将视图（主页面）设置为插件的UI页面
         self.page_widget = self.view
