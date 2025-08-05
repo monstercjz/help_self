@@ -9,6 +9,7 @@ class SchemaType(Enum):
     """定义数据库的模式类型，以控制验证级别。"""
     FIXED = auto()    # 固定的、需要严格验证的模式
     DYNAMIC = auto()  # 动态的、仅需基本连接和可写性检查的模式
+    PATH_ONLY = auto() # 新增：仅检查路径是否存在
 
 class ValidationFlags:
     """定义用于数据库验证的位字段标志。"""

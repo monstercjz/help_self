@@ -58,7 +58,17 @@ class DataSourceInitializerService:
 
         logging.debug(f"[src.services.data_source_initializer.DataSourceInitializerService.initialize] [{plugin_name}] [步骤 1.1/3] 检查配置中是否存在数据源路径。")
         if not path_from_config:
-            # 如果配置中未找到路径，则使用默认相对路径，并将其保存到配置中
+            # 在 PATH_ONLY 模式下，如果配置缺失，则直接中止
+            if schema_type == SchemaType.PATH_ONLY:
+                logging.warning(f"[src.services.data_source_initializer.DataSourceInitializerService.initialize] [{plugin_name}] [PATH_ONLY Check] 配置中未找到数据源路径，初始化中止。")
+                context.notification_service.show(
+                    f"{plugin_name} 插件配置问题",
+                    f"配置文件中未指定数据源路径，请在设置中指定。",
+                    "WARNING"
+                )
+                return None
+            
+            # 非 PATH_ONLY 模式下，如果配置中未找到路径，则使用默认相对路径，并将其保存到配置中
             logging.info(f"[src.services.data_source_initializer.DataSourceInitializerService.initialize] [{plugin_name}] [步骤 1.2/3] 配置中未找到数据源路径，将使用并保存默认相对路径: '{default_relative_path}'")
             path_from_config = default_relative_path
             config_service.set_option(config_section, config_key, path_from_config)
@@ -83,6 +93,16 @@ class DataSourceInitializerService:
             return data_service
 
         original_failed_path = data_path
+        # 在 PATH_ONLY 模式下，如果验证失败（即路径不存在），则直接中止
+        if schema_type == SchemaType.PATH_ONLY and not data_service:
+            logging.warning(f"[src.services.data_source_initializer.DataSourceInitializerService.initialize] [{plugin_name}] [PATH_ONLY Check] 数据源路径 '{original_failed_path}' 不存在，初始化中止。")
+            context.notification_service.show(
+                f"{plugin_name} 插件数据源问题",
+                f"数据源文件不存在: {os.path.basename(original_failed_path)}",
+                "ERROR"
+            )
+            return None
+
         logging.warning(f"[src.services.data_source_initializer.DataSourceInitializerService.initialize] [{plugin_name}] [步骤 3/3] 数据源 '{original_failed_path}' 验证失败，启动回退程序...")
 
         logging.debug(f"[src.services.data_source_initializer.DataSourceInitializerService.initialize] [{plugin_name}] [回退策略] 尝试回退尝试 1: 使用标准默认文件。")

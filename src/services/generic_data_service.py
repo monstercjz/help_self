@@ -119,12 +119,19 @@ class GenericDataService(ABC):
             schema_type: 模式验证类型。
                          - `SchemaType.FIXED` (默认): 执行严格的结构验证 (`validate_data_structure`)。
                          - `SchemaType.DYNAMIC`: 仅检查文件或目录的可访问性，不进行内部结构验证。
+                         - `SchemaType.PATH_ONLY`: 仅检查文件路径是否存在 (`os.path.exists`)。
 
         Returns:
             bool: 如果数据源有效则返回 True，否则返回 False。
         """
         logging.debug(f"[src.services.generic_data_service.{self.service_name}.validate_data_source] [GenericDataService validate_data_source] [1/3 验证流程开始] 开始验证数据源: '{self.file_path}' (模式: {schema_type.name})")
-        
+
+        # 新增：PATH_ONLY 模式，最优先处理
+        if schema_type == SchemaType.PATH_ONLY:
+            is_exist = os.path.exists(self.file_path)
+            logging.info(f"[src.services.generic_data_service.{self.service_name}.validate_data_source] [GenericDataService validate_data_source] [PATH_ONLY] 路径 '{self.file_path}' 存在性检查结果: {is_exist}。")
+            return is_exist
+
         parent_dir = os.path.dirname(self.file_path)
         logging.debug(f"[src.services.generic_data_service.{self.service_name}.validate_data_source] [GenericDataService validate_data_source] [1/3 数据源父目录检测] 检查数据源父目录: '{parent_dir}'。")
         # 如果文件路径包含目录，且该目录不存在，则尝试创建
@@ -138,7 +145,7 @@ class GenericDataService(ABC):
         else:
             logging.info(f"[src.services.generic_data_service.{self.service_name}.validate_data_source] [GenericDataService validate_data_source] [1/3 数据源父目录检测] 已经存在数据源父目录: '{parent_dir}'。")
             
-        # 检查文件是否存在      
+        # 检查文件是否存在
         logging.debug(f"[src.services.generic_data_service.{self.service_name}.validate_data_source] [GenericDataService validate_data_source] [2/3 数据文件检查] 检查数据文件的存在与写入权限: '{self.file_path}'。")
         if os.path.exists(self.file_path):
             # 如果文件存在，检查其写入权限
