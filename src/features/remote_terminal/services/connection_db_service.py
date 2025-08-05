@@ -2,12 +2,12 @@
 import sqlite3
 import logging
 from typing import Dict, Any, List, Set
-from src.services.base_database_service import BaseDatabaseService
+from src.services.sqlite_base_service import SqlDataService
 
-class ConnectionDBService(BaseDatabaseService):
+class ConnectionDBService(SqlDataService):
     """
     Manages the database operations for SSH connection configurations.
-    Inherits from BaseDatabaseService to handle common DB tasks.
+    Inherits from SqlDataService to handle common DB tasks.
     """
     TABLE_NAME: str = "connections"
     EXPECTED_COLUMNS: Set[str] = {

@@ -8,8 +8,8 @@ if TYPE_CHECKING:
     from src.services.config_service import ConfigService
     from src.services.notification_service import NotificationService
     from src.services.webhook_service import WebhookService
-    from src.services.database_initializer import DatabaseInitializerService
-    from src.services.database_switch_service import DatabaseSwitchService
+    from src.services.data_source_initializer import DataSourceInitializerService
+    from src.services.data_source_switch_service import DataSourceSwitchService
     from src.utils.tray_manager import TrayManager
     from src.ui.action_manager import ActionManager
     from src.ui.main_window import MainWindow
@@ -20,8 +20,8 @@ class ApplicationContext:
                  config_service: 'ConfigService',
                  tray_manager: 'TrayManager', action_manager: 'ActionManager',
                  notification_service: 'NotificationService', webhook_service: 'WebhookService',
-                 db_initializer: 'DatabaseInitializerService',
-                 database_switch_service: 'DatabaseSwitchService',
+                 initializer: 'DataSourceInitializerService',
+                 switch_service: 'DataSourceSwitchService',
                  app_data_dir: str):
         self.app = app
         self.main_window = main_window
@@ -30,8 +30,8 @@ class ApplicationContext:
         self.action_manager = action_manager
         self.notification_service = notification_service
         self.webhook_service = webhook_service
-        self.db_initializer = db_initializer
-        self.database_switch_service = database_switch_service
+        self.initializer = initializer
+        self.switch_service = switch_service
         self.app_data_dir = app_data_dir
 
     def get_data_path(self, relative_path: str) -> str:

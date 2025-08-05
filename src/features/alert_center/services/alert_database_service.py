@@ -7,20 +7,20 @@ from datetime import datetime
 # 【变更】导入插件的数据库扩展
 from ..database_extensions import AlertCenterDatabaseExtensions
 from src.core.context import ApplicationContext
-from src.services.base_database_service import BaseDatabaseService
+from src.services.sqlite_base_service import SqlDataService
 
 # 【变更】让DatabaseService继承扩展类和新的基类
-class AlertDatabaseService(AlertCenterDatabaseExtensions, BaseDatabaseService):
+class AlertDatabaseService(AlertCenterDatabaseExtensions, SqlDataService):
     """
     负责所有与SQLite数据库交互的服务。
-    继承自 BaseDatabaseService，只关注业务逻辑。
+    继承自 SqlDataService，只关注业务逻辑。
     """
     TABLE_NAME = "alerts"
     EXPECTED_COLUMNS = {'id', 'timestamp', 'severity', 'type', 'source_ip', 'message'}
 
     def __init__(self, db_path: str):
         # 调用父类的构造函数来处理连接和通用验证
-        BaseDatabaseService.__init__(self, db_path)
+        SqlDataService.__init__(self, db_path)
 
     def _create_table(self):
         """实现父类的抽象方法，定义 'alerts' 表的创建SQL。"""

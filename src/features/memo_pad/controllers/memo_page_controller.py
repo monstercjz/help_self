@@ -7,6 +7,7 @@ from PySide6.QtCore import QTimer, Qt
 from src.features.memo_pad.views.memo_page_view import MemoPageView
 from src.features.memo_pad.services.memo_database_service import MemoDatabaseService
 from src.features.memo_pad.models.memo_model import Memo
+from src.services.generic_data_service import DataType
 
 class MemoPageController:
     """
@@ -258,26 +259,30 @@ class MemoPageController:
 
     def _on_database_change(self):
         """处理用户主动发起的数据库切换请求。"""
-        new_db_service = self.context.database_switch_service.switch_database(
+        # 使用重构后的通用数据源切换服务
+        new_generic_service = self.context.switch_service.switch(
             parent_widget=self.view,
-            current_db_path=self.db_service.db_path,
-            db_service_class=MemoDatabaseService,
+            current_path=self.db_service.db_path,
             config_service=self.context.config_service,
             config_section=self.plugin_name,
-            config_key="db_path" # 在备忘录插件中，这个key是硬编码的
+            config_key="db_path",
+            data_type=DataType.SQLITE,
+            file_filter="数据库文件 (*.db);;所有文件 (*)",
+            db_service_class=MemoDatabaseService
         )
 
-        if new_db_service:
+        if new_generic_service:
             # 确保任何待处理的更改都已保存
             if self.auto_save_timer.isActive():
                 self.auto_save()
 
-            self.db_service = new_db_service
+            # 返回的是一个包装过的服务实例，需要通过 .db_service 访问原始的 MemoDatabaseService
+            self.db_service = new_generic_service.db_service
             self.clear_editor()
             self.memos = []
             self.load_memos()
-            self.view.set_current_db(new_db_service.db_path)
-            file_name = os.path.basename(new_db_service.db_path)
+            self.view.set_current_db(self.db_service.db_path)
+            file_name = os.path.basename(self.db_service.db_path)
             self.view.status_label.setText(f"成功加载数据库: {file_name}")
 
     def _refresh_memo_list(self, memos_to_display: list[Memo]):

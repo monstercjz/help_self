@@ -36,7 +36,7 @@ class ProgramLauncherPlugin(IFeaturePlugin):
         super().initialize(context)
         logging.info(f"[{self.name()}]-> 插件初始化开始...")
 
-        db_service = self.context.db_initializer.initialize_db(
+        db_service = self.context.initializer.initialize(
             context=self.context,
             plugin_name=self.name(),
             config_section=self.name(),
@@ -50,7 +50,7 @@ class ProgramLauncherPlugin(IFeaturePlugin):
             return
 
         # 1. 创建模型
-        self.model = LauncherModel(db_service)
+        self.model = LauncherModel(db_service.load_data())
 
         # 2. 创建视图
         self.view = LauncherPageView()

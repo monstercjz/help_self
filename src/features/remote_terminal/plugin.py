@@ -3,6 +3,7 @@ from src.core.plugin_interface import IFeaturePlugin
 from src.core.context import ApplicationContext
 from src.features.remote_terminal.controllers.terminal_controller import TerminalController
 from src.features.remote_terminal.services.connection_db_service import ConnectionDBService
+from src.services.generic_data_service import DataType
 from PySide6.QtWidgets import QWidget
 
 class RemoteTerminalPlugin(IFeaturePlugin):
@@ -31,19 +32,21 @@ class RemoteTerminalPlugin(IFeaturePlugin):
         logging.info(f"[{self.display_name()}] 插件开始初始化...")
 
         # 1. Initialize the database service using the global initializer
-        self.db_service = self.context.db_initializer.initialize_db(
+        generic_service = self.context.initializer.initialize(
             context=self.context,
             plugin_name=self.name(),
             config_section=self.name(),
             config_key="db_path",
-            db_service_class=ConnectionDBService,
-            default_relative_path="plugins/remote_terminal/connections.db"
+            default_relative_path="plugins/remote_terminal/connections.db",
+            data_type=DataType.SQLITE,
+            db_service_class=ConnectionDBService
         )
 
-        if not self.db_service:
-            logging.error(f"[{self.display_name()}] 插件因数据库错误无法加载。")
+        if not generic_service:
+            logging.error(f"[{self.display_name()}] 插件因数据源错误无法加载。")
             return
-
+        
+        self.db_service = generic_service.db_service
         logging.info(f"[{self.display_name()}] 插件专属数据库服务已初始化。")
 
         # 2. Initialize the main controller

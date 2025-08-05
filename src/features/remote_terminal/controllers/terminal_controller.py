@@ -7,6 +7,7 @@ from src.features.remote_terminal.models.connection_repository import Connection
 from src.features.remote_terminal.views.connection_dialog import ConnectionDialog
 from src.features.remote_terminal.services.connection_db_service import ConnectionDBService
 from src.core.context import ApplicationContext
+from src.services.generic_data_service import DataType
 
 class TerminalController(QObject):
     """
@@ -107,17 +108,19 @@ class TerminalController(QObject):
     @Slot()
     def on_database_change_requested(self):
         """Handles the request to switch the database file."""
-        new_db_service = self.context.database_switch_service.switch_database(
+        new_generic_service = self.context.switch_service.switch(
             parent_widget=self.view,
-            current_db_path=self.repository.get_current_db_path(),
-            db_service_class=ConnectionDBService,
+            current_path=self.repository.get_current_db_path(),
             config_service=self.context.config_service,
             config_section=self.repository.plugin_name,
-            config_key="db_path"
+            config_key="db_path",
+            data_type=DataType.SQLITE,
+            file_filter="数据库文件 (*.db);;所有文件 (*)",
+            db_service_class=ConnectionDBService
         )
 
-        if new_db_service:
-            self.repository.set_db_service(new_db_service)
+        if new_generic_service:
+            self.repository.set_db_service(new_generic_service.db_service)
 
     @Slot(str)
     def on_repository_error(self, error_message):

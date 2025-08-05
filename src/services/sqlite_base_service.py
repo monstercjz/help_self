@@ -1,4 +1,4 @@
-# src/services/base_database_service.py
+# src/services/sqlite_base_service.py
 import sqlite3
 import os
 import logging
@@ -20,7 +20,7 @@ class ValidationFlags:
     # 默认进行所有检查
     FULL_CHECK = CHECK_WRITE_ACCESS | CHECK_TABLE_EXISTS | CHECK_COLUMNS | CHECK_READABLE
 
-class BaseDatabaseService:
+class SqlDataService:
     """
     一个包含通用数据库功能（如连接、验证）的基类。
     支持单表（旧版兼容）和多表（新版）模式。
@@ -47,7 +47,7 @@ class BaseDatabaseService:
         # 如果子类使用的是旧的单表定义，则自动转换为新的多表结构
         if not self.TABLE_SCHEMAS and self.TABLE_NAME:
             logging.warning(
-                f"[{self.service_name}] The use of TABLE_NAME and EXPECTED_COLUMNS is deprecated. "
+                f"[src.services.sqlite_base_service.{self.service_name}.__init__] [SqlDataService] The use of TABLE_NAME and EXPECTED_COLUMNS is deprecated. "
                 f"Please migrate to TABLE_SCHEMAS."
             )
             self.TABLE_SCHEMAS = {self.TABLE_NAME: self.EXPECTED_COLUMNS}
@@ -60,10 +60,10 @@ class BaseDatabaseService:
             os.makedirs(os.path.dirname(self.db_path), exist_ok=True)
             self.conn = sqlite3.connect(self.db_path, check_same_thread=False)
             self.conn.row_factory = sqlite3.Row
-            logging.info(f"[{self.service_name}] 数据库连接已建立: {self.db_path}")
+            logging.info(f"[src.services.sqlite_base_service.{self.service_name}.__init__] [SqlDataService] 数据库连接已建立: {self.db_path}")
             self._create_tables()
         except sqlite3.Error as e:
-            logging.error(f"[{self.service_name}] 数据库连接或初始化失败: {e}", exc_info=True)
+            logging.error(f"[src.services.sqlite_base_service.{self.service_name}.__init__] [SqlDataService] 数据库连接或初始化失败: {e}", exc_info=True)
             raise
 
     def _create_tables(self):
@@ -75,7 +75,7 @@ class BaseDatabaseService:
 
     def _create_table(self):
         """
-        [已弃用] 子类应实现此方法来定义其表的创建SQL。
+        [已弃用] 子类应实现此方法来定义其表的创建SQL。_create_table() 方法 (第 76-81 行) 是抽象方法，raise NotImplementedError 明确表示子类必须实现它
         请改用 _create_tables。
         """
         raise NotImplementedError("Subclasses must implement _create_tables() or the legacy _create_table().")
@@ -91,9 +91,10 @@ class BaseDatabaseService:
             cursor.execute("CREATE TABLE IF NOT EXISTS _temp_write_test (id INTEGER)")
             cursor.execute("DROP TABLE IF EXISTS _temp_write_test")
             self.conn.commit()
+            logging.debug(f"[src.services.sqlite_base_service.{self.service_name}._check_write_access] [SqlDataService] 数据库写入权限检查成功")
             return True
         except sqlite3.Error as e:
-            logging.error(f"[{self.service_name}] 数据库写入权限检查失败: {e}")
+            logging.error(f"[src.services.sqlite_base_service.{self.service_name}._check_write_access] [SqlDataService] 数据库写入权限检查失败: {e}")
             return False
 
     def set_schema_type(self, schema_type: SchemaType):
@@ -110,17 +111,17 @@ class BaseDatabaseService:
             return False
         
         service_name = self.service_name
-        logging.debug(f"[{service_name}] [验证流程开始] 模式: {self.schema_type.name}, 标志: {self.VALIDATION_FLAGS}")
+        logging.info(f"[src.services.sqlite_base_service.{service_name}.validate_database_schema] [SqlDataService] [验证流程开始] 模式: {self.schema_type.name}, 标志: {self.VALIDATION_FLAGS}")
 
         # 步骤 1: 始终检查写入权限
         if not self._check_write_access():
-            logging.warning(f"[{service_name}] 写入权限检查失败。")
+            logging.warning(f"[src.services.sqlite_base_service.{service_name}.validate_database_schema] [SqlDataService] 写入权限检查失败。")
             return False
-        logging.debug(f"[{service_name}] 写入权限检查通过。")
+        logging.debug(f"[src.services.sqlite_base_service.{service_name}.validate_database_schema] [SqlDataService] 写入权限检查通过。")
 
         # 如果是动态模式，到此为止即为验证通过
         if self.schema_type == SchemaType.DYNAMIC:
-            logging.info(f"[{service_name}] [验证流程结束] DYNAMIC 模式验证通过（仅检查可写性）。")
+            logging.info(f"[src.services.sqlite_base_service.{service_name}.validate_database_schema] [SqlDataService] [验证流程结束] DYNAMIC 模式验证通过（仅检查可写性）。")
             return True
 
         # --- 以下为 FIXED 模式的严格验证 ---
@@ -135,45 +136,45 @@ class BaseDatabaseService:
             for table_name, expected_columns in self.TABLE_SCHEMAS.items():
                 # 1. 检查表是否存在
                 if self.VALIDATION_FLAGS & ValidationFlags.CHECK_TABLE_EXISTS:
-                    logging.debug(f"[{service_name}] [FIXED 验证 1/3] 检查表 '{table_name}' 是否存在...")
+                    logging.debug(f"[src.services.sqlite_base_service.{service_name}.validate_database_schema] [SqlDataService] [FIXED 验证 1/3] 检查表 '{table_name}' 是否存在...")
                     cursor.execute(f"SELECT name FROM sqlite_master WHERE type='table' AND name='{table_name}'")
                     if cursor.fetchone() is None:
-                        logging.info(f"[{service_name}] [FIXED 验证 1/3] 表 '{table_name}' 不存在，跳过后续检查 (将被创建)。")
+                        logging.info(f"[src.services.sqlite_base_service.{service_name}.validate_database_schema] [SqlDataService] [FIXED 验证 1/3] 表 '{table_name}' 不存在，跳过后续检查 (将被创建)。")
                         continue
-                    logging.debug(f"[{service_name}] [FIXED 验证 1/3] 表 '{table_name}' 已存在。")
+                    logging.debug(f"[src.services.sqlite_base_service.{service_name}.validate_database_schema] [SqlDataService] [FIXED 验证 1/3] 表 '{table_name}' 已存在。")
 
                 # 2. 检查表结构
                 if self.VALIDATION_FLAGS & ValidationFlags.CHECK_COLUMNS:
-                    logging.debug(f"[{service_name}] [FIXED 验证 2/3] 检查表 '{table_name}' 的列结构...")
+                    logging.debug(f"[src.services.sqlite_base_service.{service_name}.validate_database_schema] [SqlDataService] [FIXED 验证 2/3] 检查表 '{table_name}' 的列结构...")
                     if not expected_columns:
-                        logging.warning(f"[{service_name}] [FIXED 验证 2/3] 为表 '{table_name}' 配置了列检查，但期望列集合为空。")
+                        logging.warning(f"[src.services.sqlite_base_service.{service_name}.validate_database_schema] [SqlDataService] [FIXED 验证 2/3] 为表 '{table_name}' 配置了列检查，但期望列集合为空。")
                     else:
                         cursor.execute(f"PRAGMA table_info({table_name})")
                         current_columns = {col[1] for col in cursor.fetchall()}
                         if not expected_columns.issubset(current_columns):
                             missing = expected_columns - current_columns
-                            logging.warning(f"[{service_name}] [FIXED 验证 2/3] 表 '{table_name}' 列结构不匹配。缺少列: {missing}。")
+                            logging.warning(f"[src.services.sqlite_base_service.{service_name}.validate_database_schema] [SqlDataService] [FIXED 验证 2/3] 表 '{table_name}' 列结构不匹配。缺少列: {missing}。")
                             return False
-                        logging.debug(f"[{service_name}] [FIXED 验证 2/3] 表 '{table_name}' 列结构检查通过。")
+                        logging.debug(f"[src.services.sqlite_base_service.{service_name}.validate_database_schema] [SqlDataService] [FIXED 验证 2/3] 表 '{table_name}' 列结构检查通过。")
 
                 # 3. 检查可读性
                 if self.VALIDATION_FLAGS & ValidationFlags.CHECK_READABLE:
-                    logging.debug(f"[{service_name}] [FIXED 验证 3/3] 检查表 '{table_name}' 的可读性...")
+                    logging.debug(f"[src.services.sqlite_base_service.{service_name}.validate_database_schema] [SqlDataService] [FIXED 验证 3/3] 检查表 '{table_name}' 的可读性...")
                     cursor.execute(f"SELECT COUNT(*) FROM {table_name}")
                     cursor.fetchone()
-                    logging.debug(f"[{service_name}] [FIXED 验证 3/3] 表 '{table_name}' 可读性检查通过。")
+                    logging.debug(f"[src.services.sqlite_base_service.{service_name}.validate_database_schema] [SqlDataService] [FIXED 3/3] 表 '{table_name}' 可读性检查通过。")
 
-            logging.info(f"[{service_name}] [验证流程结束] 所有已配置的检查项均通过。")
+            logging.info(f"[src.services.sqlite_base_service.{service_name}.validate_database_schema] [SqlDataService] [验证流程结束] 所有已配置的检查项均通过。")
             return True
         except sqlite3.Error as e:
-            logging.error(f"[{service_name}] 数据库模式验证因 SQLite 错误而失败: {e}")
+            logging.error(f"[src.services.sqlite_base_service.{service_name}.validate_database_schema] [SqlDataService] 数据库模式验证因 SQLite 错误而失败: {e}")
             return False
 
     def close(self):
         """关闭数据库连接。"""
         if self.conn:
             self.conn.close()
-            logging.info(f"Database connection closed for {self.service_name}.")
+            logging.info(f"[src.services.sqlite_base_service.{self.service_name}.close] [SqlDataService] [连接关闭] Database connection closed for {self.service_name}.")
 
     @staticmethod
     def check_db_writability(db_path: str) -> (bool, str):
@@ -202,7 +203,7 @@ class BaseDatabaseService:
             conn.commit()
             return True, ""
         except sqlite3.Error as e:
-            error_msg = f"数据库 '{db_path}' 写入权限检查失败: {e}"
+            error_msg = f"[src.services.sqlite_base_service.SqlDataService.check_db_writability] [SqlDataService] [检查失败] 数据库 '{db_path}' 写入权限检查失败: {e}"
             logging.warning(error_msg)
             return False, str(e)
         finally:

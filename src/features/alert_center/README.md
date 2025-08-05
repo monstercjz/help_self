@@ -107,7 +107,7 @@ curl -X POST http://127.0.0.1:9527/alert \
 
 插件的某些组件会继承或直接使用平台提供的核心基类，以实现特定的功能或遵循统一的接口：
 
-- **`BaseDatabaseService` (`src.services.base_database_service.BaseDatabaseService`)**: 插件的数据库服务 [`alert_database_service.py`](services/alert_database_service.py) 继承自此基类，以提供统一的数据库操作接口和生命周期管理。
+- **`SqlDataService` (`src.services.sqlite_base_service.SqlDataService`)**: 插件的数据库服务 [`alert_database_service.py`](services/alert_database_service.py) 继承自此基类，以提供统一的数据库操作接口和生命周期管理。
 
 ### 6.2. 分层架构 (MVC/MVP)
 

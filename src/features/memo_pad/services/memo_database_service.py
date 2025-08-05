@@ -6,12 +6,12 @@ from datetime import datetime
 from typing import List, Optional
 
 from src.features.memo_pad.models.memo_model import Memo
-from src.services.base_database_service import BaseDatabaseService
+from src.services.sqlite_base_service import SqlDataService
 
-class MemoDatabaseService(BaseDatabaseService):
+class MemoDatabaseService(SqlDataService):
     """
     负责处理备忘录数据与SQLite数据库之间所有交互的服务。
-    继承自 BaseDatabaseService，只关注业务逻辑。
+    继承自 SqlDataService，只关注业务逻辑。
     """
     TABLE_NAME = "memos"
     EXPECTED_COLUMNS = {'id', 'title', 'content', 'created_at', 'updated_at'}

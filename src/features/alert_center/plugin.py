@@ -5,6 +5,7 @@ from src.core.context import ApplicationContext
 from .controllers.alerts_page_controller import AlertsPageController
 from .services.alert_receiver import AlertReceiverThread
 from .services.alert_database_service import AlertDatabaseService
+from src.services.generic_data_service import DataType
 from .constants import DEFAULT_HOST, DEFAULT_PORT
  
 class AlertCenterPlugin(IFeaturePlugin):
@@ -35,19 +36,21 @@ class AlertCenterPlugin(IFeaturePlugin):
         logging.info(f"[{self.display_name()}] 插件开始初始化...")
 
         # 1. 初始化数据库服务 (使用共享服务)
-        self.db_service = self.context.db_initializer.initialize_db(
+        generic_service = self.context.initializer.initialize(
             context=self.context,
             plugin_name=self.name(),
-            config_section=self.name(),      # 遵循统一规范，使用插件内部名作为配置区
-            config_key="db_path",           # 遵循统一规范，使用'db_path'作为键名
-            db_service_class=AlertDatabaseService,
-            default_relative_path="plugins/alert_center/history.db"
+            config_section=self.name(),
+            config_key="db_path",
+            default_relative_path="plugins/alert_center/history.db",
+            data_type=DataType.SQLITE,
+            db_service_class=AlertDatabaseService
         )
 
-        if not self.db_service:
-            logging.error(f"[{self.display_name()}] 插件因数据库错误无法加载。")
+        if not generic_service:
+            logging.error(f"[{self.display_name()}] 插件因数据源错误无法加载。")
             return
         
+        self.db_service = generic_service.db_service
         logging.info(f"[{self.display_name()}] 插件专属数据库服务已初始化。")
 
         # 2. 初始化后台服务

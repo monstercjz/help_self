@@ -3,9 +3,9 @@ import sqlite3
 import logging
 from typing import List, Dict, Any, Set
 
-from src.services.base_database_service import BaseDatabaseService
+from src.services.sqlite_base_service import SqlDataService
 
-class ProgramLauncherDatabaseService(BaseDatabaseService):
+class ProgramLauncherDatabaseService(SqlDataService):
     TABLE_SCHEMAS: Dict[str, Set[str]] = {
         "groups": {"id", "name", "order_index"},
         "programs": {"id", "group_id", "name", "path", "run_as_admin", "order_index"}

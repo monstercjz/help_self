@@ -7,6 +7,7 @@ from src.core.context import ApplicationContext
 from src.features.memo_pad.views.memo_page_view import MemoPageView
 from src.features.memo_pad.controllers.memo_page_controller import MemoPageController
 from src.features.memo_pad.services.memo_database_service import MemoDatabaseService
+from src.services.generic_data_service import DataType
 
 class MemoPadPlugin(IFeaturePlugin):
     """
@@ -30,20 +31,25 @@ class MemoPadPlugin(IFeaturePlugin):
         
         logging.info(f"Plugin '{self.name()}' is initializing...")
 
-        # 使用共享的数据库初始化服务
-        db_service = self.context.db_initializer.initialize_db(
+        # 使用重构后的通用数据源初始化服务
+        # 注意：返回的是一个包装过的服务实例，需要通过 .db_service 访问原始的 MemoDatabaseService
+        generic_service = self.context.initializer.initialize(
             context=self.context,
             plugin_name=self.name(),
-            config_section=self.name(),  # 使用插件内部名作为统一的配置区段名
-            config_key="db_path",       # 建议将key也统一为'db_path'
-            db_service_class=MemoDatabaseService,
-            default_relative_path="plugins/memo_pad/memos.db"
+            config_section=self.name(),
+            config_key="db_path",
+            default_relative_path="plugins/memo_pad/memos.db",
+            data_type=DataType.SQLITE,  # 明确指定数据类型
+            db_service_class=MemoDatabaseService  # 传入特定的数据库服务类
         )
 
         # 如果初始化失败，则插件不加载
-        if not db_service:
-            logging.error(f"Plugin '{self.name()}' could not be initialized due to a database error.")
+        if not generic_service:
+            logging.error(f"Plugin '{self.name()}' could not be initialized due to a data source error.")
             return
+        
+        db_service = generic_service.load_data()
+
 
         # 初始化视图和控制器
         self.page_widget = MemoPageView()

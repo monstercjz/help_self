@@ -7,8 +7,8 @@ import shutil # 新增导入
 from PySide6.QtCore import QObject, QTimer
 from PySide6.QtWidgets import QFileDialog
 from src.core.context import ApplicationContext
-from src.services.base_database_service import BaseDatabaseService
-from src.services.database_switch_service import DatabaseSwitchService
+from src.services.sqlite_base_service import SqlDataService
+from src.services.data_source_switch_service import DataSourceSwitchService
 from src.features.multidim_table.models.multidim_table_model import MultidimTableModel
 from src.features.multidim_table.services.data_service import DataService
 from src.features.multidim_table.views.db_management_view import DbManagementView
@@ -27,7 +27,7 @@ class MultidimTableController(QObject):
         self._data_service = DataService(self._model)
         self.context = context
         self.plugin_name = plugin_name
-        self._db_switch_service = DatabaseSwitchService()
+        self._db_switch_service = DataSourceSwitchService()
         
         # 分页状态
         self.page_size = 100  # 每页显示100条
@@ -68,7 +68,7 @@ class MultidimTableController(QObject):
 
     def _check_writability_and_notify(self, db_path: str):
         """检查数据库的可写性，如果不可写则发出通知。"""
-        is_writable, write_err = BaseDatabaseService.check_db_writability(db_path)
+        is_writable, write_err = SqlDataService.check_db_writability(db_path)
         if not is_writable:
             logging.warning(f"数据库 '{db_path}' 是只读的或不可写: {write_err}")
             self.context.notification_service.show(
@@ -83,7 +83,7 @@ class MultidimTableController(QObject):
             return
         
         # 检查数据库的可写性
-        is_writable, write_err = BaseDatabaseService.check_db_writability(db_path)
+        is_writable, write_err = SqlDataService.check_db_writability(db_path)
         if not is_writable:
             self._db_view.show_error("数据库不可写入", f"所选数据库文件不可写入。\n\n错误: {write_err}")
             return
@@ -101,13 +101,14 @@ class MultidimTableController(QObject):
         """处理打开数据库的请求，使用 DatabaseSwitchService。"""
         current_db_path = self._model.db_path if self._model.db_path else os.path.expanduser("~")
         
-        new_db_path = self._db_switch_service.switch_database(
+        new_db_path = self._db_switch_service.switch(
             parent_widget=self._db_view,
-            current_db_path=current_db_path,
+            current_path=current_db_path,
             config_service=self.context.config_service,
             config_section=self.plugin_name,
             config_key="last_db_path",
-            perform_validation=False
+            perform_validation=False,
+            file_filter="数据库文件 (*.db);;所有文件 (*)"
         )
 
         if new_db_path:
