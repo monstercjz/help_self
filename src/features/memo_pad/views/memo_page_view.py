@@ -18,7 +18,7 @@ class MemoPageView(QWidget):
     """
     delete_requested = Signal(int)
     edit_requested = Signal(int)
-    database_change_requested = Signal(str)
+    database_change_requested = Signal() # 信号不再传递文件路径，由控制器处理文件选择
 
     def __init__(self):
         super().__init__()
@@ -141,19 +141,9 @@ class MemoPageView(QWidget):
         self.view_mode_group.idClicked.connect(self.set_view_mode)
 
     def _open_db_file_dialog(self):
-        """打开文件对话框以选择新的数据库文件。"""
-        start_dir = ""
-        if self._current_db_path:
-            start_dir = os.path.dirname(self._current_db_path)
-
-        file_path, _ = QFileDialog.getOpenFileName(
-            self,
-            "选择备忘录数据库",
-            start_dir, # 使用智能确定的起始路径
-            "数据库文件 (*.db *.sqlite *.sqlite3);;所有文件 (*)"
-        )
-        if file_path:
-            self.database_change_requested.emit(file_path)
+        """发出信号以请求切换数据库，由控制器处理文件对话框。"""
+        # 不再在此处直接打开文件对话框，而是将此职责交给控制器
+        self.database_change_requested.emit() # 不再传递参数，因为信号定义已更改
 
     def set_current_db(self, path: str):
         """设置并显示当前数据库路径。"""
