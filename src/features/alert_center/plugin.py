@@ -50,7 +50,7 @@ class AlertCenterPlugin(IFeaturePlugin):
             logging.error(f"[{self.display_name()}] 插件因数据源错误无法加载。")
             return
         
-        self.db_service = generic_service.db_service
+        self.db_service = generic_service.load_data()
         logging.info(f"[{self.display_name()}] 插件专属数据库服务已初始化。")
 
         # 2. 初始化后台服务
