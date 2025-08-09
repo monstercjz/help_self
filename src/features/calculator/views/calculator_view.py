@@ -207,3 +207,45 @@ class CalculatorView(QWidget):
         elif sender_button == self.clear_history_button:
             # 特殊处理清空历史按钮，因为它没有在循环中创建
             self.button_clicked.emit("CLEAR_HISTORY")
+
+    def keyPressEvent(self, event):
+        """
+        处理键盘按键事件，将键盘输入映射到计算器操作。
+        """
+        key = event.key()
+        text = event.text()
+
+        # 数字键 (0-9) 和小数点
+        # 优先使用 event.text() 获取字符，因为它能处理主键盘和小键盘的数字
+        if text.isdigit() or text == '.':
+            self.button_clicked.emit(text)
+        # 运算符
+        elif key == Qt.Key_Plus:
+            self.button_clicked.emit("+")
+        elif key == Qt.Key_Minus:
+            self.button_clicked.emit("-")
+        elif key == Qt.Key_Asterisk: # 乘号 '*'
+            self.button_clicked.emit("×") # 使用 '×' 匹配UI按钮
+        elif key == Qt.Key_Slash: # 除号 '/'
+            self.button_clicked.emit("÷") # 使用 '÷' 匹配UI按钮
+        elif key == Qt.Key_Percent:
+            self.button_clicked.emit("%")
+        
+        # 等号和回车
+        elif key == Qt.Key_Equal or key == Qt.Key_Return or key == Qt.Key_Enter:
+            self.button_clicked.emit("=")
+        
+        # 清空和删除
+        elif key == Qt.Key_C: # 'C' 键用于清空
+            self.button_clicked.emit("C")
+        elif key == Qt.Key_Backspace: # 退格键用于删除
+            self.button_clicked.emit("DEL")
+        
+        # 括号
+        elif key == Qt.Key_ParenLeft:
+            self.button_clicked.emit("(")
+        elif key == Qt.Key_ParenRight:
+            self.button_clicked.emit(")")
+        
+        else:
+            super().keyPressEvent(event) # 传递未处理的事件
