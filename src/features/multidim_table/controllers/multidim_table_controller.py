@@ -556,16 +556,17 @@ class MultidimTableController(QObject):
 
     def _on_toggle_full_data_mode(self):
         """切换全量数据加载模式。"""
-        self.is_full_data_mode = not self.is_full_data_mode
-
         designer = self._get_current_designer_view()
         if not designer:
             return
-
+        
+        # 切换模式状态
         self.is_full_data_mode = not self.is_full_data_mode
         
         if self.is_full_data_mode:
             self._load_full_data_into_designer(designer)
+            self.current_page = 1
+            self.total_pages = 1 # 全量模式只有一页
             designer.show_status_message("已加载全部数据，现在可以编辑和保存。", 5000)
             QTimer.singleShot(5000, lambda: designer.status_bar.showMessage(f"总行数: {self.total_rows}"))
             designer.setWindowTitle(f"设计表: {designer.table_name}")
