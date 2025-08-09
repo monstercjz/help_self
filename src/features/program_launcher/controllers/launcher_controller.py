@@ -214,14 +214,20 @@ class LauncherController(QObject):
             self.view.rebuild_ui(filtered_data)
     @Slot()
     def change_data_path(self):
-        new_db_service = self.context.database_switch_service.switch_database(
+        new_db_service = self.context.switch_service.switch(
             parent_widget=self.view,
-            current_db_path=self.model.get_db_path(),
+            current_path=self.model.get_db_path(),
             db_service_class=ProgramLauncherDatabaseService,
             config_service=self.context.config_service,
             config_section=self.plugin.name(),
-            config_key=self.plugin.CONFIG_KEY_DB_PATH
+            config_key=self.plugin.CONFIG_KEY_DB_PATH,
+            file_filter="数据库文件 (*.db *.json);;所有文件 (*.*)"
         )
 
-        if new_db_service:
+        if new_db_service and hasattr(new_db_service, 'db_service'):
+            # The switch service returns a generic service wrapper (e.g., SQLiteDataService).
+            # We need to pass the underlying, plugin-specific service to the model.
+            self.model.set_db_service(new_db_service.db_service)
+        elif new_db_service:
+            # Fallback for other service types or direct service returns
             self.model.set_db_service(new_db_service)
